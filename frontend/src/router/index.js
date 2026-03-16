@@ -20,7 +20,7 @@ const routes = [
     path: '/admin',
     meta: { requiresAuth: true, permission: 'acceso_admin' },
     children: [
-      { path: 'dashboard', component: () => import('@/views/security-config/AdminDashboardView.vue') },
+      { path: 'dashboard', component: () => import('@/views/admin/AdminDashboardView.vue') },
       { path: 'audit', component: () => import('@/views/admin/AuditView.vue') },
       { path: 'roles', component: () => import('@/views/security-config/RolesPermissionsView.vue') },
     ]
