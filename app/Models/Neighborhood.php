@@ -27,6 +27,8 @@ class Neighborhood extends Model
         return $this->hasMany(Person::class);
     }
 
+
+
     public function elections(): HasMany
     {
         return $this->hasMany(Election::class);

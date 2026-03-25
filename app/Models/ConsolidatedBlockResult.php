@@ -45,4 +45,5 @@ class ConsolidatedBlockResult extends Model
     {
         return $this->belongsTo(SlateBlock::class);
     }
+
 }

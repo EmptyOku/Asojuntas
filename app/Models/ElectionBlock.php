@@ -35,6 +35,7 @@ class ElectionBlock extends Pivot
         return $this->belongsTo(Block::class);
     }
 
+
     public function electionBlockPositions(): HasMany
     {
         return $this->hasMany(ElectionBlockPosition::class);

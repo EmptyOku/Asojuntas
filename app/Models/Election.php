@@ -66,6 +66,8 @@ class Election extends Model
         return $this->hasMany(Candidate::class);
     }
 
+
+
     public function candidateDrafts(): HasMany
     {
         return $this->hasMany(CandidateDraft::class);

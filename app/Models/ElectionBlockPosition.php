@@ -49,6 +49,7 @@ class ElectionBlockPosition extends Model
         return $this->hasMany(ScrutinyElectedPerson::class);
     }
 
+
     public function seatAllocations(): HasMany
     {
         return $this->hasMany(SeatAllocation::class);
