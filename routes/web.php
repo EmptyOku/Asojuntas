@@ -107,3 +107,8 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
     Route::get('/logs/{auditLog}', [AuditLogController::class, 'show'])->name('audit.show');
 
 });
+
+// Ruta catch-all para Vue SPA - DEBE ir al final!
+Route::get('{any}', function () {
+    return view('app');
+})->where('any', '.*')->name('spa');
