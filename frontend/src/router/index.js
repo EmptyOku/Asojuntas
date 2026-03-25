@@ -8,7 +8,7 @@ const routes = [
   // Rutas de Jurado (Mobile)
   { 
     path: '/jury',
-    meta: { requiresAuth: true, permission: 'capturar_actas' },
+    meta: { requiresAuth: true, permission: 'records.upload' },
     children: [
       { path: 'dashboard', component: () => import('@/views/jury/JuryDashboardView.vue') },
       { path: 'capture', component: () => import('@/views/jury/CaptureSlatesView.vue') },
@@ -18,7 +18,7 @@ const routes = [
   // Rutas de Administrador (Desktop)
   {
     path: '/admin',
-    meta: { requiresAuth: true, permission: 'acceso_admin' },
+    meta: { requiresAuth: true, permission: 'users.view' },
     children: [
       { path: 'dashboard', component: () => import('@/views/admin/AdminDashboardView.vue') },
       { path: 'audit', component: () => import('@/views/admin/AuditView.vue') },

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Hash;
 
 class AuthController extends Controller
 {
@@ -15,25 +16,38 @@ class AuthController extends Controller
     public function login(Request $request)
     {
         $request->validate([
-            'email' => 'required|email',
+            'identity' => 'required|string',
             'password' => 'required|string',
         ]);
 
-        $credentials = $request->only('email', 'password');
+        $identity = $request->string('identity')->toString();
+        $user = User::with(['roles.permissions'])
+            ->where('email', $identity)
+            ->orWhere('username', $identity)
+            ->first();
 
-        if (Auth::attempt($credentials)) {
-            $user = Auth::user();
+        if (! $user || ! Hash::check($request->password, $user->password) || ! $user->is_active) {
             return response()->json([
-                'success' => true,
-                'user' => $user->load('roles'),
-                'message' => 'Login exitoso'
-            ], 200);
+                'success' => false,
+                'message' => 'Credenciales inválidas'
+            ], 401);
         }
 
+        Auth::login($user, false);
+
+        $permissions = $user->roles
+            ->flatMap(fn ($role) => $role->permissions->pluck('name'))
+            ->unique()
+            ->values();
+
         return response()->json([
-            'success' => false,
-            'message' => 'Credenciales inválidas'
-        ], 401);
+            'success' => true,
+            'user' => $user,
+            'roles' => $user->roles->pluck('name')->values(),
+            'permissions' => $permissions,
+            'message' => 'Login exitoso'
+        ], 200);
+
     }
 
     /**
@@ -48,14 +62,16 @@ class AuthController extends Controller
             ], 401);
         }
 
-        $user = Auth::user();
-        $permissions = $user->roles->flatMap(function ($role) {
-            return $role->permissions->pluck('name');
-        })->unique()->values();
+        $user = User::with(['roles.permissions'])->find(Auth::id());
+        $permissions = $user->roles
+            ->flatMap(fn ($role) => $role->permissions->pluck('name'))
+            ->unique()
+            ->values();
 
         return response()->json([
             'success' => true,
             'user' => $user,
+            'roles' => $user->roles->pluck('name')->values(),
             'permissions' => $permissions,
         ], 200);
     }

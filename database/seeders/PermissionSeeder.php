@@ -11,7 +11,7 @@ class PermissionSeeder extends Seeder
     {
         $now = now();
 
-        DB::table('permissions')->insert([
+        DB::table('permissions')->upsert([
             ['name' => 'users.view', 'display_name' => 'View users', 'description' => 'Ver usuarios', 'is_active' => true, 'created_at' => $now, 'updated_at' => $now],
             ['name' => 'users.create', 'display_name' => 'Create users', 'description' => 'Crear usuarios', 'is_active' => true, 'created_at' => $now, 'updated_at' => $now],
             ['name' => 'users.update', 'display_name' => 'Update users', 'description' => 'Editar usuarios', 'is_active' => true, 'created_at' => $now, 'updated_at' => $now],
@@ -30,6 +30,6 @@ class PermissionSeeder extends Seeder
 
             ['name' => 'reports.view', 'display_name' => 'View reports', 'description' => 'Ver reportes', 'is_active' => true, 'created_at' => $now, 'updated_at' => $now],
             ['name' => 'audit.view', 'display_name' => 'View audit log', 'description' => 'Ver auditoría', 'is_active' => true, 'created_at' => $now, 'updated_at' => $now],
-        ]);
+        ], ['name'], ['display_name', 'description', 'is_active', 'updated_at']);
     }
 }

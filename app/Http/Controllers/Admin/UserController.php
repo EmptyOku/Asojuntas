@@ -58,7 +58,7 @@ class UserController extends Controller
     public function store(Request $request): RedirectResponse
     {
         $validated = $request->validate([
-            'person_id' => 'required|exists:people,id|unique:users,person_id',
+            'person_id' => 'required|exists:persons,id|unique:users,person_id',
             'username'  => 'required|string|max:50|unique:users,username',
             'email'     => 'required|email|max:150|unique:users,email',
             'password'  => 'required|string|min:8|confirmed',

@@ -1,8 +1,10 @@
 import axios from 'axios';
 
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '/api';
+
 const instance = axios.create({
-    baseURL: 'http://127.0.0.1:8000/api', // La URL de laravel para el desarrollo, para la finalidad del proyecto debe tener la ip o domino del vpn
-    withCredentials: true,                // Permite enviar cookies/tokens
+    baseURL: apiBaseUrl,
+    withCredentials: true,
     headers: {
         'X-Requested-With': 'XMLHttpRequest',
         'Content-Type': 'application/json',

@@ -110,18 +110,19 @@ const errorMessage = ref('');
 const handleLogin = async () => {
   errorMessage.value = '';
   try {
-    // 1. Intentamos iniciar sesión (Pinia hará la simulación)
     await authStore.login(credentials.value);
-    
-    // 2. Redirección basada en Roles (RBAC)
-    if (authStore.user?.role === 'jurado') {
-      router.push('/jury/dashboard'); // Ruta móvil del Jurado
-    } else if (authStore.user?.role === 'admin') {
-      router.push('/admin/dashboard'); // Ruta escritorio del Administrador
-    } else {
-      errorMessage.value = 'El usuario no tiene un rol válido asignado.';
+
+    if (authStore.permissions.includes('users.view')) {
+      router.push('/admin/dashboard');
+      return;
     }
-    
+
+    if (authStore.permissions.includes('records.upload')) {
+      router.push('/jury/dashboard');
+      return;
+    }
+
+    errorMessage.value = 'El usuario no tiene permisos para entrar a un módulo.';
   } catch (error) {
     errorMessage.value = 'Credenciales incorrectas o error de conexión.';
   }

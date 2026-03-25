@@ -3,9 +3,7 @@ import { useAuthStore } from '@/stores/auth';
 
 // Los Layouts se importan de forma estática (cargan inmediatamente con la app)
 import AdminLayout from '@/layouts/AdminLayout.vue';
-import JuryLayout from '@/layouts/JuryLayout.vue'
-import path from 'node:path';
-import GeographyView from '../views/admin/GeographyView.vue';
+import JuryLayout from '@/layouts/JuryLayout.vue';
 
 const routes = [
   // Redirección inicial: Si entran a "/", mandarlos a login
@@ -27,7 +25,7 @@ const routes = [
   { 
     path: '/jury',
     component: JuryLayout, // <--- Conecta el layout aquí
-    meta: { requiresAuth: true, permission: 'capturar_actas' },
+    meta: { requiresAuth: true, permission: 'records.upload' },
     children: [
       { path: 'dashboard', name: 'jury-dashboard', component: () => import('@/views/jury/JuryDashboardView.vue') },
       { path: 'capture', name: 'jury-capture', component: () => import('@/views/jury/CaptureSlatesView.vue') },
@@ -40,7 +38,7 @@ const routes = [
   {
     path: '/admin',
     component: AdminLayout, // <--- CORRECCIÓN CLAVE: Esto envuelve a todos los 'children' en tu menú lateral
-    meta: { requiresAuth: true, permission: 'acceso_admin' },
+    meta: { requiresAuth: true, permission: 'users.view' },
     children: [
       { path: 'dashboard', name: 'admin-dashboard', component: () => import('@/views/admin/AdminDashboardView.vue') },
       { path: 'audit', name: 'admin-audit', component: () => import('@/views/admin/AuditView.vue') },
@@ -84,7 +82,7 @@ router.beforeEach(async (to, from) => {
       if (typeof auth.fetchUser === 'function') {
         try {
           await auth.fetchUser();
-        } catch (error) {
+        } catch {
           // Fallo silencioso en caso de error de red
         }
       }
