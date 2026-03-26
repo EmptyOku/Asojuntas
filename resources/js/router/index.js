@@ -29,6 +29,7 @@ const routes = [
     children: [
       { path: 'dashboard', name: 'jury-dashboard', component: () => import('@/views/jury/JuryDashboardView.vue') },
       { path: 'capture', name: 'jury-capture', component: () => import('@/views/jury/CaptureSlatesView.vue') },
+      { path: 'review', name: 'jury-review', component: () => import('@/views/jury/PreviousReviewView.vue') }
     ]
   },
 
