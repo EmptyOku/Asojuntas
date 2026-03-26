@@ -14,6 +14,9 @@ class DatabaseSeeder extends Seeder
             PermissionSeeder::class,
             RolePermissionSeeder::class,
             UserSeeder::class,
+            GeographicDemoSeeder::class,
+            ElectoralCatalogSeeder::class,
+            ElectionMvpSeeder::class,
         ]);
     }
 }

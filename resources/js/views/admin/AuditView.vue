@@ -10,11 +10,11 @@
       <div class="flex items-center gap-3">
         <div class="px-4 py-2 bg-green-50 border border-green-100 rounded-xl">
           <p class="text-[10px] font-bold text-green-600 uppercase">Procesadas (IA OK)</p>
-          <p class="text-lg font-bold text-green-700">85</p>
+          <p class="text-lg font-bold text-green-700">{{ stats.processed_count }}</p>
         </div>
         <div class="px-4 py-2 bg-orange-50 border border-orange-100 rounded-xl">
           <p class="text-[10px] font-bold text-orange-600 uppercase">Requieren Revisión</p>
-          <p class="text-lg font-bold text-orange-700">12</p>
+          <p class="text-lg font-bold text-orange-700">{{ stats.review_count }}</p>
         </div>
       </div>
     </div>
@@ -24,13 +24,18 @@
       <div class="p-5 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-gray-50/30">
         <div class="relative w-full sm:max-w-md">
           <Search class="w-4 h-4 absolute left-3.5 top-1/2 transform -translate-y-1/2 text-gray-400" />
-          <input type="text" placeholder="Buscar por mesa, comuna o jurado..." class="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-aso-primary/20 focus:border-aso-primary">
+          <input
+            v-model="search"
+            type="text"
+            placeholder="Buscar por mesa, comuna o jurado..."
+            class="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-aso-primary/20 focus:border-aso-primary"
+          >
         </div>
         <div class="flex gap-2">
-          <select class="border border-gray-200 rounded-lg text-sm text-gray-600 py-2 px-3 focus:outline-none">
-            <option>Todas las actas</option>
-            <option>Requieren revisión</option>
-            <option>Consolidadas</option>
+          <select v-model="filter" class="border border-gray-200 rounded-lg text-sm text-gray-600 py-2 px-3 focus:outline-none">
+            <option value="all">Todas las actas</option>
+            <option value="review">Requieren revision</option>
+            <option value="processed">Procesadas</option>
           </select>
         </div>
       </div>
@@ -47,45 +52,36 @@
             </tr>
           </thead>
           <tbody class="divide-y divide-gray-50">
-            
-            <tr class="hover:bg-gray-50/50 transition-colors">
+            <tr v-if="isLoading">
+              <td colspan="5" class="px-6 py-8 text-center text-sm text-gray-500">Cargando actas...</td>
+            </tr>
+
+            <tr v-else-if="records.length === 0">
+              <td colspan="5" class="px-6 py-8 text-center text-sm text-gray-500">No hay actas para los filtros aplicados.</td>
+            </tr>
+
+            <tr v-for="row in records" :key="row.id" class="hover:bg-gray-50/50 transition-colors">
               <td class="px-6 py-4">
-                <p class="font-bold text-gray-900">Mesa 14</p>
-                <p class="text-xs text-gray-500">Colegio Departamental - Comuna 1</p>
+                <p class="font-bold text-gray-900">{{ row.polling_table?.name || row.polling_table?.code || ('Acta '+row.id) }}</p>
+                <p class="text-xs text-gray-500">{{ buildLocation(row) }}</p>
               </td>
-              <td class="px-6 py-4">Ana Martínez<br><span class="text-xs text-gray-400">Hace 10 min</span></td>
-              <td class="px-6 py-4 text-center font-bold text-gray-700">102</td>
+              <td class="px-6 py-4">{{ row.jury_name }}<br><span class="text-xs text-gray-400">{{ row.transmitted_at_human || 'Sin fecha' }}</span></td>
+              <td class="px-6 py-4 text-center font-bold text-gray-700">{{ row.valid_votes }}</td>
               <td class="px-6 py-4">
-                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-orange-50 text-orange-700 border border-orange-100">
-                  <span class="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse"></span> Dudas en Bloque 1
+                <span
+                  :class="row.status_tag?.kind === 'ok' ? 'bg-green-50 text-green-700 border-green-100' : 'bg-orange-50 text-orange-700 border-orange-100'"
+                  class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border"
+                >
+                  <span :class="row.status_tag?.kind === 'ok' ? 'bg-green-500' : 'bg-orange-500 animate-pulse'" class="w-1.5 h-1.5 rounded-full"></span>
+                  {{ row.status_tag?.text || 'Sin estado' }}
                 </span>
               </td>
               <td class="px-6 py-4 text-right">
-                <router-link to="/admin/audit/14" class="inline-block bg-white border border-gray-200 hover:border-aso-primary hover:text-aso-primary text-gray-700 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors shadow-sm">
+                <router-link :to="`/admin/audit/${row.id}`" class="inline-block bg-white border border-gray-200 hover:border-aso-primary hover:text-aso-primary text-gray-700 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors shadow-sm">
                   Corroborar
                 </router-link>
               </td>
             </tr>
-
-            <tr class="hover:bg-gray-50/50 transition-colors">
-              <td class="px-6 py-4">
-                <p class="font-bold text-gray-900">Mesa 03</p>
-                <p class="text-xs text-gray-500">Polideportivo Kennedy - Comuna 3</p>
-              </td>
-              <td class="px-6 py-4">Carlos Pérez<br><span class="text-xs text-gray-400">Hace 25 min</span></td>
-              <td class="px-6 py-4 text-center font-bold text-gray-700">111</td>
-              <td class="px-6 py-4">
-                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-green-50 text-green-700 border border-green-100">
-                  <span class="w-1.5 h-1.5 rounded-full bg-green-500"></span> 98% Confianza
-                </span>
-              </td>
-              <td class="px-6 py-4 text-right">
-                <button class="bg-gray-50 border border-gray-200 hover:bg-gray-100 text-gray-600 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors">
-                  Ver Cuociente
-                </button>
-              </td>
-            </tr>
-
           </tbody>
         </table>
       </div>
@@ -95,5 +91,71 @@
 </template>
 
 <script setup>
+import { onMounted, ref, watch } from 'vue';
 import { Search } from 'lucide-vue-next';
+import axios from '@/services/axios';
+
+const isLoading = ref(false);
+const records = ref([]);
+const stats = ref({
+  processed_count: 0,
+  review_count: 0,
+});
+
+const search = ref('');
+const filter = ref('all');
+
+let fetchTimer = null;
+
+const buildLocation = (row) => {
+  const parts = [];
+  if (row.polling_table?.location) {
+    parts.push(row.polling_table.location);
+  }
+  if (row.commune_name) {
+    parts.push(row.commune_name);
+  }
+
+  return parts.length > 0 ? parts.join(' - ') : 'Ubicacion no registrada';
+};
+
+const fetchAuditRecords = async () => {
+  isLoading.value = true;
+  try {
+    const { data } = await axios.get('/admin/audit-records', {
+      params: {
+        search: search.value || undefined,
+        filter: filter.value,
+      },
+    });
+
+    const payload = data?.data || {};
+    const paginatedRecords = payload.records?.data || [];
+    records.value = paginatedRecords;
+    stats.value = payload.stats || { processed_count: 0, review_count: 0 };
+  } catch (error) {
+    records.value = [];
+    stats.value = { processed_count: 0, review_count: 0 };
+  } finally {
+    isLoading.value = false;
+  }
+};
+
+const queueFetch = () => {
+  if (fetchTimer) {
+    clearTimeout(fetchTimer);
+  }
+
+  fetchTimer = setTimeout(() => {
+    fetchAuditRecords();
+  }, 250);
+};
+
+watch([search, filter], () => {
+  queueFetch();
+});
+
+onMounted(async () => {
+  await fetchAuditRecords();
+});
 </script>

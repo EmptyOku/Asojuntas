@@ -13,6 +13,7 @@ use Illuminate\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Database\QueryException;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class CandidateController extends Controller
 {
@@ -83,6 +84,8 @@ class CandidateController extends Controller
 
         $validated['is_active'] = $request->has('is_active');
 
+        $this->validateCandidateConsistency($validated);
+
         // Aquí, en una app más grande, validaríamos que slate_block_id pertenezca al election_id.
         // Lo dejaremos pasar asumiendo que el frontend filtra los selects correctamente.
 
@@ -125,6 +128,8 @@ class CandidateController extends Controller
 
         $validated['is_active'] = $request->has('is_active');
 
+        $this->validateCandidateConsistency($validated);
+
         $candidate->update($validated);
 
         return redirect()->route('admin.candidates.index')
@@ -147,6 +152,36 @@ class CandidateController extends Controller
                     ->with('error', 'Auditoría: No se puede eliminar a este candidato porque ya tiene resultados electorales o curules vinculadas. Proceda a desactivarlo (' . $candidate->ballot_number . ').');
             }
             throw $e;
+        }
+    }
+
+    private function validateCandidateConsistency(array $validated): void
+    {
+        $slateBlock = SlateBlock::query()
+            ->select(['id', 'election_id', 'election_block_id'])
+            ->findOrFail((int) $validated['slate_block_id']);
+
+        $electionBlockPosition = ElectionBlockPosition::query()
+            ->with('electionBlock:id,election_id')
+            ->findOrFail((int) $validated['election_block_position_id']);
+
+        $errors = [];
+        $electionId = (int) $validated['election_id'];
+
+        if ((int) $slateBlock->election_id !== $electionId) {
+            $errors['slate_block_id'] = 'La plancha seleccionada no pertenece a la eleccion indicada.';
+        }
+
+        if ((int) ($electionBlockPosition->electionBlock?->election_id ?? 0) !== $electionId) {
+            $errors['election_block_position_id'] = 'El cargo seleccionado no pertenece a la eleccion indicada.';
+        }
+
+        if ((int) $slateBlock->election_block_id !== (int) $electionBlockPosition->election_block_id) {
+            $errors['election_block_position_id'] = 'La plancha y el cargo deben pertenecer al mismo bloque electoral.';
+        }
+
+        if (! empty($errors)) {
+            throw ValidationException::withMessages($errors);
         }
     }
 }

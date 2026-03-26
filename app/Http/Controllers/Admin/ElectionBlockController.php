@@ -10,6 +10,7 @@ use Illuminate\Http\Request;
 use Illuminate\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Database\QueryException;
+use Illuminate\Validation\Rule;
 
 class ElectionBlockController extends Controller
 {
@@ -48,9 +49,13 @@ class ElectionBlockController extends Controller
     {
         $validated = $request->validate([
             'election_id' => 'required|exists:elections,id',
-            'block_id'    => 'required|exists:blocks,id',
-            // Evitamos duplicar el mismo bloque en la misma elección
-            'block_id'    => 'unique:election_blocks,block_id,NULL,id,election_id,' . $request->election_id,
+            'block_id'    => [
+                'required',
+                'exists:blocks,id',
+                Rule::unique('election_blocks', 'block_id')->where(function ($query) use ($request) {
+                    return $query->where('election_id', $request->election_id);
+                }),
+            ],
         ]);
 
         $validated['is_active'] = $request->has('is_active');

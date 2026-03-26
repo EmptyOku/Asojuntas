@@ -35,4 +35,9 @@ return [
         ],
     ],
 
+    'extractor' => [
+        'ingest_token' => env('EXTRACTOR_INGEST_TOKEN'),
+        'max_upload_kb' => (int) env('EXTRACTOR_MAX_UPLOAD_KB', 10240),
+    ],
+
 ];

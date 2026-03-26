@@ -1,11 +1,7 @@
 <?php
 
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\Api\AuthController;
-use App\Http\Controllers\Api\Admin\PermissionManagementController;
-use App\Http\Controllers\Api\Admin\RoleManagementController;
-use App\Http\Controllers\Api\Admin\UserManagementController;
+use App\Http\Controllers\Api\ExtractionIngestController;
 
 /*
 |--------------------------------------------------------------------------
@@ -18,34 +14,11 @@ use App\Http\Controllers\Api\Admin\UserManagementController;
 |
 */
 
-// Rutas públicas (sin autenticación)
-Route::post('/login', [AuthController::class, 'login'])->name('api.login');
-Route::post('/logout', [AuthController::class, 'logout'])->name('api.logout');
-Route::get('/check', [AuthController::class, 'check'])->name('api.check');
+// Ingestión desde servicio externo OCR/Visión.
+Route::middleware('ingest.token')->prefix('ingest')->group(function (): void {
+    Route::post('/scrutiny-files', [ExtractionIngestController::class, 'uploadFile'])
+        ->name('api.ingest.scrutiny-files.store');
 
-// Rutas protegidas (requieren autenticación)
-Route::middleware('auth:web')->group(function () {
-    Route::get('/user', [AuthController::class, 'user'])->name('api.user');
-
-    Route::prefix('admin')->group(function () {
-        Route::get('/users', [UserManagementController::class, 'index'])
-            ->middleware('api.permission:users.view')
-            ->name('api.admin.users.index');
-
-        Route::post('/users', [UserManagementController::class, 'store'])
-            ->middleware('api.permission:users.create')
-            ->name('api.admin.users.store');
-
-        Route::put('/users/{user}/roles', [UserManagementController::class, 'syncRoles'])
-            ->middleware('api.permission:roles.assign')
-            ->name('api.admin.users.roles.sync');
-
-        Route::get('/roles', [RoleManagementController::class, 'index'])
-            ->middleware('api.permission:roles.view')
-            ->name('api.admin.roles.index');
-
-        Route::get('/permissions', [PermissionManagementController::class, 'index'])
-            ->middleware('api.permission:roles.view')
-            ->name('api.admin.permissions.index');
-    });
+    Route::post('/scrutiny-extractions', [ExtractionIngestController::class, 'ingestExtraction'])
+        ->name('api.ingest.scrutiny-extractions.store');
 });

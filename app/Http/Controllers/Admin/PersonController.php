@@ -58,7 +58,7 @@ class PersonController extends Controller
             'document_number'  => [
                 'required', 'string', 'max:30',
                 // Unicidad compuesta: No puede haber dos personas con mismo tipo y nro de doc.
-                Rule::unique('people')->where(function ($query) use ($request) {
+                Rule::unique('persons')->where(function ($query) use ($request) {
                     return $query->where('document_type_id', $request->document_type_id);
                 }),
             ],
@@ -69,7 +69,7 @@ class PersonController extends Controller
             'second_last_name' => 'nullable|string|max:100',
             'birth_date'       => 'nullable|date|before:today',
             'phone'            => 'nullable|string|max:20',
-            'email'            => 'nullable|email|max:150|unique:people,email',
+            'email'            => 'nullable|email|max:150|unique:persons,email',
             'address'          => 'nullable|string|max:255',
         ]);
 
@@ -100,14 +100,14 @@ class PersonController extends Controller
             'document_type_id' => 'required|exists:document_types,id',
             'document_number'  => [
                 'required', 'string', 'max:30',
-                Rule::unique('people')->where(function ($query) use ($request) {
+                Rule::unique('persons')->where(function ($query) use ($request) {
                     return $query->where('document_type_id', $request->document_type_id);
                 })->ignore($person->id),
             ],
             'neighborhood_id'  => 'required|exists:neighborhoods,id',
             'first_name'       => 'required|string|max:100',
             'last_name'        => 'required|string|max:100',
-            'email'            => 'nullable|email|max:150|unique:people,email,' . $person->id,
+            'email'            => 'nullable|email|max:150|unique:persons,email,' . $person->id,
             // ... otras validaciones similares a store
         ]);
 

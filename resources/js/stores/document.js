@@ -8,7 +8,7 @@ export const useDocumentStore = defineStore('document', () => {
   // Para saber si estamos validando una 'plancha' o un 'escrutinio'
   const documentType = ref(null); 
   
-  // Simulación de los datos devueltos por AWS Textract
+  // Datos de extracción por página (preview OCR)
   const extractedData = ref({});
 
   const setImages = (images, type) => {
@@ -17,7 +17,14 @@ export const useDocumentStore = defineStore('document', () => {
   };
 
   const setExtractedData = (data) => {
-    extractedData.value = data;
+    extractedData.value = data || {};
+  };
+
+  const setExtractedPage = (pageIndex, pageData) => {
+    extractedData.value = {
+      ...extractedData.value,
+      [pageIndex]: pageData,
+    };
   };
 
   const clearStore = () => {
@@ -32,6 +39,7 @@ export const useDocumentStore = defineStore('document', () => {
     extractedData, 
     setImages, 
     setExtractedData, 
+    setExtractedPage,
     clearStore 
   };
 });

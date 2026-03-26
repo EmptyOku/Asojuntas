@@ -1,5 +1,12 @@
 <template>
   <div class="flex flex-col min-h-screen bg-aso-bg font-sans pb-24 lg:pb-0">
+    <div v-if="isExtracting" class="fixed inset-0 z-[80] bg-black/40 backdrop-blur-sm flex items-center justify-center px-4">
+      <div class="bg-white rounded-2xl shadow-2xl border border-gray-100 p-6 w-full max-w-sm text-center">
+        <div class="w-12 h-12 mx-auto rounded-full border-4 border-gray-200 border-t-aso-primary animate-spin"></div>
+        <h3 class="mt-4 text-base font-bold text-gray-900">Extrayendo texto...</h3>
+        <p class="mt-1 text-sm text-gray-500">Estamos leyendo la imagen y reemplazando los valores de validación.</p>
+      </div>
+    </div>
     
     <!-- 1. CARRUSEL DE IMAGEN (Sticky) -->
     <div class="w-full h-[40vh] bg-[#1a1c23] relative flex flex-col sticky top-0 z-20 shadow-lg lg:h-[45vh]">
@@ -60,13 +67,19 @@
 
           <!-- FLUJO B: ACTAS DE ESCRUTINIO -->
           <template v-else>
-            <div v-for="(bloque, bIdx) in currentDataPage?.bloques" :key="bIdx" class="space-y-4">
-              <h3 class="bg-aso-primary/5 text-aso-primary text-xs font-black p-2 rounded-md border-l-4 border-aso-primary uppercase">{{ bloque.titulo }}</h3>
+            <div v-for="(bloque, bIdx) in scrutinyBlocksForReview" :key="`${bloque.pageIndex}-${bloque.blockIndex}`" class="space-y-4">
+              <h3 class="bg-aso-primary/5 text-aso-primary text-xs font-black p-2 rounded-md border-l-4 border-aso-primary uppercase">{{ bloque.titulo }} · Pág {{ bloque.pageIndex + 1 }}</h3>
               
               <div class="grid grid-cols-2 gap-3">
                 <div v-for="(valor, label) in bloque.votos" :key="label" class="p-3 bg-white border border-gray-100 rounded-xl shadow-sm">
                   <label class="block text-[10px] font-bold text-gray-400 uppercase mb-1">{{ label }}</label>
-                  <input type="text" :value="valor" readonly class="w-full text-lg font-black text-aso-primary-dark focus:outline-none">
+                  <input
+                    type="text"
+                    inputmode="numeric"
+                    :value="valor"
+                    @input="setBlockVoteByRef(bloque.pageIndex, bloque.blockIndex, label, $event.target.value)"
+                    class="w-full text-lg font-black text-aso-primary-dark focus:outline-none bg-transparent border-b border-dashed border-gray-300"
+                  >
                 </div>
               </div>
             </div>
@@ -84,9 +97,37 @@
       <!-- BOTONES -->
       <div class="fixed bottom-0 inset-x-0 p-4 bg-white/80 backdrop-blur-md border-t border-gray-100 grid grid-cols-2 gap-3 z-30 lg:relative lg:bg-transparent lg:border-0 lg:p-0">
         <button @click="rejectAndReturn" class="py-4 bg-white border border-gray-200 text-red-600 font-bold rounded-2xl text-sm">Rechazar</button>
-        <button @click="confirmAndSend" class="py-4 bg-aso-primary text-white font-bold rounded-2xl shadow-md flex items-center justify-center gap-2 text-sm">
+        <button @click="confirmAndSend" :disabled="isSubmitting" class="py-4 bg-aso-primary text-white font-bold rounded-2xl shadow-md flex items-center justify-center gap-2 text-sm disabled:opacity-70">
           <CheckCircle class="w-4 h-4" /> Confirmar Datos
         </button>
+      </div>
+
+      <!-- PRUEBA DE INTEGRACION (DESARROLLO) -->
+      <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 mt-6 mb-24 lg:mb-6">
+        <h3 class="text-sm font-bold text-gray-900">Prueba de Integracion API</h3>
+        <p class="text-xs text-gray-500 mt-1">Esta prueba usa tu sesion autenticada del jurado, sin token manual.</p>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
+          <div>
+            <label class="text-[10px] font-bold text-gray-400 uppercase">Scrutiny Record ID (Auto)</label>
+            <input :value="integration.recordId || ''" type="number" readonly class="w-full px-3 py-2 bg-gray-100 border border-gray-200 rounded-lg text-sm text-gray-700" placeholder="Se asigna automaticamente">
+          </div>
+          <div>
+            <label class="text-[10px] font-bold text-gray-400 uppercase">Mesa de Votacion ID</label>
+            <input v-model.number="integration.pollingTableId" type="number" min="1" class="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700" placeholder="Solo requerida primera vez">
+          </div>
+        </div>
+
+        <p class="mt-2 text-[11px] text-gray-500">Si ya existe un acta previa del jurado, el sistema la reutiliza y no vuelve a pedir configuración.</p>
+
+        <button @click="extractCurrentPage" :disabled="isExtracting" class="mt-4 w-full sm:w-auto px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-bold disabled:opacity-60">
+          {{ isExtracting ? 'Procesando...' : 'Extraer texto de esta página' }}
+        </button>
+
+        <p v-if="submitError" class="mt-3 text-xs text-red-600 font-semibold">{{ submitError }}</p>
+        <p v-if="submitSuccess" class="mt-3 text-xs text-green-700 font-semibold">{{ submitSuccess }}</p>
+        <p v-if="integration.lastStoragePath" class="mt-2 text-[11px] text-gray-600">Ruta VPS: {{ integration.lastStoragePath }}</p>
+        <p v-if="integration.lastDownloadUrl" class="mt-1 text-[11px] text-gray-600 break-all">URL descarga: {{ integration.lastDownloadUrl }}</p>
       </div>
 
     </div>
@@ -96,8 +137,9 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
-import { ChevronLeft, ChevronRight, Image as ImageIcon, CheckCircle, AlertCircle, MessageSquareWarning } from 'lucide-vue-next';
+import { ChevronLeft, ChevronRight, Image as ImageIcon, CheckCircle } from 'lucide-vue-next';
 import { useDocumentStore } from '@/stores/document';
+import axios from '@/services/axios';
 
 const router = useRouter();
 const docStore = useDocumentStore();
@@ -105,83 +147,105 @@ const docStore = useDocumentStore();
 const currentPage = ref(0);
 const totalPages = computed(() => docStore.capturedImages.length || 1);
 const observacionesPorPagina = ref({});
+const isSubmitting = ref(false);
+const isExtracting = ref(false);
+const submitError = ref('');
+const submitSuccess = ref('');
+const integration = ref({
+  recordId: null,
+  pollingTableId: null,
+  lastStoragePath: '',
+  lastDownloadUrl: '',
+});
+const REQUIRED_SCRUTINY_PAGES = 3;
 const isPlancha = computed(() => docStore.documentType === 'plancha');
 const currentImage = computed(() => docStore.capturedImages[currentPage.value]);
 
-// ESTRUCTURA DE DATOS COMPLETA (6 PÁGINAS)
-const mockPlanchasData = [
-  { // Pág 1
-    bloques: [{ titulo: 'Bloque 1 - Directiva', cargos: [
-      { puesto: 'Presidente (a)', nombre: 'JUAN PÉREZ', identificacion: '1070...', celular: '310...', correo: 'juan@mail.com' },
-      { puesto: 'Vicepresidente (a)', nombre: 'MARÍA SILVA', identificacion: '100...', celular: '320...', correo: 'maria@mail.com' },
-      { puesto: 'Tesorero (a)', nombre: 'CARLOS RUIZ', identificacion: '80...', celular: '315...', correo: 'carlos@mail.com' }
-    ]}]
-  },
-  { // Pág 2
-    bloques: [
-      { titulo: 'Bloque 1 - Continuación', cargos: [{ puesto: 'Secretario (a)', nombre: 'ANA G.', identificacion: '52...', celular: '300...', correo: 'ana@mail.com' }]},
-      { titulo: 'Bloque No. 2 – Delegados Asojuntas', cargos: [
-        { puesto: 'Suplente Presidente (a)', nombre: 'PEDRO L.', identificacion: '...', celular: '...', correo: 'pedro@mail.com' },
-        { puesto: 'Delegado (a) 1', nombre: 'LUISA M.', identificacion: '...', celular: '...', correo: 'luisa@mail.com' },
-        { puesto: 'Suplente Delegado (a) 1', nombre: 'JORGE D.', identificacion: '...', celular: '...', correo: 'jorge@mail.com' }
-      ]}
-    ]
-  },
-  { // Pág 3
-    bloques: [{ titulo: 'Bloque No. 2 – Continuación Delegados', cargos: [
-      { puesto: 'Delegado (a) Asojuntas 2', nombre: 'MARTA R.', identificacion: '...', celular: '...', correo: 'marta@mail.com' },
-      { puesto: 'Suplente Delegado (a) 2', nombre: 'OSCAR N.', identificacion: '...', celular: '...', correo: 'oscar@mail.com' },
-      { puesto: 'Delegado (a) Asojuntas 3', nombre: 'ELENA T.', identificacion: '...', celular: '...', correo: 'elena@mail.com' },
-      { puesto: 'Suplente Delegado (a) 3', nombre: 'RAÚL P.', identificacion: '...', celular: '...', correo: 'raul@mail.com' }
-    ]}]
-  },
-  { // Pág 4
-    bloques: [
-      { titulo: 'BLOQUE No. 3 – FISCAL', cargos: [
-        { puesto: 'FISCAL', nombre: 'DIEGO C.', identificacion: '...', celular: '...', correo: 'diego@mail.com' },
-        { puesto: 'SUPLENTE FISCAL', nombre: 'NORA V.', identificacion: '...', celular: '...', correo: 'nora@mail.com' }
-      ]},
-      { titulo: 'BLOQUE No. 4 – CONVIVENCIA', cargos: [
-        { puesto: 'CONCILIADOR (A) 1', nombre: 'FABIÁN R.', identificacion: '...', celular: '...', correo: 'fabian@mail.com' },
-        { puesto: 'CONCILIADOR (A) 2', nombre: 'SARA J.', identificacion: '...', celular: '...', correo: 'sara@mail.com' }
-      ]}
-    ]
-  },
-  { // Pág 5
-    bloques: [
-      { titulo: 'BLOQUE No. 4 – Continuación', cargos: [
-        { puesto: 'CONCILIADOR (A) 3', nombre: 'BEATRIZ S.', identificacion: '...', celular: '...', correo: 'beatriz@mail.com' }
-      ]},
-      { titulo: 'COMISIÓN EMPRESARIAL', cargos: [
-        { puesto: 'COORDINADOR', nombre: 'RICARDO D.', identificacion: '...', celular: '...', correo: 'ricardo@mail.com' }
-      ]}
-    ]
-  }
-];
+const extractedPages = ref({ ...(docStore.extractedData || {}) });
 
-// Mantenemos las actas igual (3 páginas)
-const mockActasData = [
-  { // Pág 1
-    bloques: [{ titulo: 'Bloque N.º 1 - Directiva', votos: {'Votos totales': 60, 'Plancha 1': 60, 'Plancha 2': 45, 'Plancha 3': 0, 'Blancos': 15, 'Nulos': 2, 'No Marcados': 0, 'Válidos': 120 } }]
-  },
-  { // Pág 2
-    bloques: [
-      { titulo: 'Bloque N.º 2 - Delegados', votos: { 'Votos totales': 60, 'Plancha 1': 40, 'Plancha 2': 56, 'Plancha 3': 0, 'Blancos': 6, 'Nulos': 3, 'No Marcados': 3, 'Válidos': 102 } },
-      { titulo: 'Bloque N.º 3 - Fiscal', votos: {'Votos totales': 60, 'Plancha 1': 50, 'Plancha 2': 30, 'Plancha 3': 10, 'Blancos': 5, 'Nulos': 1, 'No Marcados': 0, 'Válidos': 95 } }
-    ]
-  },
-  { // Pág 3
-    bloques: [{ titulo: 'Bloque N.º 4 - Conciliación', votos: { 'Votos totales': 60,'Plancha 1': 65, 'Plancha 2': 40, 'Plancha 3': 0, 'Blancos': 6, 'Nulos': 3, 'No Marcados': 3, 'Válidos': 111 } }]
-  }
-];
+const hasAllPagesExtracted = computed(() => {
+  return docStore.capturedImages.every((_, index) => {
+    const page = extractedPages.value[index];
+    return page && Array.isArray(page.bloques);
+  });
+});
 
 const currentDataPage = computed(() => {
-  const data = isPlancha.value ? mockPlanchasData : mockActasData;
-  return data[currentPage.value] || { bloques: [] };
+  return extractedPages.value[currentPage.value] || { bloques: [] };
+});
+
+const scrutinyBlocksForReview = computed(() => {
+  if (isPlancha.value) {
+    return [];
+  }
+
+  const pages = Object.entries(extractedPages.value)
+    .map(([pageIndex, page]) => ({
+      pageIndex: Number(pageIndex),
+      page,
+    }))
+    .sort((a, b) => a.pageIndex - b.pageIndex);
+
+  const blocks = [];
+  for (const pageEntry of pages) {
+    const pageBlocks = Array.isArray(pageEntry.page?.bloques) ? pageEntry.page.bloques : [];
+    pageBlocks.forEach((bloque, blockIndex) => {
+      blocks.push({
+        ...bloque,
+        pageIndex: pageEntry.pageIndex,
+        blockIndex,
+      });
+    });
+  }
+
+  return blocks;
 });
 
 const prevPage = () => { if (currentPage.value > 0) currentPage.value--; };
 const nextPage = () => { if (currentPage.value < totalPages.value - 1) currentPage.value++; };
+
+const extractPageAt = async (pageIndex, image) => {
+  const file = await toFileFromImage(image);
+  const form = new FormData();
+  form.append('document_file', file);
+  form.append('document_type', isPlancha.value ? 'plancha' : 'escrutinio');
+  form.append('page_number', String(pageIndex + 1));
+
+  const { data } = await axios.post('/jury/extract-preview', form, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  });
+
+  const preview = data?.data?.review_page_data;
+  if (!preview || !Array.isArray(preview.bloques)) {
+    throw new Error('El extractor no devolvió bloques de datos para esta página.');
+  }
+
+  extractedPages.value[pageIndex] = preview;
+  docStore.setExtractedData({ ...extractedPages.value });
+};
+
+const extractCurrentPage = async () => {
+  submitError.value = '';
+
+  if (!currentImage.value) {
+    submitError.value = 'No hay imagen para extraer en la página actual.';
+    return;
+  }
+
+  isExtracting.value = true;
+
+  try {
+    await extractPageAt(currentPage.value, currentImage.value);
+    submitSuccess.value = 'Valores actualizados con datos extraídos de la imagen.';
+  } catch (error) {
+    const backendMessage = error?.response?.data?.error || error?.response?.data?.message || error?.message;
+    submitError.value = `No se pudo extraer texto: ${backendMessage}`;
+  } finally {
+    isExtracting.value = false;
+  }
+};
 
 // CORRECCIÓN DE REDIRECCIÓN AL RECHAZAR
 const rejectAndReturn = () => {
@@ -193,10 +257,270 @@ const rejectAndReturn = () => {
   });
 };
 
-const confirmAndSend = () => {
-  alert('¡Proceso completado exitosamente!');
-  router.push('/jury/dashboard');
+const toFileFromImage = async (img) => {
+  if (img?.file instanceof File) {
+    return img.file;
+  }
+
+  const response = await fetch(img.url);
+  const blob = await response.blob();
+  const fileName = img?.name || `page-${currentPage.value + 1}.jpg`;
+  return new File([blob], fileName, { type: blob.type || 'image/jpeg' });
 };
 
-onMounted(() => { if (docStore.capturedImages.length === 0) router.push('/jury/dashboard'); });
+const normalizeBlockTitle = (title) => {
+  if (!title) return '';
+  const cleaned = String(title)
+    .replace(/BLOQUE\s*N[.°º]?\s*\d+\s*[-–]?\s*/i, '')
+    .replace(/^BLOQUE\s*[-–:]?\s*/i, '')
+    .trim();
+  return cleaned || String(title).trim();
+};
+
+const toVoteNumber = (value) => {
+  const digits = String(value ?? '').replace(/[^\d]/g, '');
+  return digits ? Number(digits) : 0;
+};
+
+const deepClone = (value) => JSON.parse(JSON.stringify(value));
+
+const ensureEditableCurrentPage = () => {
+  if (extractedPages.value[currentPage.value]) {
+    return;
+  }
+
+  extractedPages.value[currentPage.value] = deepClone(currentDataPage.value || { bloques: [] });
+};
+
+const setBlockVote = (blockIndex, label, rawValue) => {
+  ensureEditableCurrentPage();
+
+  const page = extractedPages.value[currentPage.value];
+  if (!page?.bloques?.[blockIndex]?.votos) {
+    return;
+  }
+
+  page.bloques[blockIndex].votos[label] = toVoteNumber(rawValue);
+  docStore.setExtractedData({ ...extractedPages.value });
+};
+
+const setBlockVoteByRef = (pageIndex, blockIndex, label, rawValue) => {
+  if (!extractedPages.value[pageIndex]) {
+    extractedPages.value[pageIndex] = { bloques: [] };
+  }
+
+  const targetBlock = extractedPages.value[pageIndex]?.bloques?.[blockIndex];
+  if (!targetBlock?.votos) {
+    return;
+  }
+
+  targetBlock.votos[label] = toVoteNumber(rawValue);
+  docStore.setExtractedData({ ...extractedPages.value });
+};
+
+const pickVote = (votes, patterns) => {
+  for (const [label, value] of Object.entries(votes || {})) {
+    const normalized = String(label || '').toLowerCase();
+    if (patterns.some((regex) => regex.test(normalized))) {
+      return toVoteNumber(value);
+    }
+  }
+  return 0;
+};
+
+const buildNormalizedPayload = (page, pageIndex) => {
+
+  if (isPlancha.value) {
+    const electedPeople = [];
+    for (const bloque of page?.bloques || []) {
+      for (const cargo of bloque?.cargos || []) {
+        const fullName = String(cargo.nombre || '').trim();
+        if (!fullName) continue;
+
+        const parts = fullName.split(/\s+/);
+        const firstName = parts.shift() || '';
+        const lastName = parts.join(' ') || 'SIN_APELLIDO';
+
+        electedPeople.push({
+          first_name: firstName,
+          last_name: lastName,
+          document_number: String(cargo.identificacion || '').trim() || null,
+          phone: String(cargo.celular || '').trim() || null,
+          email: String(cargo.correo || '').trim() || null,
+          notes: `Cargo OCR: ${cargo.puesto || 'SIN_CARGO'}`,
+          review_status: 'pending',
+        });
+      }
+    }
+
+    return {
+      block_results: [],
+      elected_people: electedPeople,
+    };
+  }
+
+  const blockResults = [];
+  const blockVotes = [];
+  for (const bloque of page?.bloques || []) {
+    const blockName = normalizeBlockTitle(bloque.titulo);
+    const votes = bloque.votos || {};
+
+    blockVotes.push({
+      block_name: blockName,
+      total_votes: pickVote(votes, [/total\s*votos?/i, /^total$/i]),
+      plancha_1: pickVote(votes, [/plancha\s*1/i]),
+      plancha_2: pickVote(votes, [/plancha\s*2/i]),
+      plancha_3: pickVote(votes, [/plancha\s*3/i]),
+      blancos: pickVote(votes, [/blancos?/i]),
+      nulos: pickVote(votes, [/nulos?/i]),
+      no_marcados: pickVote(votes, [/no\s*marcados?/i]),
+      validos: pickVote(votes, [/v[aá]lidos?/i, /validos?/i]),
+    });
+
+    for (const [label, value] of Object.entries(votes)) {
+      const match = /Plancha\s*(\d+)/i.exec(String(label));
+      if (!match) continue;
+
+      blockResults.push({
+        block_name: blockName,
+        slate_code: `P${match[1]}`,
+        votes: toVoteNumber(value),
+        status: 'pending',
+        notes: `Dato validado por jurado en pagina ${pageIndex + 1}`,
+      });
+    }
+  }
+
+  return {
+    block_results: blockResults,
+    block_votes: blockVotes,
+    elected_people: [],
+  };
+};
+
+const confirmAndSend = async () => {
+  submitError.value = '';
+  submitSuccess.value = '';
+  integration.value.lastStoragePath = '';
+  integration.value.lastDownloadUrl = '';
+
+  if (docStore.capturedImages.length === 0) {
+    submitError.value = 'No hay imagenes seleccionadas para enviar.';
+    return;
+  }
+
+  if (!isPlancha.value && docStore.capturedImages.length !== REQUIRED_SCRUTINY_PAGES) {
+    submitError.value = `Debes cargar exactamente ${REQUIRED_SCRUTINY_PAGES} fotos para enviar el paquete de escrutinio.`;
+    return;
+  }
+
+  if (!hasAllPagesExtracted.value) {
+    submitError.value = 'Faltan páginas por extraer. Regresa y vuelve a cargar el paquete para extraer las 3 en orden.';
+    return;
+  }
+
+  isSubmitting.value = true;
+
+  try {
+    const recordId = Number(integration.value.recordId);
+    const pollingTableId = Number(integration.value.pollingTableId);
+    const hasRecordId = Number.isInteger(recordId) && recordId > 0;
+    const hasPollingTableId = Number.isInteger(pollingTableId) && pollingTableId > 0;
+
+    if (!hasRecordId && !hasPollingTableId) {
+      submitError.value = 'Debes indicar Mesa de Votacion ID al menos la primera vez para crear/reusar el acta.';
+      isSubmitting.value = false;
+      return;
+    }
+
+    for (let index = 0; index < docStore.capturedImages.length; index += 1) {
+      const image = docStore.capturedImages[index];
+      if (!image) {
+        continue;
+      }
+
+      const file = await toFileFromImage(image);
+      const pageData = extractedPages.value[index] || { bloques: [] };
+      const uploadForm = new FormData();
+
+      if (integration.value.recordId) {
+        uploadForm.append('scrutiny_record_id', String(integration.value.recordId));
+      }
+
+      if (!integration.value.recordId && hasPollingTableId) {
+        uploadForm.append('polling_table_id', String(pollingTableId));
+      }
+
+      uploadForm.append('document_file', file);
+      uploadForm.append('page_number', String(index + 1));
+      uploadForm.append('is_primary', index === 0 ? '1' : '0');
+      uploadForm.append('notes', observacionesPorPagina.value[index] || `Enviado desde vista de revision jurado (pagina ${index + 1})`);
+      uploadForm.append('source_type', 'ai');
+      uploadForm.append('engine_name', 'Jury-UI-Review');
+      uploadForm.append('engine_version', 'dev-1');
+      uploadForm.append('confidence_score', '0.85');
+      uploadForm.append('status', 'pending_review');
+      uploadForm.append('raw_payload', JSON.stringify({
+        page: index + 1,
+        image_name: file.name,
+        review_data: pageData,
+      }));
+      uploadForm.append('normalized_payload', JSON.stringify(buildNormalizedPayload(pageData, index)));
+
+      const submitResponse = await axios.post('/jury/submit', uploadForm, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+
+      const data = submitResponse.data?.data || {};
+      integration.value.recordId = data.scrutiny_record_id || integration.value.recordId;
+      integration.value.lastStoragePath = data.storage_path || integration.value.lastStoragePath;
+      integration.value.lastDownloadUrl = data.download_url || integration.value.lastDownloadUrl;
+    }
+
+    if (integration.value.pollingTableId) {
+      localStorage.setItem('juryPollingTableId', String(integration.value.pollingTableId));
+    }
+
+    submitSuccess.value = `Prueba completada: paquete de ${docStore.capturedImages.length} pagina(s) almacenado y registrado en backend.`;
+    router.push('/jury/dashboard');
+  } catch (error) {
+    const backendMessage = error?.response?.data?.message || error?.response?.data?.error || error?.message;
+    submitError.value = `Fallo la prueba de integracion: ${backendMessage}`;
+  } finally {
+    isSubmitting.value = false;
+  }
+};
+
+const loadJuryContext = async () => {
+  try {
+    const { data } = await axios.get('/jury/context');
+    const ctx = data?.data || {};
+
+    integration.value.recordId = ctx.suggested_scrutiny_record_id || null;
+    integration.value.pollingTableId = ctx.suggested_polling_table_id || integration.value.pollingTableId;
+  } catch (error) {
+    // Si no hay contexto backend, intentamos continuar con mesa persistida localmente.
+  }
+
+  const localPollingTable = localStorage.getItem('juryPollingTableId');
+  if (!integration.value.pollingTableId && localPollingTable) {
+    const parsed = Number(localPollingTable);
+    if (!Number.isNaN(parsed) && parsed > 0) {
+      integration.value.pollingTableId = parsed;
+    }
+  }
+};
+
+onMounted(async () => {
+  if (docStore.capturedImages.length === 0) {
+    router.push('/jury/dashboard');
+    return;
+  }
+
+  extractedPages.value = { ...(docStore.extractedData || {}) };
+
+  await loadJuryContext();
+});
 </script>

@@ -26,7 +26,7 @@
             Fotografía {{ isPlancha ? 'las Planchas de Candidatos' : 'el Formato de Escrutinio' }}
           </h3>
           <p class="text-sm text-gray-500 mt-2 max-w-xs mx-auto">
-            {{ isPlancha ? 'Son alrededor de 6 páginas. Asegúrate de que los nombres y números sean legibles.' : 'Son alrededor de 3 páginas. Enfoca claramente las tablas con los totales numéricos.' }}
+            {{ isPlancha ? 'Son alrededor de 6 páginas. Asegúrate de que los nombres y números sean legibles.' : 'Debes subir el paquete completo de 3 páginas juntas. Enfoca claramente las tablas con los totales numéricos.' }}
           </p>
         </div>
         
@@ -40,6 +40,10 @@
         <h3 class="text-sm font-bold text-gray-500 uppercase tracking-wider">
           Páginas capturadas ({{ capturedImages.length }})
         </h3>
+
+        <div v-if="showScrutinyWarning" class="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-amber-800 text-sm font-semibold">
+          {{ scrutinyWarningText }}
+        </div>
         
         <!-- Grid responsivo para las miniaturas -->
         <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 overflow-y-auto flex-1 p-1">
@@ -66,14 +70,17 @@
         </div>
 
         <!-- Botón de Envío Fijo al fondo -->
-        <button @click="enviarActa" :disabled="isUploading" class="w-full py-4 bg-aso-primary text-white font-bold rounded-xl shadow-md hover:bg-aso-primary-dark transition-all flex items-center justify-center gap-2 disabled:opacity-70 mt-4 shrink-0">
+        <button @click="enviarActa" :disabled="isUploading || !canSendPackage" class="w-full py-4 bg-aso-primary text-white font-bold rounded-xl shadow-md hover:bg-aso-primary-dark transition-all flex items-center justify-center gap-2 disabled:opacity-70 mt-4 shrink-0">
           <template v-if="isUploading">
-            <Loader2 class="w-5 h-5 animate-spin" /> Transmitiendo paquete...
+            <Loader2 class="w-5 h-5 animate-spin" /> Extrayendo paquete...
           </template>
           <template v-else>
             <Send class="w-5 h-5" /> Enviar {{ isPlancha ? 'Planchas' : 'Escrutinio' }}
           </template>
         </button>
+
+        <p v-if="uploadStep" class="text-xs text-gray-500 font-semibold">{{ uploadStep }}</p>
+        <p v-if="uploadError" class="text-xs text-red-600 font-semibold">{{ uploadError }}</p>
       </div>
 
     </div>
@@ -85,6 +92,7 @@ import { ref, computed } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { ArrowLeft, ScanLine, Camera, Send, Loader2, Plus, X } from 'lucide-vue-next';
 import { useDocumentStore } from '@/stores/document';
+import axios from '@/services/axios';
 
 const router = useRouter();
 const route = useRoute();
@@ -92,8 +100,47 @@ const route = useRoute();
 // Array reactivo para almacenar el paquete de fotos
 const capturedImages = ref([]); 
 const isUploading = ref(false);
+const uploadError = ref('');
+const uploadStep = ref('');
+const REQUIRED_SCRUTINY_PAGES = 3;
+const docStore = useDocumentStore();
 
 const isPlancha = computed(() => route.query.doc === 'plancha');
+const missingScrutinyPages = computed(() => Math.max(0, REQUIRED_SCRUTINY_PAGES - capturedImages.value.length));
+const extraScrutinyPages = computed(() => Math.max(0, capturedImages.value.length - REQUIRED_SCRUTINY_PAGES));
+const showScrutinyWarning = computed(() => !isPlancha.value && capturedImages.value.length > 0 && capturedImages.value.length !== REQUIRED_SCRUTINY_PAGES);
+const scrutinyWarningText = computed(() => {
+  if (missingScrutinyPages.value > 0) {
+    return `Para Escrutinio debes cargar exactamente ${REQUIRED_SCRUTINY_PAGES} fotos. Te faltan ${missingScrutinyPages.value}.`;
+  }
+
+  if (extraScrutinyPages.value > 0) {
+    return `Cargaste ${extraScrutinyPages.value} foto(s) de más. El paquete de Escrutinio debe tener exactamente ${REQUIRED_SCRUTINY_PAGES}.`;
+  }
+
+  return '';
+});
+const canSendPackage = computed(() => isPlancha.value || capturedImages.value.length === REQUIRED_SCRUTINY_PAGES);
+
+const extractPreviewForPage = async (image, pageIndex) => {
+  const form = new FormData();
+  form.append('document_file', image.file);
+  form.append('document_type', isPlancha.value ? 'plancha' : 'escrutinio');
+  form.append('page_number', String(pageIndex + 1));
+
+  const { data } = await axios.post('/jury/extract-preview', form, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  });
+
+  const pageData = data?.data?.review_page_data;
+  if (!pageData || !Array.isArray(pageData.bloques)) {
+    throw new Error(`La extracción de la página ${pageIndex + 1} no devolvió bloques válidos.`);
+  }
+
+  return pageData;
+};
 
 const handleImageUpload = (event) => {
   const files = event.target.files;
@@ -120,33 +167,39 @@ const removeImage = (idToRemove) => {
   capturedImages.value = capturedImages.value.filter(img => img.id !== idToRemove);
 };
 
-const enviarActa = () => {
+const enviarActa = async () => {
   // 1. Validamos que haya fotos
   if (capturedImages.value.length === 0) return alert("Debes subir al menos una foto.");
+  if (!isPlancha.value && capturedImages.value.length !== REQUIRED_SCRUTINY_PAGES) {
+    return alert(`Para escrutinio debes subir exactamente ${REQUIRED_SCRUTINY_PAGES} fotos antes de continuar.`);
+  }
   
   // 2. Activamos el estado de carga para que el botón muestre el "Enviando..."
   isUploading.value = true;
+  uploadError.value = '';
+  uploadStep.value = '';
   
-  // 3. Imprimimos en consola para nuestras pruebas
-  console.log("📦 Armando paquete de envío...");
-  const formData = new FormData();
-  capturedImages.value.forEach((img, index) => {
-    formData.append(`pages[${index}]`, img.file);
-    console.log(`✅ Página ${index + 1} lista:`, img.file.name, `(${(img.file.size / 1024 / 1024).toFixed(2)} MB)`);
-  });
-  
-  // 4. Simulamos el tiempo que tarda la IA (Textract) en leer las fotos
-  setTimeout(() => {
-    isUploading.value = false; // Apagamos el loader
-    
-    // 5. Guardamos en Pinia y pasamos a la siguiente vista
-    const docStore = useDocumentStore();
-    docStore.setImages(capturedImages.value, isPlancha.value ? 'plancha' : 'escrutinio');
-    docStore.setExtractedData({ plancha1: 45, plancha2: 17, blancos: 3 }); 
+  try {
+    const extractedPages = {};
+    for (let index = 0; index < capturedImages.value.length; index += 1) {
+      uploadStep.value = `Extrayendo página ${index + 1} de ${capturedImages.value.length}...`;
+      extractedPages[index] = await extractPreviewForPage(capturedImages.value[index], index);
+    }
 
-    // Empujamos a la vista de revisión
+    uploadStep.value = 'Preparando validación...';
+
+    // 3. Guardamos en Pinia y pasamos a la siguiente vista
+    docStore.setImages(capturedImages.value, isPlancha.value ? 'plancha' : 'escrutinio');
+    docStore.setExtractedData(extractedPages);
+
     router.push('/jury/review');
-  }, 2000);
+  } catch (error) {
+    const backendMessage = error?.response?.data?.error || error?.response?.data?.message || error?.message;
+    uploadError.value = `No se pudo completar la extracción del paquete: ${backendMessage}`;
+  } finally {
+    isUploading.value = false;
+    uploadStep.value = '';
+  }
 };
 
 </script>
