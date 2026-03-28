@@ -39,8 +39,9 @@ class ScrutinyExtractionImporter
             ]);
 
             $normalized = (array) ($data['normalized_payload'] ?? []);
+            $blockRows = $this->resolveBlockResultRows($normalized);
 
-            $blockSummary = $this->syncBlockResults($record, $extraction, (array) ($normalized['block_results'] ?? []));
+            $blockSummary = $this->syncBlockResults($record, $extraction, $blockRows);
             $peopleSummary = $this->syncElectedPeople($record, $extraction, (array) ($normalized['elected_people'] ?? []));
 
             return [
@@ -51,6 +52,44 @@ class ScrutinyExtractionImporter
                 ],
             ];
         });
+    }
+
+    private function resolveBlockResultRows(array $normalizedPayload): array
+    {
+        $blockResults = array_values(array_filter(
+            (array) ($normalizedPayload['block_results'] ?? []),
+            static fn ($row): bool => is_array($row)
+        ));
+
+        if (! empty($blockResults)) {
+            return $blockResults;
+        }
+
+        $derivedRows = [];
+
+        foreach ((array) ($normalizedPayload['block_votes'] ?? []) as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+
+            $blockName = trim((string) ($row['block_name'] ?? ''));
+            if ($blockName === '') {
+                continue;
+            }
+
+            foreach (['1', '2', '3'] as $slateNumber) {
+                $derivedRows[] = [
+                    'votes' => max(0, (int) ($row['plancha_'.$slateNumber] ?? 0)),
+                    'status' => 'pending',
+                    'notes' => 'Derivado de normalized_payload.block_votes',
+                    'block_name' => $blockName,
+                    'slate_code' => 'P'.$slateNumber,
+                    'slate_name' => 'PLANCHA '.$slateNumber,
+                ];
+            }
+        }
+
+        return $derivedRows;
     }
 
     private function syncBlockResults(ScrutinyRecord $record, ScrutinyExtraction $extraction, array $rows): array

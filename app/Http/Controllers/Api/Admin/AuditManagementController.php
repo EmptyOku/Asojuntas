@@ -24,7 +24,7 @@ class AuditManagementController extends Controller
                 'election:id,neighborhood_id,name',
                 'election.neighborhood:id,commune_id,name',
                 'election.neighborhood.commune:id,name',
-                'extractions:id,scrutiny_record_id,status,confidence_score,created_at',
+                'extractions:id,scrutiny_record_id,status,confidence_score,created_at,normalized_payload',
             ])
             ->withSum('blockResults as valid_votes_sum', 'votes');
 
@@ -70,6 +70,7 @@ class AuditManagementController extends Controller
                 $userName = $record->createdByUser?->person
                     ? trim(($record->createdByUser->person->first_name ?? '').' '.($record->createdByUser->person->last_name ?? ''))
                     : null;
+                $validVotes = $this->resolveValidVotesForIndex($record);
 
                 return [
                     'id' => $record->id,
@@ -84,7 +85,7 @@ class AuditManagementController extends Controller
                         ? $userName
                         : ($record->createdByUser?->username ?? 'Sin usuario'),
                     'transmitted_at_human' => $record->updated_at?->diffForHumans(),
-                    'valid_votes' => (int) ($record->valid_votes_sum ?? 0),
+                    'valid_votes' => $validVotes,
                     'status' => $record->status,
                     'ai_confidence' => $confidence,
                     'status_tag' => $statusTag,
@@ -440,5 +441,59 @@ class AuditManagementController extends Controller
         $normalized = preg_replace('/\s+/', ' ', $normalized);
 
         return trim((string) $normalized);
+    }
+
+    private function resolveValidVotesForIndex(ScrutinyRecord $record): int
+    {
+        $persistedVotes = (int) ($record->valid_votes_sum ?? 0);
+        if ($persistedVotes > 0) {
+            return $persistedVotes;
+        }
+
+        $aggregatedBlockVotesMap = [];
+        foreach ($record->extractions->sortByDesc('created_at')->values() as $extraction) {
+            $normalizedPayload = is_array($extraction->normalized_payload) ? $extraction->normalized_payload : [];
+
+            foreach ((array) ($normalizedPayload['block_votes'] ?? []) as $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+
+                $rawName = trim((string) ($row['block_name'] ?? ''));
+                if ($rawName === '') {
+                    continue;
+                }
+
+                $normalizedName = $this->normalizeBlockName($rawName);
+                if ($normalizedName === '' || isset($aggregatedBlockVotesMap[$normalizedName])) {
+                    continue;
+                }
+
+                $aggregatedBlockVotesMap[$normalizedName] = [
+                    'plancha_1' => max(0, (int) ($row['plancha_1'] ?? 0)),
+                    'plancha_2' => max(0, (int) ($row['plancha_2'] ?? 0)),
+                    'plancha_3' => max(0, (int) ($row['plancha_3'] ?? 0)),
+                    'blancos' => max(0, (int) ($row['blancos'] ?? 0)),
+                    'validos' => max(0, (int) ($row['validos'] ?? 0)),
+                ];
+            }
+        }
+
+        $computedVotes = 0;
+        foreach ($aggregatedBlockVotesMap as $votes) {
+            $validos = (int) ($votes['validos'] ?? 0);
+
+            if ($validos <= 0) {
+                $validos =
+                    (int) ($votes['plancha_1'] ?? 0)
+                    + (int) ($votes['plancha_2'] ?? 0)
+                    + (int) ($votes['plancha_3'] ?? 0)
+                    + (int) ($votes['blancos'] ?? 0);
+            }
+
+            $computedVotes += max(0, $validos);
+        }
+
+        return $computedVotes;
     }
 }

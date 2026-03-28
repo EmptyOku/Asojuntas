@@ -8,6 +8,8 @@ use App\Models\ScrutinyRecordFile;
 use App\Services\ScrutinyExtractionImporter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class ExtractionIngestController extends Controller
 {
@@ -25,37 +27,68 @@ class ExtractionIngestController extends Controller
 
         $record = ScrutinyRecord::findOrFail((int) $validated['scrutiny_record_id']);
         $file = $request->file('document_file');
+        $pageNumber = (int) $validated['page_number'];
 
         $fileHash = hash_file('sha256', $file->getRealPath());
+        $existingPageFile = ScrutinyRecordFile::query()
+            ->where('scrutiny_record_id', $record->id)
+            ->where('page_number', $pageNumber)
+            ->latest('id')
+            ->first();
         $alreadyUploaded = ScrutinyRecordFile::where('hash', $fileHash)->first();
 
-        if ($alreadyUploaded) {
+        if (
+            $alreadyUploaded
+            && $alreadyUploaded->scrutiny_record_id === $record->id
+            && (int) $alreadyUploaded->page_number === $pageNumber
+        ) {
             return response()->json([
-                'success' => false,
-                'message' => 'El archivo ya existe en el sistema.',
+                'success' => true,
+                'message' => 'Archivo ya existente para esa página. Se reutiliza el registro previo.',
                 'data' => [
                     'scrutiny_record_file_id' => $alreadyUploaded->id,
                     'storage_path' => $alreadyUploaded->storage_path,
                     'hash' => $alreadyUploaded->hash,
                 ],
-            ], 409);
+            ], 200);
         }
 
         $path = $file->store("actas/{$record->election_id}/{$record->id}", 'local');
 
-        $recordFile = ScrutinyRecordFile::create([
-            'scrutiny_record_id' => $record->id,
-            'uploaded_by_user_id' => null,
-            'file_type' => $file->getClientOriginalExtension(),
-            'original_name' => $file->getClientOriginalName(),
-            'storage_path' => $path,
-            'mime_type' => $file->getMimeType(),
-            'file_size' => $file->getSize(),
-            'hash' => $fileHash,
-            'page_number' => (int) $validated['page_number'],
-            'is_primary' => (bool) ($validated['is_primary'] ?? false),
-            'notes' => $validated['notes'] ?? null,
-        ]);
+        if ($existingPageFile) {
+            if (Storage::disk('local')->exists($existingPageFile->storage_path)) {
+                Storage::disk('local')->delete($existingPageFile->storage_path);
+            }
+
+            $existingPageFile->fill([
+                'uploaded_by_user_id' => null,
+                'file_type' => Str::lower((string) $file->getClientOriginalExtension()),
+                'original_name' => $file->getClientOriginalName(),
+                'storage_path' => $path,
+                'mime_type' => $file->getMimeType(),
+                'file_size' => $file->getSize(),
+                'hash' => $fileHash,
+                'page_number' => $pageNumber,
+                'is_primary' => (bool) ($validated['is_primary'] ?? false),
+                'notes' => $validated['notes'] ?? null,
+            ]);
+            $existingPageFile->save();
+            $recordFile = $existingPageFile;
+        } else {
+            $recordFile = ScrutinyRecordFile::create([
+                'scrutiny_record_id' => $record->id,
+                'uploaded_by_user_id' => null,
+                'file_type' => Str::lower((string) $file->getClientOriginalExtension()),
+                'original_name' => $file->getClientOriginalName(),
+                'storage_path' => $path,
+                'mime_type' => $file->getMimeType(),
+                'file_size' => $file->getSize(),
+                'hash' => $fileHash,
+                'page_number' => $pageNumber,
+                'is_primary' => (bool) ($validated['is_primary'] ?? false),
+                'notes' => $validated['notes'] ?? null,
+            ]);
+        }
 
         return response()->json([
             'success' => true,

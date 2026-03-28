@@ -10,6 +10,7 @@ use App\Services\ScrutinyExtractionImporter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\Process\Process;
 
@@ -19,17 +20,18 @@ class JuryIngestController extends Controller
     {
         $user = $request->user();
 
-        $lastRecord = ScrutinyRecord::query()
+        $lastOpenRecord = ScrutinyRecord::query()
             ->where('created_by_user_id', $user->id)
+            ->whereIn('status', ['draft', 'pending'])
             ->latest()
             ->first();
 
         return response()->json([
             'success' => true,
             'data' => [
-                'suggested_scrutiny_record_id' => $lastRecord?->id,
-                'suggested_polling_table_id' => $lastRecord?->polling_table_id,
-                'suggested_election_id' => $lastRecord?->election_id,
+                'suggested_scrutiny_record_id' => $lastOpenRecord?->id,
+                'suggested_polling_table_id' => $lastOpenRecord?->polling_table_id,
+                'suggested_election_id' => $lastOpenRecord?->election_id,
                 'storage_disk' => 'local',
             ],
         ]);
@@ -59,36 +61,71 @@ class JuryIngestController extends Controller
 
         $file = $request->file('document_file');
         $fileHash = hash_file('sha256', $file->getRealPath());
+        $pageNumber = (int) $validated['page_number'];
+        $existingPageFile = ScrutinyRecordFile::query()
+            ->where('scrutiny_record_id', $record->id)
+            ->where('page_number', $pageNumber)
+            ->latest('id')
+            ->first();
 
         $alreadyUploaded = ScrutinyRecordFile::where('hash', $fileHash)->first();
-        if ($alreadyUploaded && $alreadyUploaded->scrutiny_record_id !== $record->id) {
+
+        if (
+            $alreadyUploaded
+            && $alreadyUploaded->scrutiny_record_id === $record->id
+            && (int) $alreadyUploaded->page_number === $pageNumber
+        ) {
+            $recordFile = $alreadyUploaded;
+        } elseif (
+            $alreadyUploaded
+            && $alreadyUploaded->scrutiny_record_id === $record->id
+            && (int) $alreadyUploaded->page_number !== $pageNumber
+        ) {
             return response()->json([
                 'success' => false,
-                'message' => 'El archivo ya existe en otra acta del sistema.',
+                'message' => 'El archivo ya está asociado a otra página de esta misma acta.',
                 'data' => [
                     'existing_scrutiny_record_file_id' => $alreadyUploaded->id,
+                    'existing_page_number' => (int) $alreadyUploaded->page_number,
                 ],
             ], 409);
-        }
-
-        if ($alreadyUploaded && $alreadyUploaded->scrutiny_record_id === $record->id) {
-            $recordFile = $alreadyUploaded;
         } else {
             $path = $file->store("actas/{$record->election_id}/mesa-{$record->polling_table_id}/record-{$record->id}", 'local');
 
-            $recordFile = ScrutinyRecordFile::create([
-                'scrutiny_record_id' => $record->id,
-                'uploaded_by_user_id' => $request->user()->id,
-                'file_type' => $file->getClientOriginalExtension(),
-                'original_name' => $file->getClientOriginalName(),
-                'storage_path' => $path,
-                'mime_type' => $file->getMimeType(),
-                'file_size' => $file->getSize(),
-                'hash' => $fileHash,
-                'page_number' => (int) $validated['page_number'],
-                'is_primary' => (bool) ($validated['is_primary'] ?? false),
-                'notes' => $validated['notes'] ?? null,
-            ]);
+            if ($existingPageFile) {
+                if (Storage::disk('local')->exists($existingPageFile->storage_path)) {
+                    Storage::disk('local')->delete($existingPageFile->storage_path);
+                }
+
+                $existingPageFile->fill([
+                    'uploaded_by_user_id' => $request->user()->id,
+                    'file_type' => Str::lower((string) $file->getClientOriginalExtension()),
+                    'original_name' => $file->getClientOriginalName(),
+                    'storage_path' => $path,
+                    'mime_type' => $file->getMimeType(),
+                    'file_size' => $file->getSize(),
+                    'hash' => $fileHash,
+                    'page_number' => $pageNumber,
+                    'is_primary' => (bool) ($validated['is_primary'] ?? false),
+                    'notes' => $validated['notes'] ?? null,
+                ]);
+                $existingPageFile->save();
+                $recordFile = $existingPageFile;
+            } else {
+                $recordFile = ScrutinyRecordFile::create([
+                    'scrutiny_record_id' => $record->id,
+                    'uploaded_by_user_id' => $request->user()->id,
+                    'file_type' => Str::lower((string) $file->getClientOriginalExtension()),
+                    'original_name' => $file->getClientOriginalName(),
+                    'storage_path' => $path,
+                    'mime_type' => $file->getMimeType(),
+                    'file_size' => $file->getSize(),
+                    'hash' => $fileHash,
+                    'page_number' => $pageNumber,
+                    'is_primary' => (bool) ($validated['is_primary'] ?? false),
+                    'notes' => $validated['notes'] ?? null,
+                ]);
+            }
         }
 
         $rawPayload = $this->decodeJsonLikePayload($validated['raw_payload'] ?? null);
@@ -112,6 +149,11 @@ class JuryIngestController extends Controller
             'normalized_payload' => $normalizedPayload,
             'notes' => $validated['notes'] ?? null,
         ], $request->user()->id);
+
+        if (in_array($record->status, ['draft', 'pending'], true)) {
+            $record->status = 'pending_review';
+            $record->save();
+        }
 
         $extraction = $importResult['extraction'];
 
@@ -231,7 +273,7 @@ class JuryIngestController extends Controller
             $existing = ScrutinyRecord::query()
                 ->where('polling_table_id', $pollingTable->id)
                 ->where('created_by_user_id', $request->user()->id)
-                ->whereIn('status', ['draft', 'pending', 'pending_review'])
+                ->whereIn('status', ['draft', 'pending'])
                 ->latest()
                 ->first();
 
