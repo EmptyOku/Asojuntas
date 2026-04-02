@@ -15,6 +15,7 @@ class ExtractionIngestController extends Controller
 {
     public function uploadFile(Request $request): JsonResponse
     {
+        $storageDisk = $this->storageDisk();
         $maxFileSizeKb = (int) config('services.extractor.max_upload_kb', 10240);
 
         $validated = $request->validate([
@@ -53,11 +54,11 @@ class ExtractionIngestController extends Controller
             ], 200);
         }
 
-        $path = $file->store("actas/{$record->election_id}/{$record->id}", 'local');
+        $path = $file->store("actas/{$record->election_id}/{$record->id}", $storageDisk);
 
         if ($existingPageFile) {
-            if (Storage::disk('local')->exists($existingPageFile->storage_path)) {
-                Storage::disk('local')->delete($existingPageFile->storage_path);
+            if (Storage::disk($storageDisk)->exists($existingPageFile->storage_path)) {
+                Storage::disk($storageDisk)->delete($existingPageFile->storage_path);
             }
 
             $existingPageFile->fill([
@@ -99,6 +100,11 @@ class ExtractionIngestController extends Controller
                 'hash' => $recordFile->hash,
             ],
         ], 201);
+    }
+
+    private function storageDisk(): string
+    {
+        return (string) config('services.extractor.storage_disk', config('filesystems.default', 'local'));
     }
 
     public function ingestExtraction(Request $request, ScrutinyExtractionImporter $importer): JsonResponse

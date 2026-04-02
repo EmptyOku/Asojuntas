@@ -13,12 +13,14 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\Process\Process;
+use Throwable;
 
 class JuryIngestController extends Controller
 {
     public function context(Request $request): JsonResponse
     {
         $user = $request->user();
+        $storageDisk = $this->storageDisk();
 
         $lastOpenRecord = ScrutinyRecord::query()
             ->where('created_by_user_id', $user->id)
@@ -32,7 +34,7 @@ class JuryIngestController extends Controller
                 'suggested_scrutiny_record_id' => $lastOpenRecord?->id,
                 'suggested_polling_table_id' => $lastOpenRecord?->polling_table_id,
                 'suggested_election_id' => $lastOpenRecord?->election_id,
-                'storage_disk' => 'local',
+                'storage_disk' => $storageDisk,
             ],
         ]);
     }
@@ -58,6 +60,7 @@ class JuryIngestController extends Controller
         ]);
 
         $record = $this->resolveScrutinyRecord($request, $validated);
+        $storageDisk = $this->storageDisk();
 
         $file = $request->file('document_file');
         $fileHash = hash_file('sha256', $file->getRealPath());
@@ -90,11 +93,11 @@ class JuryIngestController extends Controller
                 ],
             ], 409);
         } else {
-            $path = $file->store("actas/{$record->election_id}/mesa-{$record->polling_table_id}/record-{$record->id}", 'local');
+            $path = $file->store("actas/{$record->election_id}/mesa-{$record->polling_table_id}/record-{$record->id}", $storageDisk);
 
             if ($existingPageFile) {
-                if (Storage::disk('local')->exists($existingPageFile->storage_path)) {
-                    Storage::disk('local')->delete($existingPageFile->storage_path);
+                if (Storage::disk($storageDisk)->exists($existingPageFile->storage_path)) {
+                    Storage::disk($storageDisk)->delete($existingPageFile->storage_path);
                 }
 
                 $existingPageFile->fill([
@@ -157,6 +160,14 @@ class JuryIngestController extends Controller
 
         $extraction = $importResult['extraction'];
 
+        $serverFilePath = null;
+        try {
+            $serverFilePath = Storage::disk($storageDisk)->path($recordFile->storage_path);
+        } catch (Throwable) {
+            // Cloud drivers may not expose a local absolute path.
+            $serverFilePath = null;
+        }
+
         return response()->json([
             'success' => true,
             'message' => 'Carga jurado procesada correctamente.',
@@ -165,7 +176,7 @@ class JuryIngestController extends Controller
                 'scrutiny_record_file_id' => $recordFile->id,
                 'extraction_id' => $extraction->id,
                 'storage_path' => $recordFile->storage_path,
-                'server_file_path' => Storage::disk('local')->path($recordFile->storage_path),
+                'server_file_path' => $serverFilePath,
                 'download_url' => route('api.jury.scrutiny-files.show', $recordFile),
                 'summary' => $importResult['summary'],
             ],
@@ -251,14 +262,37 @@ class JuryIngestController extends Controller
 
     public function showFile(ScrutinyRecordFile $scrutinyRecordFile)
     {
-        if (! Storage::disk('local')->exists($scrutinyRecordFile->storage_path)) {
+        $storageDisk = $this->resolveStorageDisk($scrutinyRecordFile->storage_path);
+
+        if ($storageDisk === null) {
             abort(404, 'El archivo no existe en el servidor.');
         }
 
-        return Storage::disk('local')->download(
+        return Storage::disk($storageDisk)->download(
             $scrutinyRecordFile->storage_path,
             $scrutinyRecordFile->original_name ?? ('acta_'.$scrutinyRecordFile->id)
         );
+    }
+
+    private function storageDisk(): string
+    {
+        return (string) config('services.extractor.storage_disk', config('filesystems.default', 'local'));
+    }
+
+    private function resolveStorageDisk(string $path): ?string
+    {
+        $disks = array_values(array_unique([
+            $this->storageDisk(),
+            'local',
+        ]));
+
+        foreach ($disks as $disk) {
+            if (Storage::disk($disk)->exists($path)) {
+                return $disk;
+            }
+        }
+
+        return null;
     }
 
     private function resolveScrutinyRecord(Request $request, array $validated): ScrutinyRecord

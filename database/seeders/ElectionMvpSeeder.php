@@ -11,7 +11,10 @@ class ElectionMvpSeeder extends Seeder
     {
         $now = now();
 
-        $neighborhoodId = DB::table('neighborhoods')->where('code', 'STA-RITA')->value('id');
+        $neighborhoodId = DB::table('neighborhoods')
+            ->whereIn('code', ['COM04-SANTA-RITA', 'STA-RITA'])
+            ->orderByRaw("CASE WHEN code = 'COM04-SANTA-RITA' THEN 0 ELSE 1 END")
+            ->value('id');
         $documentTypeId = DB::table('document_types')->where('code', 'CC')->value('id');
         $superAdminId = DB::table('users')->where('email', 'superadmin@jac.local')->value('id');
 

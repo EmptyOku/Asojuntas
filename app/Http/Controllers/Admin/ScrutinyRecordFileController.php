@@ -17,6 +17,7 @@ class ScrutinyRecordFileController extends Controller
      */
     public function store(Request $request): RedirectResponse
     {
+        $storageDisk = $this->storageDisk();
         $validated = $request->validate([
             'scrutiny_record_id' => 'required|exists:scrutiny_records,id',
             'document_file'      => 'required|file|mimes:jpeg,png,jpg,pdf|max:10240', // Máx 10MB
@@ -37,7 +38,7 @@ class ScrutinyRecordFileController extends Controller
 
         // 3. Almacenamiento seguro en disco (Ej: storage/app/actas/eleccion_id/mesa_id)
         $scrutinyRecord = ScrutinyRecord::findOrFail($validated['scrutiny_record_id']);
-        $path = $file->store("actas/{$scrutinyRecord->election_id}", 'local');
+        $path = $file->store("actas/{$scrutinyRecord->election_id}", $storageDisk);
 
         // 4. Registrar en base de datos
         ScrutinyRecordFile::create([
@@ -62,11 +63,13 @@ class ScrutinyRecordFileController extends Controller
      */
     public function show(ScrutinyRecordFile $scrutinyRecordFile)
     {
-        if (!Storage::disk('local')->exists($scrutinyRecordFile->storage_path)) {
+        $storageDisk = $this->resolveStorageDisk($scrutinyRecordFile->storage_path);
+
+        if ($storageDisk === null) {
             abort(404, 'El archivo físico no se encuentra en el servidor.');
         }
 
-        return Storage::disk('local')->download(
+        return Storage::disk($storageDisk)->download(
             $scrutinyRecordFile->storage_path,
             $scrutinyRecordFile->original_name
         );
@@ -83,13 +86,36 @@ class ScrutinyRecordFileController extends Controller
         }
 
         // Eliminamos el archivo físico del disco
-        if (Storage::disk('local')->exists($scrutinyRecordFile->storage_path)) {
-            Storage::disk('local')->delete($scrutinyRecordFile->storage_path);
+        $storageDisk = $this->storageDisk();
+
+        if (Storage::disk($storageDisk)->exists($scrutinyRecordFile->storage_path)) {
+            Storage::disk($storageDisk)->delete($scrutinyRecordFile->storage_path);
         }
 
         // Eliminamos el registro de la BD
         $scrutinyRecordFile->delete();
 
         return back()->with('success', 'Archivo eliminado correctamente antes del procesamiento.');
+    }
+
+    private function storageDisk(): string
+    {
+        return (string) config('services.extractor.storage_disk', config('filesystems.default', 'local'));
+    }
+
+    private function resolveStorageDisk(string $path): ?string
+    {
+        $disks = array_values(array_unique([
+            $this->storageDisk(),
+            'local',
+        ]));
+
+        foreach ($disks as $disk) {
+            if (Storage::disk($disk)->exists($path)) {
+                return $disk;
+            }
+        }
+
+        return null;
     }
 }

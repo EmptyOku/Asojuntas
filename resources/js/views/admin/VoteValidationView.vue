@@ -47,14 +47,20 @@
 
         <div class="flex-1 bg-gray-900 p-4 lg:p-8 flex items-center justify-center overflow-auto mt-12 relative">
           <img
-            v-if="currentImageUrl"
+            v-if="currentFileKind === 'image' && currentImageUrl"
             :src="currentImageUrl"
             class="max-h-full max-w-full object-contain rounded-lg shadow-2xl bg-white"
             alt="Acta de escrutinio"
           >
+          <iframe
+            v-else-if="currentFileKind === 'pdf' && currentImageUrl"
+            :src="currentImageUrl"
+            class="w-full h-full min-h-[420px] rounded-lg shadow-2xl bg-white border-0"
+            title="Acta de escrutinio"
+          />
           <div v-else class="w-full max-w-md aspect-[3/4] bg-white rounded shadow-2xl p-4 lg:p-6 relative flex flex-col items-center justify-center min-h-[400px]">
             <FileText class="w-10 h-10 text-gray-300 mb-2" />
-            <p class="text-gray-400 font-medium text-xs text-center">No hay imagen cargada para esta acta.</p>
+            <p class="text-gray-400 font-medium text-xs text-center">No hay archivo visible para esta acta.</p>
           </div>
         </div>
       </div>
@@ -133,7 +139,21 @@ const editableBlocks = ref([]);
 const currentImageIndex = ref(0);
 
 const files = computed(() => detail.value.files || []);
-const currentImageUrl = computed(() => files.value[currentImageIndex.value]?.url || '');
+const currentFile = computed(() => files.value[currentImageIndex.value] || null);
+const currentImageUrl = computed(() => currentFile.value?.url || '');
+const currentFileKind = computed(() => {
+  const mimeType = String(currentFile.value?.mime_type || '').toLowerCase();
+
+  if (mimeType.startsWith('image/')) {
+    return 'image';
+  }
+
+  if (mimeType === 'application/pdf') {
+    return 'pdf';
+  }
+
+  return 'other';
+});
 
 const confidenceText = computed(() => {
   if (detail.value.ai_confidence === null || detail.value.ai_confidence === undefined) {

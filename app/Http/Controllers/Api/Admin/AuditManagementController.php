@@ -10,7 +10,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
-use Symfony\Component\HttpFoundation\BinaryFileResponse;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class AuditManagementController extends Controller
 {
@@ -352,18 +352,50 @@ class AuditManagementController extends Controller
         ]);
     }
 
-    public function showFile(ScrutinyRecordFile $scrutinyRecordFile): BinaryFileResponse
+    public function showFile(ScrutinyRecordFile $scrutinyRecordFile): StreamedResponse
     {
-        if (! Storage::disk('local')->exists($scrutinyRecordFile->storage_path)) {
+        $storageDisk = $this->resolveStorageDisk($scrutinyRecordFile->storage_path);
+
+        if ($storageDisk === null) {
             abort(404, 'El archivo no existe en el servidor.');
         }
 
-        $path = Storage::disk('local')->path($scrutinyRecordFile->storage_path);
+        $stream = Storage::disk($storageDisk)->readStream($scrutinyRecordFile->storage_path);
 
-        return response()->file($path, [
+        if ($stream === false) {
+            abort(404, 'No se pudo abrir el archivo en el servidor.');
+        }
+
+        return response()->stream(function () use ($stream): void {
+            fpassthru($stream);
+            if (is_resource($stream)) {
+                fclose($stream);
+            }
+        }, 200, [
             'Content-Type' => $scrutinyRecordFile->mime_type ?: 'application/octet-stream',
             'Content-Disposition' => 'inline; filename="'.($scrutinyRecordFile->original_name ?: ('acta_'.$scrutinyRecordFile->id)).'"',
         ]);
+    }
+
+    private function storageDisk(): string
+    {
+        return (string) config('services.extractor.storage_disk', config('filesystems.default', 'local'));
+    }
+
+    private function resolveStorageDisk(string $path): ?string
+    {
+        $disks = array_values(array_unique([
+            $this->storageDisk(),
+            'local',
+        ]));
+
+        foreach ($disks as $disk) {
+            if (Storage::disk($disk)->exists($path)) {
+                return $disk;
+            }
+        }
+
+        return null;
     }
 
     public function decide(Request $request, ScrutinyRecord $scrutinyRecord): JsonResponse

@@ -15,6 +15,10 @@ class Neighborhood extends Model
         'commune_id',
         'name',
         'code',
+        'type',
+        'source_name',
+        'is_verified',
+        'notes',
     ];
 
     public function commune(): BelongsTo
