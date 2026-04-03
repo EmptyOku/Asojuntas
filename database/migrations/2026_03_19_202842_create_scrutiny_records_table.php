@@ -28,7 +28,7 @@ return new class extends Migration
                 ->nullOnDelete()
                 ->cascadeOnUpdate();
 
-            $table->string('record_number', 50)->nullable();
+            $table->string('record_number', 100)->nullable();
             $table->date('record_date')->nullable();
             $table->time('record_time')->nullable();
 

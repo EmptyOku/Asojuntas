@@ -11,45 +11,45 @@ class ElectionMvpSeeder extends Seeder
     {
         $now = now();
 
+        // 1. Apuntamos ESTRICTAMENTE a 10 de Mayo
         $neighborhoodId = DB::table('neighborhoods')
-            ->whereIn('code', ['COM04-SANTA-RITA', 'STA-RITA'])
-            ->orderByRaw("CASE WHEN code = 'COM04-SANTA-RITA' THEN 0 ELSE 1 END")
+            ->where('code', 'COM02-10-DE-MAYO')
             ->value('id');
+
         $documentTypeId = DB::table('document_types')->where('code', 'CC')->value('id');
-        $superAdminId = DB::table('users')->where('email', 'superadmin@jac.local')->value('id');
+
+        // 2. Buscamos el admin que realmente existe
+        $adminId = DB::table('users')->where('username', 'admin')->value('id');
 
         if (! $neighborhoodId || ! $documentTypeId) {
+            $this->command->error("Falta el barrio 10 de Mayo o el tipo de documento CC.");
             return;
         }
 
         DB::table('elections')->upsert([
             [
-                'code' => 'JAC-GIR-2026',
+                'code' => 'JAC-10MAYO-2026',
                 'neighborhood_id' => $neighborhoodId,
-                'name' => 'Eleccion JAC Santa Rita 2026',
-                'election_date' => '2026-03-30',
+                'name' => 'Eleccion JAC 10 de Mayo 2026',
+                'election_date' => '2026-04-26',
                 'period_year' => 2026,
                 'is_active' => true,
-                'description' => 'Escenario demo MVP para flujo completo de votacion.',
+                'description' => 'Escenario demo MVP para flujo completo de votacion en 10 de Mayo.',
                 'created_at' => $now,
                 'updated_at' => $now,
             ],
         ], ['code'], ['neighborhood_id', 'name', 'election_date', 'period_year', 'is_active', 'description', 'updated_at']);
 
-        $electionId = DB::table('elections')->where('code', 'JAC-GIR-2026')->value('id');
-        if (! $electionId) {
-            return;
-        }
+        $electionId = DB::table('elections')->where('code', 'JAC-10MAYO-2026')->value('id');
 
+        // Mantenemos tu lógica estricta de bloques y cargos
         $blocks = DB::table('blocks')->whereIn('code', ['DIR', 'DEL', 'FIS'])->pluck('id', 'code');
         $positions = DB::table('positions')->whereIn('code', ['DIR_PRES', 'DIR_VICE', 'DIR_TESO', 'DEL_1', 'DEL_2', 'FIS_PRIN'])->get(['id', 'block_id', 'code']);
 
         $electionBlocksRows = [];
         foreach (['DIR', 'DEL', 'FIS'] as $blockCode) {
             $blockId = $blocks[$blockCode] ?? null;
-            if (! $blockId) {
-                continue;
-            }
+            if (! $blockId) continue;
 
             $electionBlocksRows[] = [
                 'election_id' => $electionId,
@@ -61,11 +61,7 @@ class ElectionMvpSeeder extends Seeder
         }
 
         if (! empty($electionBlocksRows)) {
-            DB::table('election_blocks')->upsert(
-                $electionBlocksRows,
-                ['election_id', 'block_id'],
-                ['is_active', 'updated_at']
-            );
+            DB::table('election_blocks')->upsert($electionBlocksRows, ['election_id', 'block_id'], ['is_active', 'updated_at']);
         }
 
         $electionBlocks = DB::table('election_blocks')
@@ -76,22 +72,16 @@ class ElectionMvpSeeder extends Seeder
         $electionBlockByCode = [];
         foreach ($electionBlocks as $row) {
             $code = $blocks->search($row->block_id);
-            if ($code !== false) {
-                $electionBlockByCode[$code] = $row->id;
-            }
+            if ($code !== false) $electionBlockByCode[$code] = $row->id;
         }
 
         $electionBlockPositionRows = [];
         foreach ($positions as $position) {
             $blockCode = $blocks->search($position->block_id);
-            if ($blockCode === false) {
-                continue;
-            }
+            if ($blockCode === false) continue;
 
             $electionBlockId = $electionBlockByCode[$blockCode] ?? null;
-            if (! $electionBlockId) {
-                continue;
-            }
+            if (! $electionBlockId) continue;
 
             $electionBlockPositionRows[] = [
                 'election_block_id' => $electionBlockId,
@@ -105,32 +95,12 @@ class ElectionMvpSeeder extends Seeder
         }
 
         if (! empty($electionBlockPositionRows)) {
-            DB::table('election_block_positions')->upsert(
-                $electionBlockPositionRows,
-                ['election_block_id', 'position_id'],
-                ['block_id', 'vacancies', 'is_active', 'updated_at']
-            );
+            DB::table('election_block_positions')->upsert($electionBlockPositionRows, ['election_block_id', 'position_id'], ['block_id', 'vacancies', 'is_active', 'updated_at']);
         }
 
         DB::table('slates')->upsert([
-            [
-                'election_id' => $electionId,
-                'code' => 'P1',
-                'name' => 'Plancha Unidad Comunal',
-                'description' => 'Plancha demo 1',
-                'is_active' => true,
-                'created_at' => $now,
-                'updated_at' => $now,
-            ],
-            [
-                'election_id' => $electionId,
-                'code' => 'P2',
-                'name' => 'Plancha Renovacion Barrial',
-                'description' => 'Plancha demo 2',
-                'is_active' => true,
-                'created_at' => $now,
-                'updated_at' => $now,
-            ],
+            ['election_id' => $electionId, 'code' => 'P1', 'name' => 'Plancha Unidad Comunal', 'description' => 'Plancha demo 1', 'is_active' => true, 'created_at' => $now, 'updated_at' => $now],
+            ['election_id' => $electionId, 'code' => 'P2', 'name' => 'Plancha Renovacion Barrial', 'description' => 'Plancha demo 2', 'is_active' => true, 'created_at' => $now, 'updated_at' => $now],
         ], ['election_id', 'code'], ['name', 'description', 'is_active', 'updated_at']);
 
         $slates = DB::table('slates')->where('election_id', $electionId)->whereIn('code', ['P1', 'P2'])->pluck('id', 'code');
@@ -138,15 +108,11 @@ class ElectionMvpSeeder extends Seeder
         $slateBlockRows = [];
         foreach (['P1', 'P2'] as $slateCode) {
             $slateId = $slates[$slateCode] ?? null;
-            if (! $slateId) {
-                continue;
-            }
+            if (! $slateId) continue;
 
             foreach (['DIR', 'DEL', 'FIS'] as $blockCode) {
                 $electionBlockId = $electionBlockByCode[$blockCode] ?? null;
-                if (! $electionBlockId) {
-                    continue;
-                }
+                if (! $electionBlockId) continue;
 
                 $slateBlockRows[] = [
                     'election_id' => $electionId,
@@ -160,11 +126,7 @@ class ElectionMvpSeeder extends Seeder
         }
 
         if (! empty($slateBlockRows)) {
-            DB::table('slate_blocks')->upsert(
-                $slateBlockRows,
-                ['slate_id', 'election_block_id'],
-                ['election_id', 'is_active', 'updated_at']
-            );
+            DB::table('slate_blocks')->upsert($slateBlockRows, ['slate_id', 'election_block_id'], ['election_id', 'is_active', 'updated_at']);
         }
 
         $peopleSeed = [
@@ -174,12 +136,6 @@ class ElectionMvpSeeder extends Seeder
             ['doc' => '100000004', 'first' => 'Marta', 'last' => 'Perez', 'slate' => 'P1', 'position' => 'DEL_1', 'ballot' => 'P1-04'],
             ['doc' => '100000005', 'first' => 'Luis', 'last' => 'Diaz', 'slate' => 'P1', 'position' => 'DEL_2', 'ballot' => 'P1-05'],
             ['doc' => '100000006', 'first' => 'Diana', 'last' => 'Gomez', 'slate' => 'P1', 'position' => 'FIS_PRIN', 'ballot' => 'P1-06'],
-            ['doc' => '100000011', 'first' => 'Felipe', 'last' => 'Castro', 'slate' => 'P2', 'position' => 'DIR_PRES', 'ballot' => 'P2-01'],
-            ['doc' => '100000012', 'first' => 'Laura', 'last' => 'Moreno', 'slate' => 'P2', 'position' => 'DIR_VICE', 'ballot' => 'P2-02'],
-            ['doc' => '100000013', 'first' => 'Pedro', 'last' => 'Sanchez', 'slate' => 'P2', 'position' => 'DIR_TESO', 'ballot' => 'P2-03'],
-            ['doc' => '100000014', 'first' => 'Nora', 'last' => 'Rojas', 'slate' => 'P2', 'position' => 'DEL_1', 'ballot' => 'P2-04'],
-            ['doc' => '100000015', 'first' => 'Hector', 'last' => 'Vargas', 'slate' => 'P2', 'position' => 'DEL_2', 'ballot' => 'P2-05'],
-            ['doc' => '100000016', 'first' => 'Paula', 'last' => 'Ortega', 'slate' => 'P2', 'position' => 'FIS_PRIN', 'ballot' => 'P2-06'],
         ];
 
         $personRows = [];
@@ -202,24 +158,11 @@ class ElectionMvpSeeder extends Seeder
             ];
         }
 
-        DB::table('persons')->upsert(
-            $personRows,
-            ['document_type_id', 'document_number'],
-            ['neighborhood_id', 'first_name', 'last_name', 'email', 'is_active', 'updated_at']
-        );
+        DB::table('persons')->upsert($personRows, ['document_type_id', 'document_number'], ['neighborhood_id', 'first_name', 'last_name', 'email', 'is_active', 'updated_at']);
 
-        $personsByDoc = DB::table('persons')
-            ->where('document_type_id', $documentTypeId)
-            ->whereIn('document_number', array_column($peopleSeed, 'doc'))
-            ->pluck('id', 'document_number');
-
-        $positionByCode = DB::table('positions')
-            ->whereIn('code', ['DIR_PRES', 'DIR_VICE', 'DIR_TESO', 'DEL_1', 'DEL_2', 'FIS_PRIN'])
-            ->pluck('id', 'code');
-
-        $ebpByPositionCode = DB::table('election_block_positions')
-            ->whereIn('position_id', $positionByCode->values())
-            ->pluck('id', 'position_id');
+        $personsByDoc = DB::table('persons')->where('document_type_id', $documentTypeId)->whereIn('document_number', array_column($peopleSeed, 'doc'))->pluck('id', 'document_number');
+        $positionByCode = DB::table('positions')->whereIn('code', ['DIR_PRES', 'DIR_VICE', 'DIR_TESO', 'DEL_1', 'DEL_2', 'FIS_PRIN'])->pluck('id', 'code');
+        $ebpByPositionCode = DB::table('election_block_positions')->whereIn('position_id', $positionByCode->values())->pluck('id', 'position_id');
 
         $slateBlocks = DB::table('slate_blocks')
             ->join('slates', 'slates.id', '=', 'slate_blocks.slate_id')
@@ -235,12 +178,8 @@ class ElectionMvpSeeder extends Seeder
         }
 
         $positionToBlockCode = [
-            'DIR_PRES' => 'DIR',
-            'DIR_VICE' => 'DIR',
-            'DIR_TESO' => 'DIR',
-            'DEL_1' => 'DEL',
-            'DEL_2' => 'DEL',
-            'FIS_PRIN' => 'FIS',
+            'DIR_PRES' => 'DIR', 'DIR_VICE' => 'DIR', 'DIR_TESO' => 'DIR',
+            'DEL_1' => 'DEL', 'DEL_2' => 'DEL', 'FIS_PRIN' => 'FIS',
         ];
 
         $candidateRows = [];
@@ -251,9 +190,7 @@ class ElectionMvpSeeder extends Seeder
             $blockCode = $positionToBlockCode[$seed['position']] ?? null;
             $slateBlockId = $blockCode ? ($slateBlockMap[$seed['slate'].'|'.$blockCode] ?? null) : null;
 
-            if (! $personId || ! $electionBlockPositionId || ! $slateBlockId) {
-                continue;
-            }
+            if (! $personId || ! $electionBlockPositionId || ! $slateBlockId) continue;
 
             $candidateRows[] = [
                 'election_id' => $electionId,
@@ -268,19 +205,15 @@ class ElectionMvpSeeder extends Seeder
         }
 
         if (! empty($candidateRows)) {
-            DB::table('candidates')->upsert(
-                $candidateRows,
-                ['election_id', 'person_id'],
-                ['slate_block_id', 'election_block_position_id', 'ballot_number', 'is_active', 'updated_at']
-            );
+            DB::table('candidates')->upsert($candidateRows, ['election_id', 'person_id'], ['slate_block_id', 'election_block_position_id', 'ballot_number', 'is_active', 'updated_at']);
         }
 
         DB::table('polling_tables')->upsert([
             [
                 'election_id' => $electionId,
                 'code' => 'MESA-001',
-                'name' => 'Mesa 001 Santa Rita',
-                'location' => 'Salon Comunal Santa Rita',
+                'name' => 'Mesa 001 10 de Mayo',
+                'location' => 'Salon Comunal',
                 'capacity' => 500,
                 'is_active' => true,
                 'created_at' => $now,
@@ -288,81 +221,25 @@ class ElectionMvpSeeder extends Seeder
             ],
         ], ['election_id', 'code'], ['name', 'location', 'capacity', 'is_active', 'updated_at']);
 
-        $pollingTableId = DB::table('polling_tables')
-            ->where('election_id', $electionId)
-            ->where('code', 'MESA-001')
-            ->value('id');
+        $pollingTableId = DB::table('polling_tables')->where('election_id', $electionId)->where('code', 'MESA-001')->value('id');
 
         DB::table('scrutiny_records')->upsert([
             [
                 'election_id' => $electionId,
                 'polling_table_id' => $pollingTableId,
-                'created_by_user_id' => $superAdminId,
+                'created_by_user_id' => $adminId, // Usamos el admin correcto
                 'record_number' => 'ACTA-001',
-                'record_date' => '2026-03-30',
+                'record_date' => '2026-04-26',
                 'record_time' => '18:30:00',
                 'source_type' => 'manual',
                 'status' => 'pending_review',
                 'quorum_attendees' => 120,
                 'total_attendees' => 180,
-                'observations' => 'Acta demo para validar flujo end-to-end.',
+                'observations' => 'Acta demo 10 de Mayo.',
                 'metadata' => json_encode(['demo' => true]),
                 'created_at' => $now,
                 'updated_at' => $now,
             ],
         ], ['election_id', 'record_number'], ['polling_table_id', 'created_by_user_id', 'record_date', 'record_time', 'source_type', 'status', 'quorum_attendees', 'total_attendees', 'observations', 'metadata', 'updated_at']);
-
-        $scrutinyRecordId = DB::table('scrutiny_records')
-            ->where('election_id', $electionId)
-            ->where('record_number', 'ACTA-001')
-            ->value('id');
-
-        if (! $scrutinyRecordId) {
-            return;
-        }
-
-        $votesMatrix = [
-            'DIR' => ['P1' => 540, 'P2' => 590],
-            'DEL' => ['P1' => 700, 'P2' => 1000],
-            'FIS' => ['P1' => 7, 'P2' => 2],
-        ];
-
-        $resultRows = [];
-        foreach ($votesMatrix as $blockCode => $votesBySlate) {
-            $electionBlockId = $electionBlockByCode[$blockCode] ?? null;
-            if (! $electionBlockId) {
-                continue;
-            }
-
-            foreach ($votesBySlate as $slateCode => $votes) {
-                $slateBlockId = $slateBlockMap[$slateCode.'|'.$blockCode] ?? null;
-                if (! $slateBlockId) {
-                    continue;
-                }
-
-                $resultRows[] = [
-                    'scrutiny_record_id' => $scrutinyRecordId,
-                    'election_id' => $electionId,
-                    'election_block_id' => $electionBlockId,
-                    'slate_block_id' => $slateBlockId,
-                    'scrutiny_extraction_id' => null,
-                    'votes' => $votes,
-                    'source_type' => 'manual',
-                    'status' => 'reviewed',
-                    'confidence_score' => null,
-                    'notes' => 'Resultado demo seed',
-                    'created_at' => $now,
-                    'updated_at' => $now,
-                ];
-            }
-        }
-
-        if (! empty($resultRows)) {
-            DB::table('scrutiny_block_results')->upsert(
-                $resultRows,
-                ['scrutiny_record_id', 'election_block_id', 'slate_block_id'],
-                ['votes', 'source_type', 'status', 'notes', 'updated_at']
-            );
-        }
     }
 }

@@ -7,6 +7,7 @@ use App\Models\Neighborhood;
 use App\Models\Commune;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Database\QueryException;
 use Illuminate\Validation\Rule;
@@ -14,12 +15,23 @@ use Illuminate\Validation\Rule;
 class NeighborhoodController extends Controller
 {
     /**
-     * Lista los barrios con su jerarquía (Comuna -> Ciudad).
+     * Lista los barrios con su jerarquía.
+     * Es dual: Responde JSON para Vue, o View para Blade.
      */
-    public function index(Request $request): View
+    public function index(Request $request): View | JsonResponse
     {
-        // Auditoría: Eager Loading anidado. Cargamos la comuna y de paso la ciudad
-        // para que la tabla sea legible sin hacer cientos de consultas SQL.
+        // 1. Si la petición viene de Vue (Axios)
+        if ($request->wantsJson() || $request->ajax()) {
+            // Cargamos la relación commune para que tu filtro en Vue funcione
+            $neighborhoods = Neighborhood::with('commune')->orderBy('name')->get();
+
+            return response()->json([
+                'success' => true,
+                'data' => $neighborhoods
+            ]);
+        }
+
+        // 2. Si la petición es normal (Blade web)
         $query = Neighborhood::with(['commune.city']);
 
         if ($request->filled('search')) {
@@ -126,5 +138,94 @@ class NeighborhoodController extends Controller
         } catch (QueryException $e) {
             return back()->with('error', 'Error técnico de base de datos (Llave foránea).');
         }
+    }
+
+    /**
+     * =========================================================================
+     * EL MÉTODO QUE FALTABA: Muestra los resultados matemáticos del escrutinio
+     * consumidos por tu vista NeighborhoodResultsView.vue
+     * =========================================================================
+     */
+    public function show($id, Request $request)
+    {
+
+        // EL CHIVATO:
+        dd("¡SÍ ESTOY ENTRANDO AL CONTROLADOR CORRECTO! El ID es: " . $id);
+
+        $neighborhood = Neighborhood::findOrFail($id);
+
+        // 1. Buscamos la elección activa
+        $election = $neighborhood->elections()->where('is_active', true)->latest('election_date')->first();
+
+        if (!$election) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No hay elecciones activas para este barrio.',
+                'data' => null
+            ]);
+        }
+
+        // 2. Extraemos los bloques electorales que participaron
+        $electionBlocks = \App\Models\ElectionBlock::with('block')
+            ->where('election_id', $election->id)
+            ->get();
+
+        $resultadosFormateados = [];
+
+        // 3. Iteramos por cada bloque (Directivos, Delegados, Fiscal)
+        foreach ($electionBlocks as $eb) {
+
+            // Buscamos las actas para este bloque
+            $resultadosBloque = \App\Models\ScrutinyBlockResult::with('slateBlock.slate')
+                ->where('election_id', $election->id)
+                ->where('election_block_id', $eb->id)
+                ->get();
+
+            $votosPlanchas = [];
+            $totalValidos = 0;
+
+            // Agrupamos los votos por plancha
+            foreach ($resultadosBloque as $resultado) {
+                // Aceptamos votos 'approved' o 'reviewed'
+                if ($resultado->status !== 'approved' && $resultado->status !== 'reviewed') continue;
+
+                $nombrePlancha = $resultado->slateBlock->slate->name ?? 'Plancha Desconocida';
+
+                $votosPlanchas[] = [
+                    'plancha' => $nombrePlancha,
+                    'votos' => $resultado->votes
+                ];
+
+                $totalValidos += $resultado->votes;
+            }
+
+            // Ordenamos para que la plancha ganadora salga de primera
+            usort($votosPlanchas, function($a, $b) {
+                return $b['votos'] <=> $a['votos'];
+            });
+
+            // 4. Armamos la estructura estricta que Vue está esperando
+            if (count($votosPlanchas) > 0) {
+                $resultadosFormateados[] = [
+                    'nombre_bloque' => $eb->block->name,
+                    'votos_planchas' => $votosPlanchas,
+                    'estadisticas' => [
+                        'validos' => $totalValidos,
+                        'blancos' => 0,
+                        'nulos' => 0
+                    ]
+                ];
+            }
+        }
+
+        // 5. Retornamos el JSON con 'success' => true
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'id' => $neighborhood->id,
+                'name' => $neighborhood->name,
+                'resultados' => $resultadosFormateados
+            ]
+        ]);
     }
 }

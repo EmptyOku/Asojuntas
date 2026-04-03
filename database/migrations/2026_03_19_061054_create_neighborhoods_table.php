@@ -17,7 +17,7 @@ return new class extends Migration
                 ->restrictOnDelete();
 
             $table->string('name', 120);
-            $table->string('code', 20);
+            $table->string('code', 50);
             $table->timestamps();
 
             $table->unique(['commune_id', 'code']);

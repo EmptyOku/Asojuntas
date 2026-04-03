@@ -12,6 +12,12 @@ class Person extends Model
 {
     use HasFactory;
 
+    /**
+     * ⚠️ ATENCIÓN: Por defecto Laravel busca la tabla "people".
+     * Como tu migración dice "persons", debemos declararlo estrictamente aquí.
+     */
+    protected $table = 'persons';
+
     protected $fillable = [
         'document_type_id',
         'neighborhood_id',

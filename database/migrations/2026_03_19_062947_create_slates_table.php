@@ -17,7 +17,7 @@ return new class extends Migration
                 ->cascadeOnUpdate();
 
             $table->string('name', 120);
-            $table->string('code', 30);
+            $table->string('code', 100);
             $table->text('description')->nullable();
             $table->boolean('is_active')->default(true);
             $table->timestamps();

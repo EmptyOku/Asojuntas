@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\ExtractionIngestController;
+use App\Http\Controllers\Api\Admin\NeighborhoodDirectoryController;
 
 /*
 |--------------------------------------------------------------------------
@@ -22,3 +23,12 @@ Route::middleware('ingest.token')->prefix('ingest')->group(function (): void {
     Route::post('/scrutiny-extractions', [ExtractionIngestController::class, 'ingestExtraction'])
         ->name('api.ingest.scrutiny-extractions.store');
 });
+Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
+    Route::get('/neighborhoods', [NeighborhoodDirectoryController::class, 'index'])
+        ->name('api.admin.neighborhoods.index');
+
+    Route::get('/neighborhoods/{id}', [NeighborhoodDirectoryController::class, 'show'])
+        ->name('api.admin.neighborhoods.show');
+});
+
+// NINGUNA RUTA DE VUE/ADMIN VA AQUÍ. ESTE ARCHIVO QUEDA ESTRICTAMENTE ASÍ.

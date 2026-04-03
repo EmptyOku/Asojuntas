@@ -19,7 +19,9 @@ class DatabaseSeeder extends Seeder
             CommuneSeeder::class,
             NeighborhoodSeeder::class,
             ElectoralCatalogSeeder::class,
-            ElectionMvpSeeder::class,
+            GlobalElectionsSeeder::class,
+            ScrutinyExtractionSeeder::class,
+            CandidateDraftSeeder::class,
         ]);
     }
 }

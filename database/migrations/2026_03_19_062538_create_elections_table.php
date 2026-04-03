@@ -17,7 +17,7 @@ return new class extends Migration
                 ->cascadeOnUpdate();
 
             $table->string('name', 150);
-            $table->string('code', 30)->unique();
+            $table->string('code', 100)->unique();
             $table->date('election_date');
             $table->year('period_year')->nullable();
             $table->boolean('is_active')->default(true);

@@ -17,7 +17,7 @@ return new class extends Migration
                 ->cascadeOnUpdate();
 
             $table->string('name', 100);
-            $table->string('code', 30);
+            $table->string('code', 100);
             $table->string('location', 150)->nullable();
             $table->integer('capacity')->nullable();
             $table->boolean('is_active')->default(true);
