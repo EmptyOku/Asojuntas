@@ -22,6 +22,7 @@ class DatabaseSeeder extends Seeder
             GlobalElectionsSeeder::class,
             ScrutinyExtractionSeeder::class,
             CandidateDraftSeeder::class,
+            ElectionExtendedBlocksSeeder::class,
         ]);
     }
 }

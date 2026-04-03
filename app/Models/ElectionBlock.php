@@ -14,6 +14,8 @@ class ElectionBlock extends Pivot
 
     protected $table = 'election_blocks';
 
+    protected $primaryKey = 'id';
+
     public $incrementing = true;
 
     protected $fillable = [

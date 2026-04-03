@@ -3,8 +3,11 @@
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Election;
+use App\Models\Commune;
 use App\Models\Neighborhood;
 use App\Models\ElectionBlock;
+use App\Models\ElectionBlockPosition;
 use App\Models\ScrutinyBlockResult;
 use App\Models\Candidate;
 use Illuminate\Http\JsonResponse;
@@ -15,9 +18,9 @@ class NeighborhoodDirectoryController extends Controller
     /**
      * Lista todos los barrios con sus respectivos presidentes y vicepresidentes.
      */
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
-        $neighborhoods = Neighborhood::with([
+        $query = $this->filteredNeighborhoodQuery($request)->with([
             'commune',
             'elections' => function ($query) {
                 $query->latest('election_date')->where('is_active', true);
@@ -27,46 +30,268 @@ class NeighborhoodDirectoryController extends Controller
             },
             'elections.candidates.person',
             'elections.candidates.electionBlockPosition.position'
-        ])
-        ->orderBy('name', 'asc')
-        ->get();
+        ]);
 
-        $data = $neighborhoods->map(function ($neighborhood) {
-            $latestElection = $neighborhood->elections->first();
-            $presidentName = null;
-            $vicepresidentName = null;
+        $perPage = max(1, min(100, (int) $request->integer('per_page', 10)));
+        $page = max(1, (int) $request->integer('page', 1));
 
-            if ($latestElection) {
-                $president = $latestElection->candidates->first(function ($candidate) {
-                    $positionName = strtolower($candidate->electionBlockPosition->position->name ?? '');
-                    return str_contains($positionName, 'presidente') && !str_contains($positionName, 'vice');
-                });
+        $paginated = $query
+            ->orderBy('name', 'asc')
+            ->paginate($perPage, ['*'], 'page', $page);
 
-                $vicepresident = $latestElection->candidates->first(function ($candidate) {
-                    $positionName = strtolower($candidate->electionBlockPosition->position->name ?? '');
-                    return str_contains($positionName, 'vicepresidente');
-                });
+        $neighborhoods = $paginated->getCollection()->map(function ($neighborhood) {
+            return $this->toNeighborhoodRow($neighborhood);
+        })->values();
 
-                if ($president && $president->person) {
-                    $presidentName = $president->person->first_name . ' ' . $president->person->last_name;
-                }
+        $bulkBaseQuery = $this->filteredNeighborhoodQuery($request);
+        $bulkCreateCount = (clone $bulkBaseQuery)
+            ->whereDoesntHave('elections', function ($electionQuery): void {
+                $electionQuery->where('is_active', true);
+            })
+            ->count();
 
-                if ($vicepresident && $vicepresident->person) {
-                    $vicepresidentName = $vicepresident->person->first_name . ' ' . $vicepresident->person->last_name;
-                }
+        $bulkCloseCount = (clone $bulkBaseQuery)
+            ->whereHas('elections', function ($electionQuery): void {
+                $electionQuery->where('is_active', true);
+            })
+            ->count();
+
+        $communes = Commune::query()
+            ->select('id', 'name')
+            ->orderBy('name')
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'neighborhoods' => $neighborhoods,
+                'pagination' => [
+                    'current_page' => $paginated->currentPage(),
+                    'last_page' => $paginated->lastPage(),
+                    'per_page' => $paginated->perPage(),
+                    'total' => $paginated->total(),
+                    'from' => $paginated->firstItem(),
+                    'to' => $paginated->lastItem(),
+                ],
+                'communes' => $communes,
+                'bulk_counts' => [
+                    'create' => $bulkCreateCount,
+                    'close' => $bulkCloseCount,
+                ],
+            ],
+        ]);
+    }
+
+    public function createElection(int $id): JsonResponse
+    {
+        $neighborhood = Neighborhood::findOrFail($id);
+
+        $alreadyActive = Election::query()
+            ->where('neighborhood_id', $neighborhood->id)
+            ->where('is_active', true)
+            ->exists();
+
+        if ($alreadyActive) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Este barrio ya tiene una elección activa.',
+            ], 422);
+        }
+
+        $timestamp = now()->format('YmdHis');
+        $year = (int) now()->format('Y');
+
+        $election = Election::create([
+            'neighborhood_id' => $neighborhood->id,
+            'name' => 'Eleccion JAC '.$neighborhood->name.' '.$year,
+            'code' => 'JAC-'.$neighborhood->code.'-'.$timestamp,
+            'election_date' => now()->toDateString(),
+            'period_year' => $year,
+            'is_active' => true,
+            'description' => 'Creada desde Geografia Electoral.',
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Elección creada correctamente para el barrio.',
+            'data' => [
+                'election_id' => $election->id,
+            ],
+        ], 201);
+    }
+
+    public function closeElection(int $id): JsonResponse
+    {
+        $neighborhood = Neighborhood::findOrFail($id);
+
+        $activeElection = Election::query()
+            ->where('neighborhood_id', $neighborhood->id)
+            ->where('is_active', true)
+            ->latest('election_date')
+            ->first();
+
+        if (! $activeElection) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No hay elección activa para cerrar en este barrio.',
+            ], 404);
+        }
+
+        $activeElection->is_active = false;
+        $activeElection->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Elección cerrada correctamente.',
+        ]);
+    }
+
+    public function createAllElections(Request $request): JsonResponse
+    {
+        $neighborhoods = $this->filteredNeighborhoodQuery($request)->get();
+        $created = 0;
+        $skipped = 0;
+
+        foreach ($neighborhoods as $neighborhood) {
+            $alreadyActive = Election::query()
+                ->where('neighborhood_id', $neighborhood->id)
+                ->where('is_active', true)
+                ->exists();
+
+            if ($alreadyActive) {
+                $skipped++;
+                continue;
             }
 
-            return [
-                'id'                 => $neighborhood->id,
-                'name'               => $neighborhood->name,
-                'code'               => $neighborhood->code,
-                'commune'            => $neighborhood->commune,
-                'president_name'     => $presidentName,
-                'vicepresident_name' => $vicepresidentName,
-            ];
-        });
+            $timestamp = now()->format('YmdHis');
+            $year = (int) now()->format('Y');
 
-        return response()->json(['success' => true, 'data' => $data]);
+            Election::create([
+                'neighborhood_id' => $neighborhood->id,
+                'name' => 'Eleccion JAC '.$neighborhood->name.' '.$year,
+                'code' => 'JAC-'.$neighborhood->code.'-'.$timestamp.'-'.$neighborhood->id,
+                'election_date' => now()->toDateString(),
+                'period_year' => $year,
+                'is_active' => true,
+                'description' => 'Creada desde Geografia Electoral.',
+            ]);
+
+            $created++;
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Proceso masivo de creación finalizado.',
+            'data' => [
+                'created' => $created,
+                'skipped' => $skipped,
+                'total' => $neighborhoods->count(),
+            ],
+        ]);
+    }
+
+    public function closeAllElections(Request $request): JsonResponse
+    {
+        $neighborhoods = $this->filteredNeighborhoodQuery($request)->get();
+        $closed = 0;
+        $skipped = 0;
+
+        foreach ($neighborhoods as $neighborhood) {
+            $activeElection = Election::query()
+                ->where('neighborhood_id', $neighborhood->id)
+                ->where('is_active', true)
+                ->latest('election_date')
+                ->first();
+
+            if (! $activeElection) {
+                $skipped++;
+                continue;
+            }
+
+            $activeElection->is_active = false;
+            $activeElection->save();
+            $closed++;
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Proceso masivo de cierre finalizado.',
+            'data' => [
+                'closed' => $closed,
+                'skipped' => $skipped,
+                'total' => $neighborhoods->count(),
+            ],
+        ]);
+    }
+
+    private function filteredNeighborhoodQuery(Request $request)
+    {
+        $query = Neighborhood::query();
+
+        if ($request->filled('commune_id')) {
+            $query->where('commune_id', (int) $request->input('commune_id'));
+        }
+
+        if ($request->filled('search')) {
+            $search = trim((string) $request->input('search'));
+
+            $query->where(function ($q) use ($search): void {
+                $q->where('name', 'ilike', "%{$search}%")
+                    ->orWhere('code', 'ilike', "%{$search}%");
+            });
+        }
+
+        return $query;
+    }
+
+    private function toNeighborhoodRow($neighborhood): array
+    {
+        $latestElection = $neighborhood->elections->first();
+        $presidentName = null;
+        $vicepresidentName = null;
+
+        if ($latestElection) {
+            $president = $latestElection->candidates->first(function ($candidate) {
+                $positionName = strtolower((string) data_get($candidate, 'electionBlockPosition.position.name', ''));
+                return str_contains($positionName, 'presidente') && ! str_contains($positionName, 'vice');
+            });
+
+            $vicepresident = $latestElection->candidates->first(function ($candidate) {
+                $positionName = strtolower((string) data_get($candidate, 'electionBlockPosition.position.name', ''));
+                return str_contains($positionName, 'vicepresidente');
+            });
+
+            if ($president && $president->person) {
+                $presidentName = trim(implode(' ', array_filter([
+                    $president->person->first_name ?? null,
+                    $president->person->last_name ?? null,
+                ])));
+            }
+
+            if ($vicepresident && $vicepresident->person) {
+                $vicepresidentName = trim(implode(' ', array_filter([
+                    $vicepresident->person->first_name ?? null,
+                    $vicepresident->person->last_name ?? null,
+                ])));
+            }
+        }
+
+        return [
+            'id' => $neighborhood->id,
+            'name' => $neighborhood->name,
+            'code' => $neighborhood->code,
+            'commune' => $neighborhood->commune,
+            'president_name' => $presidentName,
+            'vicepresident_name' => $vicepresidentName,
+            'has_active_election' => $latestElection !== null,
+            'active_election' => $latestElection ? [
+                'id' => $latestElection->id,
+                'name' => $latestElection->name,
+                'code' => $latestElection->code,
+                'election_date' => $latestElection->election_date?->toDateString(),
+                'period_year' => $latestElection->period_year,
+            ] : null,
+        ];
     }
 
     /**
@@ -91,94 +316,278 @@ class NeighborhoodDirectoryController extends Controller
             ]);
         }
 
-        $electionBlocks = ElectionBlock::with('block')
+        $scrutinyRecord = \App\Models\ScrutinyRecord::query()
+            ->with([
+                'extractions:id,scrutiny_record_id,status,confidence_score,created_at,normalized_payload',
+                'blockResults:id,scrutiny_record_id,election_id,election_block_id,slate_block_id,votes,status',
+                'blockResults.electionBlock:id,block_id',
+                'blockResults.electionBlock.block:id,name,code',
+                'blockResults.slateBlock:id,slate_id',
+                'blockResults.slateBlock.slate:id,code,name',
+            ])
+            ->where('election_id', $election->id)
+            ->whereIn('status', ['draft', 'pending', 'pending_review', 'reviewed', 'approved', 'consolidated'])
+            ->latest('updated_at')
+            ->first();
+
+        $aggregatedOcrBlocks = [];
+        if ($scrutinyRecord) {
+            foreach ($scrutinyRecord->extractions->sortByDesc('created_at')->values() as $extraction) {
+                $normalizedPayload = is_array($extraction->normalized_payload) ? $extraction->normalized_payload : [];
+
+                foreach ((array) ($normalizedPayload['block_votes'] ?? []) as $row) {
+                    if (! is_array($row)) {
+                        continue;
+                    }
+
+                    $rawName = trim((string) ($row['block_name'] ?? ''));
+                    if ($rawName === '') {
+                        continue;
+                    }
+
+                    $normalizedName = $this->normalizeBlockName($rawName);
+                    if ($normalizedName === '' || isset($aggregatedOcrBlocks[$normalizedName])) {
+                        continue;
+                    }
+
+                    $aggregatedOcrBlocks[$normalizedName] = [
+                        'name' => $rawName,
+                        'votes' => [
+                            'total_votes' => max(0, (int) ($row['total_votes'] ?? 0)),
+                            'plancha_1' => max(0, (int) ($row['plancha_1'] ?? 0)),
+                            'plancha_2' => max(0, (int) ($row['plancha_2'] ?? 0)),
+                            'plancha_3' => max(0, (int) ($row['plancha_3'] ?? 0)),
+                            'blancos' => max(0, (int) ($row['blancos'] ?? 0)),
+                            'nulos' => max(0, (int) ($row['nulos'] ?? 0)),
+                            'no_marcados' => max(0, (int) ($row['no_marcados'] ?? 0)),
+                            'validos' => max(0, (int) ($row['validos'] ?? 0)),
+                        ],
+                    ];
+                }
+            }
+        }
+
+        $electionBlocks = ElectionBlock::with(['block'])
             ->where('election_id', $election->id)
             ->get();
 
         $resultadosFormateados = [];
+        $overallSlateVotes = [];
+        $processedBlockNames = [];
 
         foreach ($electionBlocks as $eb) {
-            // ── 1. Votos por plancha ──────────────────────────────────────
+            $blockName = (string) ($eb->block->name ?? 'Bloque');
+            $blockNormalizedName = $this->normalizeBlockName($blockName);
+            if ($blockNormalizedName !== '') {
+                $processedBlockNames[$blockNormalizedName] = true;
+            }
+
             $resultadosBloque = ScrutinyBlockResult::with(['slateBlock.slate'])
                 ->where('election_id', $election->id)
                 ->where('election_block_id', $eb->id)
+                ->whereIn('status', ['approved', 'reviewed'])
                 ->get();
 
-            $votosPlanchas = [];
-            $ganadorSlateBlockId = null;
-            $maxVotos = -1;
-
+            $slateVotes = [];
             foreach ($resultadosBloque as $res) {
-                if (!in_array($res->status, ['approved', 'reviewed'])) continue;
-                if (!$res->slateBlock || !$res->slateBlock->slate) continue;
-
-                $votosPlanchas[] = [
-                    'plancha' => $res->slateBlock->slate->name,
-                    'votos'   => $res->votes,
-                ];
-
-                if ($res->votes > $maxVotos) {
-                    $maxVotos            = $res->votes;
-                    $ganadorSlateBlockId = $res->slateBlock->id;
+                if (! $res->slateBlock || ! $res->slateBlock->slate) {
+                    continue;
                 }
+
+                $slateName = $res->slateBlock->slate->name;
+                if (! isset($slateVotes[$slateName])) {
+                    $slateVotes[$slateName] = [
+                        'plancha' => $slateName,
+                        'votos' => 0,
+                        'slate_block_id' => $res->slate_block_id,
+                    ];
+                }
+
+                $slateVotes[$slateName]['votos'] += (int) $res->votes;
             }
 
-            // Ordenar de mayor a menor
-            usort($votosPlanchas, fn($a, $b) => $b['votos'] <=> $a['votos']);
+            $ocrBlock = $aggregatedOcrBlocks[$blockNormalizedName] ?? null;
+            $blancos = 0;
+            $nulos = 0;
 
-            // ── 2. Cargos de la plancha ganadora (formato acta) ──────────
-            // Estructura: [ 'cargo' => 'Presidente (A)', 'persona' => [...] ]
+            if ($ocrBlock) {
+                $blancos = (int) ($ocrBlock['votes']['blancos'] ?? 0);
+                $nulos = (int) ($ocrBlock['votes']['nulos'] ?? 0);
+            }
+
+            if (empty($slateVotes) && $ocrBlock) {
+                $slateVotes = [
+                    'Plancha 1' => [
+                        'plancha' => 'Plancha 1',
+                        'votos' => (int) ($ocrBlock['votes']['plancha_1'] ?? 0),
+                        'slate_block_id' => null,
+                    ],
+                    'Plancha 2' => [
+                        'plancha' => 'Plancha 2',
+                        'votos' => (int) ($ocrBlock['votes']['plancha_2'] ?? 0),
+                        'slate_block_id' => null,
+                    ],
+                    'Plancha 3' => [
+                        'plancha' => 'Plancha 3',
+                        'votos' => (int) ($ocrBlock['votes']['plancha_3'] ?? 0),
+                        'slate_block_id' => null,
+                    ],
+                ];
+            }
+
+            if (empty($slateVotes)) {
+                continue;
+            }
+
+            $cargosAProveer = (int) ElectionBlockPosition::query()
+                ->where('election_block_id', $eb->id)
+                ->sum('vacancies');
+            $allocation = $this->allocateSeatsByQuota(array_values($slateVotes), $cargosAProveer, $blancos);
+
+            foreach ($allocation['planchas'] as $voteRow) {
+                $overallSlateVotes[$voteRow['plancha']] = ($overallSlateVotes[$voteRow['plancha']] ?? 0) + (int) $voteRow['votos'];
+            }
+
+            $winner = $allocation['winner'];
             $cargos = [];
+            $planchasCurules = collect($allocation['planchas'])
+                ->filter(function (array $plancha): bool {
+                    return (int) ($plancha['curules'] ?? 0) > 0 && ! empty($plancha['slate_block_id']);
+                })
+                ->values();
 
-            if ($ganadorSlateBlockId) {
-                // Traemos todos los candidatos del slate_block ganador
-                // ordenados por ballot_number para respetar el orden del acta
-                $candidatos = Candidate::with([
+            $candidatosPorPlancha = collect();
+            if ($planchasCurules->isNotEmpty()) {
+                $candidatosPorPlancha = Candidate::with([
                     'person',
-                    'electionBlockPosition.position'
+                    'electionBlockPosition.position',
+                    'slateBlock.slate',
                 ])
-                ->where('slate_block_id', $ganadorSlateBlockId)
-                ->orderBy('ballot_number')
-                ->get();
+                    ->where('election_id', $election->id)
+                    ->whereIn('slate_block_id', $planchasCurules->pluck('slate_block_id')->all())
+                    ->whereHas('electionBlockPosition', function ($query) use ($eb): void {
+                        $query->where('election_block_id', $eb->id);
+                    })
+                    ->orderByRaw('COALESCE(ballot_number, \'\') ASC')
+                    ->orderBy('id')
+                    ->get()
+                    ->groupBy('slate_block_id');
+            }
+
+            foreach ($planchasCurules as $planchaCurules) {
+                $slateBlockId = (int) $planchaCurules['slate_block_id'];
+                $seatsForSlate = max(0, (int) ($planchaCurules['curules'] ?? 0));
+                if ($seatsForSlate === 0) {
+                    continue;
+                }
+
+                $candidatos = collect($candidatosPorPlancha->get($slateBlockId, []))
+                    ->unique(function ($candidate) {
+                        return $candidate->election_block_position_id;
+                    })
+                    ->take($seatsForSlate)
+                    ->values();
 
                 foreach ($candidatos as $c) {
-                    $person   = $c->person;
+                    $person = $c->person;
                     $position = $c->electionBlockPosition->position ?? null;
 
                     $cargos[] = [
-                        'cargo'   => $position->name ?? 'Sin cargo',
+                        'cargo' => $position->name ?? 'Sin cargo',
+                        'plancha' => data_get($c, 'slateBlock.slate.name', '—'),
                         'persona' => [
-                            'nombre'          => trim(
-                                $person->first_name  . ' ' .
+                            'nombre' => trim(
+                                $person->first_name . ' ' .
                                 ($person->middle_name ? $person->middle_name . ' ' : '') .
-                                $person->last_name   . ' ' .
+                                $person->last_name . ' ' .
                                 ($person->second_last_name ?? '')
                             ),
-                            'identificacion'  => $person->document_number ?? '—',
-                            'celular'         => $person->phone           ?? '—',
-                            'correo'          => $person->email           ?? '—',
+                            'identificacion' => $person->document_number ?? '—',
+                            'celular' => $person->phone ?? '—',
+                            'correo' => $person->email ?? '—',
                         ],
                     ];
                 }
             }
 
-            // Solo añadimos el bloque si tiene votos o cargos
-            if (count($votosPlanchas) > 0 || count($cargos) > 0) {
-                $totalValidos = collect($votosPlanchas)->sum('votos');
-
-                $resultadosFormateados[] = [
-                    'nombre_bloque' => $eb->block->name ?? 'Bloque',
-                    'codigo_bloque' => $eb->block->code ?? null,
-                    'votos_planchas' => $votosPlanchas,
-                    'cargos'         => $cargos,           // ← nuevo: un item por cargo
-                    'estadisticas'   => [
-                        'validos' => $totalValidos,
-                        'total'   => $totalValidos,
-                        'blancos' => 0,
-                        'nulos'   => 0,
-                    ],
-                ];
+            if (count($cargos) > $cargosAProveer) {
+                $cargos = array_slice($cargos, 0, $cargosAProveer);
             }
+
+            $resultadosFormateados[] = [
+                'nombre_bloque' => $blockName,
+                'codigo_bloque' => $eb->block->code ?? null,
+                'cargos_a_proveer' => $cargosAProveer,
+                'votos_validos' => $allocation['votos_validos'],
+                'cuociente_electoral' => $allocation['cuociente_electoral'],
+                'votos_planchas' => $allocation['planchas'],
+                'cargos' => $cargos,
+                'plancha_ganadora' => $winner,
+                'planchas_ganadoras' => $allocation['winners'],
+                'estadisticas' => [
+                    'validos' => $allocation['votos_validos'],
+                    'total' => $allocation['votos_validos'] + $nulos,
+                    'blancos' => $blancos,
+                    'nulos' => $nulos,
+                ],
+            ];
+        }
+
+        foreach ($aggregatedOcrBlocks as $normalizedName => $ocrBlock) {
+            if (isset($processedBlockNames[$normalizedName])) {
+                continue;
+            }
+
+            $votosPlanchas = [
+                [
+                    'plancha' => 'Plancha 1',
+                    'votos' => (int) ($ocrBlock['votes']['plancha_1'] ?? 0),
+                    'slate_block_id' => null,
+                ],
+                [
+                    'plancha' => 'Plancha 2',
+                    'votos' => (int) ($ocrBlock['votes']['plancha_2'] ?? 0),
+                    'slate_block_id' => null,
+                ],
+                [
+                    'plancha' => 'Plancha 3',
+                    'votos' => (int) ($ocrBlock['votes']['plancha_3'] ?? 0),
+                    'slate_block_id' => null,
+                ],
+            ];
+
+            $cargosAProveer = 0;
+            $allocation = $this->allocateSeatsByQuota($votosPlanchas, $cargosAProveer, (int) ($ocrBlock['votes']['blancos'] ?? 0));
+
+            foreach ($allocation['planchas'] as $voteRow) {
+                $overallSlateVotes[$voteRow['plancha']] = ($overallSlateVotes[$voteRow['plancha']] ?? 0) + (int) $voteRow['votos'];
+            }
+
+            $resultadosFormateados[] = [
+                'nombre_bloque' => $ocrBlock['name'],
+                'codigo_bloque' => null,
+                'cargos_a_proveer' => $cargosAProveer,
+                'votos_validos' => $allocation['votos_validos'],
+                'cuociente_electoral' => $allocation['cuociente_electoral'],
+                'votos_planchas' => $allocation['planchas'],
+                'cargos' => [],
+                'plancha_ganadora' => $allocation['winner'],
+                'estadisticas' => [
+                    'validos' => $allocation['votos_validos'],
+                    'total' => $allocation['votos_validos'] + (int) ($ocrBlock['votes']['nulos'] ?? 0),
+                    'blancos' => (int) ($ocrBlock['votes']['blancos'] ?? 0),
+                    'nulos' => (int) ($ocrBlock['votes']['nulos'] ?? 0),
+                ],
+            ];
+        }
+
+        $planchaGanadoraGlobal = null;
+        if (! empty($overallSlateVotes)) {
+            arsort($overallSlateVotes);
+            $planchaGanadoraGlobal = [
+                'plancha' => array_key_first($overallSlateVotes),
+                'votos' => (int) reset($overallSlateVotes),
+            ];
         }
 
         return response()->json([
@@ -187,7 +596,95 @@ class NeighborhoodDirectoryController extends Controller
                 'id'         => $neighborhood->id,
                 'name'       => $neighborhood->name,
                 'resultados' => $resultadosFormateados,
+                'plancha_ganadora' => $planchaGanadoraGlobal,
             ],
         ]);
+    }
+
+    private function allocateSeatsByQuota(array $planchas, int $cargosAProveer, int $blancos): array
+    {
+        $normalizedPlanchas = [];
+        $votosPlanchas = 0;
+
+        foreach ($planchas as $row) {
+            $votes = max(0, (int) ($row['votos'] ?? 0));
+            $normalizedPlanchas[] = [
+                'plancha' => (string) ($row['plancha'] ?? 'Sin nombre'),
+                'votos' => $votes,
+                'slate_block_id' => $row['slate_block_id'] ?? null,
+                'entero' => 0,
+                'residuo' => 0.0,
+                'curules' => 0,
+            ];
+            $votosPlanchas += $votes;
+        }
+
+        $votosValidos = $votosPlanchas + max(0, $blancos);
+        $cuocienteElectoral = $cargosAProveer > 0 ? ($votosValidos / $cargosAProveer) : 0.0;
+
+        $cargosAsignados = 0;
+        foreach ($normalizedPlanchas as $index => $plancha) {
+            if ($cuocienteElectoral > 0) {
+                $exacto = $plancha['votos'] / $cuocienteElectoral;
+                $entero = (int) floor($exacto);
+                $residuo = $exacto - $entero;
+            } else {
+                $entero = 0;
+                $residuo = 0.0;
+            }
+
+            $normalizedPlanchas[$index]['entero'] = $entero;
+            $normalizedPlanchas[$index]['residuo'] = $residuo;
+            $normalizedPlanchas[$index]['curules'] = $entero;
+            $cargosAsignados += $entero;
+        }
+
+        $cargosRestantes = max(0, $cargosAProveer - $cargosAsignados);
+
+        usort($normalizedPlanchas, function (array $left, array $right): int {
+            return ($right['residuo'] <=> $left['residuo'])
+                ?: ($right['votos'] <=> $left['votos'])
+                ?: strcmp($left['plancha'], $right['plancha']);
+        });
+
+        $countPlanchas = count($normalizedPlanchas);
+        if ($countPlanchas > 0 && $cargosRestantes > 0) {
+            for ($seat = 0; $seat < $cargosRestantes; $seat++) {
+                $normalizedPlanchas[$seat % $countPlanchas]['curules']++;
+            }
+        }
+
+        usort($normalizedPlanchas, function (array $left, array $right): int {
+            return ($right['curules'] <=> $left['curules'])
+                ?: ($right['votos'] <=> $left['votos'])
+                ?: ($right['residuo'] <=> $left['residuo'])
+                ?: strcmp($left['plancha'], $right['plancha']);
+        });
+
+        $maxCurules = $normalizedPlanchas[0]['curules'] ?? 0;
+        $winners = array_values(array_filter($normalizedPlanchas, function (array $plancha) use ($maxCurules): bool {
+            return (int) ($plancha['curules'] ?? 0) === (int) $maxCurules;
+        }));
+
+        $winner = count($winners) === 1 ? $winners[0] : null;
+
+        return [
+            'votos_validos' => $votosValidos,
+            'cuociente_electoral' => $cuocienteElectoral,
+            'cargos_a_proveer' => $cargosAProveer,
+            'cargos_asignados' => $cargosAsignados,
+            'cargos_restantes' => $cargosRestantes,
+            'planchas' => $normalizedPlanchas,
+            'winner' => $winner,
+            'winners' => $winners,
+        ];
+    }
+
+    private function normalizeBlockName(string $name): string
+    {
+        $normalized = mb_strtolower(trim($name));
+        $normalized = preg_replace('/\s+/', ' ', $normalized) ?? $normalized;
+
+        return $normalized;
     }
 }

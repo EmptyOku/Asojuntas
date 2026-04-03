@@ -168,6 +168,7 @@
 
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue';
+import { useRouter } from 'vue-router';
 import axios from '@/services/axios';
 import {
   ChevronDown,
@@ -188,6 +189,7 @@ const barrios = ref([]);
 const openCardId = ref(null);
 const loading = ref(true);
 const error = ref(null);
+const router = useRouter();
 
 // Estado de Filtros y Paginación
 const searchQuery = ref('');
@@ -250,13 +252,25 @@ const fetchBarrios = async () => {
   try {
     const response = await axios.get('/admin/neighborhoods');
     if (response.data.success) {
-      barrios.value = response.data.data;
+      const payload = response.data.data;
+      barrios.value = Array.isArray(payload)
+        ? payload
+        : Array.isArray(payload?.neighborhoods)
+          ? payload.neighborhoods
+          : [];
     } else {
       error.value = "La API respondió, pero indicó un fallo al obtener los datos.";
     }
   } catch (err) {
     console.error("Error al cargar el directorio:", err);
-    error.value = "Error de conexión con el servidor. Verifica que Laravel esté en ejecución.";
+    if (err?.response?.status === 401) {
+      error.value = "Tu sesión expiró. Redirigiendo al inicio de sesión...";
+      setTimeout(() => {
+        router.push({ name: 'login' });
+      }, 600);
+    } else {
+      error.value = "Error de conexión con el servidor. Verifica que Laravel esté en ejecución.";
+    }
   } finally {
     loading.value = false;
   }

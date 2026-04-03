@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import { useAuthStore } from '@/stores/auth';
+import { startRouteLoading, stopRouteLoading } from '@/state/loading';
 
 // Los Layouts se importan de forma estática
 import AdminLayout from '@/layouts/AdminLayout.vue';
@@ -85,6 +86,8 @@ const router = createRouter({
 
 // Guardia de Seguridad Global
 router.beforeEach(async (to) => {
+  startRouteLoading();
+
   const auth = useAuthStore();
 
   if (to.meta.requiresAuth) {
@@ -106,6 +109,10 @@ router.beforeEach(async (to) => {
   }
 
   return true;
+});
+
+router.afterEach(() => {
+  stopRouteLoading();
 });
 
 export default router;

@@ -25,6 +25,10 @@ Route::get('/', function () {
     return view('welcome');
 });
 
+Route::get('/login', function () {
+    return view('app');
+})->name('login');
+
 // =========================================================================
 // AQUÍ EMPIEZA LO QUE REALMENTE USA TU APLICACIÓN VUE (LA API DE SESIÓN)
 // =========================================================================
@@ -56,6 +60,18 @@ Route::prefix('api')->name('api.')->group(function (): void {
 
             Route::get('/neighborhoods/{id}', [NeighborhoodDirectoryController::class, 'show'])
                 ->name('admin.neighborhoods.show');
+
+            Route::post('/neighborhoods/{id}/elections', [NeighborhoodDirectoryController::class, 'createElection'])
+                ->name('admin.neighborhoods.elections.store');
+
+            Route::post('/neighborhoods/{id}/elections/close', [NeighborhoodDirectoryController::class, 'closeElection'])
+                ->name('admin.neighborhoods.elections.close');
+
+            Route::post('/neighborhoods/elections/create-all', [NeighborhoodDirectoryController::class, 'createAllElections'])
+                ->name('admin.neighborhoods.elections.create-all');
+
+            Route::post('/neighborhoods/elections/close-all', [NeighborhoodDirectoryController::class, 'closeAllElections'])
+                ->name('admin.neighborhoods.elections.close-all');
             // =========================================================
 
             Route::get('/users', [UserManagementController::class, 'index'])

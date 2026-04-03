@@ -69,8 +69,8 @@
         </div>
         <div class="summary-divider"></div>
         <div class="summary-item">
-          <span class="summary-label">Plancha ganadora</span>
-          <span class="summary-value">{{ planchaGanadora }}</span>
+          <span class="summary-label">Cargos a proveer</span>
+          <span class="summary-value">{{ totalCargos }}</span>
         </div>
       </div>
 
@@ -93,7 +93,13 @@
           <div class="bloque-header-right">
             <span class="consolidado-badge">Consolidado Final</span>
             <div class="bloque-total-badge">
-              {{ bloque.estadisticas.validos }}<span>votos válidos</span>
+              {{ bloque.cargos_a_proveer }}<span>cargos</span>
+            </div>
+            <div class="bloque-total-badge">
+              {{ formatQuotient(bloque.cuociente_electoral) }}<span>cuociente</span>
+            </div>
+            <div class="bloque-total-badge">
+              {{ formatWinnerLabel(bloque) }}<span>{{ bloque.plancha_ganadora ? 'ganadora' : 'resultado' }}</span>
             </div>
           </div>
         </div>
@@ -103,6 +109,9 @@
           <h4 class="section-label">
             <BarChart2 class="w-3.5 h-3.5" /> Resultados de Votación
           </h4>
+          <p class="section-helper">
+            Votos válidos: {{ bloque.votos_validos }} | Cuociente: {{ formatQuotient(bloque.cuociente_electoral) }}
+          </p>
           <div class="planchas-list">
             <div
               v-for="(plancha, pIndex) in bloque.votos_planchas"
@@ -117,6 +126,11 @@
                 </div>
                 <span class="plancha-name">{{ plancha.plancha }}</span>
                 <span class="plancha-votes-inline">{{ plancha.votos }} votos</span>
+              </div>
+              <div class="plancha-allocation">
+                <span>Ent. {{ plancha.entero }}</span>
+                <span>Res. {{ plancha.residuo.toFixed(4) }}</span>
+                <span>Curules {{ plancha.curules }}</span>
               </div>
               <div class="plancha-bar-wrap">
                 <div class="plancha-bar-track">
@@ -153,7 +167,7 @@
         <!-- ── Cargos electos (formato acta física) ── -->
         <div v-if="bloque.cargos && bloque.cargos.length > 0" class="cargos-section">
           <h4 class="section-label winners">
-            <Trophy class="w-3.5 h-3.5" /> Dignatarios Electos — Plancha Ganadora
+            <Trophy class="w-3.5 h-3.5" /> Dignatarios Electos — Asignación por Curules
           </h4>
 
           <div class="cargos-grid">
@@ -189,6 +203,11 @@
                   <span class="cargo-row-label">Correo Electrónico</span>
                   <span class="cargo-row-value">{{ item.persona.correo || '—' }}</span>
                 </div>
+                <div class="cargo-row">
+                  <span class="cargo-row-num">5.</span>
+                  <span class="cargo-row-label">Plancha</span>
+                  <span class="cargo-row-value plancha-cell">{{ item.plancha || '—' }}</span>
+                </div>
               </div>
             </div>
           </div>
@@ -197,7 +216,7 @@
         <!-- Empty cargos -->
         <div v-else class="cargos-empty">
           <Users class="w-5 h-5" />
-          <p>No se pudo determinar la plancha ganadora para este bloque.</p>
+          <p>No se pudieron determinar dignatarios con los datos disponibles para este bloque.</p>
         </div>
 
       </div><!-- end bloque-card -->
@@ -224,14 +243,32 @@ const totalVotos = computed(() => {
   return barrio.value.resultados.reduce((s, b) => s + (b.estadisticas?.validos ?? 0), 0);
 });
 
-const planchaGanadora = computed(() => {
-  if (!barrio.value?.resultados?.length) return '—';
-  return barrio.value.resultados[0]?.votos_planchas?.[0]?.plancha ?? '—';
+const totalCargos = computed(() => {
+  if (!barrio.value?.resultados) return 0;
+  return barrio.value.resultados.reduce((s, b) => s + (b.cargos_a_proveer ?? 0), 0);
 });
 
 const getPercent = (votos, total) => {
   if (!total) return 0;
   return Math.round((votos / total) * 100);
+};
+
+const formatQuotient = (value) => {
+  if (!value) return '0';
+  return Number(value).toLocaleString('es-CO', { maximumFractionDigits: 4 });
+};
+
+const formatWinnerLabel = (bloque) => {
+  if (bloque?.plancha_ganadora?.plancha) {
+    return bloque.plancha_ganadora.plancha;
+  }
+
+  const tied = Array.isArray(bloque?.planchas_ganadoras) ? bloque.planchas_ganadoras : [];
+  if (tied.length > 1) {
+    return `Empate (${tied.map((p) => p.plancha).join(' / ')})`;
+  }
+
+  return '—';
 };
 
 const fetchResultados = async () => {
@@ -493,10 +530,29 @@ onMounted(() => fetchResultados());
   border-bottom: 1px solid #f1f5f9;
 }
 .section-label.winners { color: #b45309; }
+.section-helper {
+  margin-top: -0.75rem;
+  font-size: 0.78rem;
+  color: #64748b;
+}
 
 .planchas-list { display:flex; flex-direction:column; gap:1rem; }
 .plancha-row { display:flex; flex-direction:column; gap:.5rem; }
 .plancha-info { display:flex; align-items:center; gap:.6rem; }
+.plancha-allocation {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .4rem;
+  padding-left: 1.9rem;
+  font-size: .72rem;
+  color: #475569;
+}
+.plancha-allocation span {
+  padding: .2rem .5rem;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+}
 .plancha-rank {
   width:22px; height:22px; border-radius:50%;
   background:#f1f5f9; border:1px solid #e2e8f0;
@@ -587,6 +643,10 @@ onMounted(() => fetchResultados());
   color: #0f172a;
   text-align: right;
   word-break: break-word;
+}
+
+.plancha-cell {
+  color: #0f766e;
 }
 
 /* Empty cargos */

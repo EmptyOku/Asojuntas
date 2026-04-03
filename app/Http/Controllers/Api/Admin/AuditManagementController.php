@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\ScrutinyRecord;
+use App\Models\ScrutinyBlockResult;
 use App\Models\ScrutinyRecordFile;
 use App\Models\ScrutinyReview;
 use Illuminate\Http\JsonResponse;
@@ -93,15 +94,25 @@ class AuditManagementController extends Controller
             });
 
         $statsBase = ScrutinyRecord::query();
+        $totalCount = (clone $statsBase)->count();
         $processedCount = (clone $statsBase)->whereIn('status', ['reviewed', 'approved', 'consolidated'])->count();
         $reviewCount = (clone $statsBase)->whereIn('status', ['draft', 'pending', 'pending_review'])->count();
+        $activeJuriesCount = (clone $statsBase)
+            ->whereIn('status', ['draft', 'pending', 'pending_review'])
+            ->whereNotNull('created_by_user_id')
+            ->distinct('created_by_user_id')
+            ->count('created_by_user_id');
+        $validVotesTotal = (int) ScrutinyBlockResult::sum('votes');
 
         return response()->json([
             'success' => true,
             'data' => [
                 'stats' => [
+                    'total_count' => $totalCount,
                     'processed_count' => $processedCount,
                     'review_count' => $reviewCount,
+                    'active_juries_count' => $activeJuriesCount,
+                    'valid_votes_total' => $validVotesTotal,
                 ],
                 'records' => $records,
             ],
