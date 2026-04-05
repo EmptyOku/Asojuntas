@@ -23,7 +23,7 @@ Route::middleware('ingest.token')->prefix('ingest')->group(function (): void {
     Route::post('/scrutiny-extractions', [ExtractionIngestController::class, 'ingestExtraction'])
         ->name('api.ingest.scrutiny-extractions.store');
 });
-Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
+Route::middleware(['auth'])->prefix('admin')->group(function () {
     Route::get('/neighborhoods', [NeighborhoodDirectoryController::class, 'index'])
         ->name('api.admin.neighborhoods.index');
 

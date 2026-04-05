@@ -45,6 +45,7 @@ const routes = [
     children: [
       { path: 'dashboard', name: 'admin-dashboard', component: () => import('@/views/admin/AdminDashboardView.vue') },
       { path: 'audit', name: 'admin-audit', component: () => import('@/views/admin/AuditView.vue') },
+      { path: 'audit-logs', name: 'admin-audit-logs', component: () => import('@/views/admin/AuditLogsView.vue'), meta: { permission: 'audit.view' } },
       { path: 'geography', name: 'admin-geography', component: () => import('@/views/admin/GeographyView.vue') },
       { path: 'audit/:id', name: 'admin-audit-detail', component: () => import('@/views/admin/VoteValidationView.vue') },
       { path: 'roles', name: 'admin-roles', component: () => import('@/views/security-config/RolesPermissionsView.vue') },

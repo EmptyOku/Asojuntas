@@ -7,6 +7,7 @@ use App\Models\ScrutinyRecord;
 use App\Models\ScrutinyBlockResult;
 use App\Models\ScrutinyRecordFile;
 use App\Models\ScrutinyReview;
+use App\Services\AuditTrailLogger;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -26,6 +27,7 @@ class AuditManagementController extends Controller
                 'election.neighborhood:id,commune_id,name',
                 'election.neighborhood.commune:id,name',
                 'extractions:id,scrutiny_record_id,status,confidence_score,created_at,normalized_payload',
+                'reviews:id,scrutiny_record_id,decision,reviewed_at,changes_payload,created_at',
             ])
             ->withSum('blockResults as valid_votes_sum', 'votes');
 
@@ -130,6 +132,7 @@ class AuditManagementController extends Controller
             'election.neighborhood.commune:id,name',
             'files:id,scrutiny_record_id,original_name,mime_type,page_number,storage_path,created_at',
             'extractions:id,scrutiny_record_id,status,confidence_score,created_at,normalized_payload',
+            'reviews:id,scrutiny_record_id,decision,reviewed_at,changes_payload,created_at',
             'blockResults:id,scrutiny_record_id,election_block_id,slate_block_id,votes,status',
             'blockResults.electionBlock:id,block_id',
             'blockResults.electionBlock.block:id,name,code',
@@ -294,6 +297,11 @@ class AuditManagementController extends Controller
             return $block;
         }, $groupedBlocks));
 
+        $latestReviewPayload = $this->latestReviewPayload($scrutinyRecord);
+        if (is_array($latestReviewPayload)) {
+            $blocks = $this->applyReviewedBlocks($blocks, $latestReviewPayload);
+        }
+
         $preferredOrder = [
             'directiva' => 10,
             'delegados asojuntas' => 20,
@@ -414,9 +422,14 @@ class AuditManagementController extends Controller
         $validated = $request->validate([
             'decision' => 'required|in:approved,rejected,reviewed',
             'comments' => 'nullable|string|max:1000',
+            'changes_payload' => 'nullable|array',
         ]);
 
         $decision = (string) $validated['decision'];
+        $changesPayload = is_array($validated['changes_payload'] ?? null) ? $validated['changes_payload'] : [];
+
+        $this->applyReviewChangesToBlockResults($scrutinyRecord, $changesPayload);
+
         $scrutinyRecord->status = $decision;
         $scrutinyRecord->save();
 
@@ -427,7 +440,13 @@ class AuditManagementController extends Controller
             'decision' => $decision,
             'reviewed_at' => now(),
             'comments' => $validated['comments'] ?? null,
-            'changes_payload' => null,
+            'changes_payload' => $changesPayload !== [] ? $changesPayload : null,
+        ]);
+
+        app(AuditTrailLogger::class)->recordSystemEvent('review_decision', [
+            'scrutiny_record_id' => $scrutinyRecord->id,
+            'decision' => $decision,
+            'reviewed_by_user_id' => Auth::id(),
         ]);
 
         return response()->json([
@@ -438,6 +457,53 @@ class AuditManagementController extends Controller
                 'status' => $scrutinyRecord->status,
             ],
         ]);
+    }
+
+    private function applyReviewChangesToBlockResults(ScrutinyRecord $scrutinyRecord, array $changesPayload): void
+    {
+        $blocks = array_filter((array) ($changesPayload['blocks'] ?? []), 'is_array');
+        if (empty($blocks)) {
+            return;
+        }
+
+        $blockResults = $scrutinyRecord->blockResults()
+            ->with(['electionBlock.block', 'slateBlock.slate'])
+            ->get();
+
+        $resultsByBlock = [];
+        foreach ($blockResults as $result) {
+            $blockName = $this->normalizeBlockName((string) ($result->electionBlock?->block?->name ?? ''));
+            $slateCode = strtoupper((string) ($result->slateBlock?->slate?->code ?? ''));
+
+            if ($blockName === '' || $slateCode === '') {
+                continue;
+            }
+
+            $resultsByBlock[$blockName][$slateCode] = $result;
+        }
+
+        foreach ($blocks as $block) {
+            $blockName = $this->normalizeBlockName((string) ($block['name'] ?? $block['titulo'] ?? ''));
+            if ($blockName === '' || ! isset($resultsByBlock[$blockName])) {
+                continue;
+            }
+
+            $votes = is_array($block['votes'] ?? null) ? $block['votes'] : [];
+            foreach ([1, 2, 3] as $slateNumber) {
+                $slateCode = 'P'.$slateNumber;
+                $result = $resultsByBlock[$blockName][$slateCode] ?? null;
+                if (! $result) {
+                    continue;
+                }
+
+                $voteValue = max(0, (int) ($votes['plancha_'.$slateNumber] ?? $result->votes));
+                $result->votes = $voteValue;
+                $result->status = 'reviewed';
+                $result->source_type = 'manual';
+                $result->notes = trim((string) ($result->notes ?? ''));
+                $result->save();
+            }
+        }
     }
 
     private function buildStatusTag(string $recordStatus, ?float $confidence): array
@@ -488,6 +554,14 @@ class AuditManagementController extends Controller
 
     private function resolveValidVotesForIndex(ScrutinyRecord $record): int
     {
+        $latestReviewPayload = $this->latestReviewPayload($record);
+        if (is_array($latestReviewPayload)) {
+            $reviewBlocks = $this->reviewBlocksFromPayload($latestReviewPayload);
+            if (! empty($reviewBlocks)) {
+                return $this->calculateValidVotesFromBlocks($reviewBlocks);
+            }
+        }
+
         $persistedVotes = (int) ($record->valid_votes_sum ?? 0);
         if ($persistedVotes > 0) {
             return $persistedVotes;
@@ -538,5 +612,105 @@ class AuditManagementController extends Controller
         }
 
         return $computedVotes;
+    }
+
+    private function latestReviewPayload(ScrutinyRecord $record): ?array
+    {
+        $latestReview = $record->reviews
+            ?->sortByDesc('reviewed_at')
+            ->sortByDesc('created_at')
+            ->first();
+
+        if (! $latestReview || ! is_array($latestReview->changes_payload)) {
+            return null;
+        }
+
+        return $latestReview->changes_payload;
+    }
+
+    private function applyReviewedBlocks(array $blocks, array $reviewPayload): array
+    {
+        $reviewBlocks = $this->reviewBlocksFromPayload($reviewPayload);
+        if (empty($reviewBlocks)) {
+            return $blocks;
+        }
+
+        $indexedBlocks = [];
+        foreach ($blocks as $block) {
+            $indexedBlocks[$this->normalizeBlockName((string) ($block['name'] ?? ''))] = $block;
+        }
+
+        foreach ($reviewBlocks as $reviewBlock) {
+            $normalizedName = $this->normalizeBlockName((string) ($reviewBlock['name'] ?? ''));
+            if ($normalizedName === '' || ! isset($indexedBlocks[$normalizedName])) {
+                continue;
+            }
+
+            $indexedBlocks[$normalizedName]['votes'] = array_merge(
+                $indexedBlocks[$normalizedName]['votes'] ?? [],
+                $reviewBlock['votes'] ?? []
+            );
+        }
+
+        return array_values($indexedBlocks);
+    }
+
+    private function reviewBlocksFromPayload(array $reviewPayload): array
+    {
+        $blocks = [];
+
+        foreach ((array) ($reviewPayload['blocks'] ?? []) as $block) {
+            if (! is_array($block)) {
+                continue;
+            }
+
+            $name = trim((string) ($block['name'] ?? $block['titulo'] ?? ''));
+            if ($name === '') {
+                continue;
+            }
+
+            $votes = is_array($block['votes'] ?? null) ? $block['votes'] : [];
+            $blocks[] = [
+                'name' => $name,
+                'votes' => [
+                    'total_votes' => max(0, (int) ($votes['total_votes'] ?? 0)),
+                    'plancha_1' => max(0, (int) ($votes['plancha_1'] ?? 0)),
+                    'plancha_2' => max(0, (int) ($votes['plancha_2'] ?? 0)),
+                    'plancha_3' => max(0, (int) ($votes['plancha_3'] ?? 0)),
+                    'blancos' => max(0, (int) ($votes['blancos'] ?? 0)),
+                    'nulos' => max(0, (int) ($votes['nulos'] ?? 0)),
+                    'no_marcados' => max(0, (int) ($votes['no_marcados'] ?? 0)),
+                    'validos' => max(0, (int) ($votes['validos'] ?? 0)),
+                ],
+            ];
+        }
+
+        return $blocks;
+    }
+
+    private function calculateValidVotesFromBlocks(array $blocks): int
+    {
+        $total = 0;
+
+        foreach ($blocks as $block) {
+            if (! is_array($block)) {
+                continue;
+            }
+
+            $votes = is_array($block['votes'] ?? null) ? $block['votes'] : [];
+            $validos = (int) ($votes['validos'] ?? 0);
+
+            if ($validos <= 0) {
+                $validos =
+                    (int) ($votes['plancha_1'] ?? 0)
+                    + (int) ($votes['plancha_2'] ?? 0)
+                    + (int) ($votes['plancha_3'] ?? 0)
+                    + (int) ($votes['blancos'] ?? 0);
+            }
+
+            $total += max(0, $validos);
+        }
+
+        return $total;
     }
 }

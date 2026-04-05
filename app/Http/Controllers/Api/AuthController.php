@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Services\AuditTrailLogger;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
@@ -34,6 +35,11 @@ class AuthController extends Controller
         }
 
         Auth::login($user, false);
+
+        app(AuditTrailLogger::class)->recordSystemEvent('login', [
+            'identity' => $identity,
+            'user_id' => $user->id,
+        ]);
 
         $permissions = $user->roles
             ->flatMap(fn ($role) => $role->permissions->pluck('name'))
@@ -81,6 +87,10 @@ class AuthController extends Controller
      */
     public function logout(Request $request)
     {
+        app(AuditTrailLogger::class)->recordSystemEvent('logout', [
+            'user_id' => Auth::id(),
+        ]);
+
         Auth::logout();
         $request->session()->invalidate();
         $request->session()->regenerateToken();

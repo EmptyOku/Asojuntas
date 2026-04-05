@@ -177,7 +177,8 @@ const statusLabel = computed(() => {
 const subtitle = computed(() => {
   const election = detail.value.election_name || 'Elección';
   const commune = detail.value.commune_name || 'Comuna';
-  return `${election} • ${commune}`;
+  const location = detail.value.polling_table?.location || '';
+  return location ? `${election} • ${commune} • ${location}` : `${election} • ${commune}`;
 });
 
 const calculateValidVotes = (block) => {
@@ -222,6 +223,9 @@ const decide = async (decision) => {
     await axios.post(`/admin/audit-records/${route.params.id}/decision`, {
       decision,
       comments: decision === 'rejected' ? 'Rechazo manual en auditoria de demo.' : 'Aprobacion manual en auditoria de demo.',
+      changes_payload: {
+        blocks: JSON.parse(JSON.stringify(editableBlocks.value || [])),
+      },
     });
 
     router.push('/admin/audit');

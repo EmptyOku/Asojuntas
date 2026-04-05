@@ -43,6 +43,11 @@
           <FileCheck class="w-5 h-5" :class="[$route.path.includes('/audit') ? 'text-white' : 'text-gray-400']" />
           Auditoría de Actas
         </router-link>
+
+        <router-link to="/admin/audit-logs" @click="isMobileMenuOpen = false" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200" active-class="bg-aso-primary text-white shadow-md shadow-aso-primary/20" :class="[$route.path.includes('/audit-logs') ? 'bg-aso-primary text-white shadow-md shadow-aso-primary/20' : 'text-gray-700 hover:bg-gray-100']">
+          <ClipboardList class="w-5 h-5" :class="[$route.path.includes('/audit-logs') ? 'text-white' : 'text-gray-400']" />
+          Bitácora del Sistema
+        </router-link>
       </nav>
 
       <div class="p-4 border-t border-gray-100">
@@ -118,7 +123,7 @@ import { useRouter, useRoute } from 'vue-router';
 import { useAuthStore } from '@/stores/auth';
 
 // Añadimos Menu y X de Lucide para la versión móvil
-import { LayoutDashboard, Map, Users, FileCheck, ShieldAlert, Bell, Settings, LogOut, Menu, X } from 'lucide-vue-next';
+import { LayoutDashboard, Map, Users, FileCheck, ShieldAlert, Bell, Settings, LogOut, Menu, X, ClipboardList } from 'lucide-vue-next';
 
 const router = useRouter();
 const route = useRoute();

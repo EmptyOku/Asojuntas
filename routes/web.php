@@ -17,6 +17,7 @@ use App\Http\Controllers\Api\Admin\PermissionManagementController;
 use App\Http\Controllers\Api\Admin\RoleManagementController;
 use App\Http\Controllers\Api\Admin\UserManagementController;
 use App\Http\Controllers\Api\Admin\AuditManagementController;
+use App\Http\Controllers\Api\Admin\AuditLogController as SystemAuditLogController;
 
 // EL CONTROLADOR DE BARRIOS UNIFICADO
 use App\Http\Controllers\Api\Admin\NeighborhoodDirectoryController;
@@ -97,6 +98,10 @@ Route::prefix('api')->name('api.')->group(function (): void {
             Route::get('/audit-records', [AuditManagementController::class, 'index'])
                 ->middleware('api.permission:records.review')
                 ->name('admin.audit-records.index');
+
+            Route::get('/audit-logs', [SystemAuditLogController::class, 'index'])
+                ->middleware('api.permission:audit.view')
+                ->name('admin.audit-logs.index');
 
             Route::get('/audit-records/files/{scrutinyRecordFile}', [AuditManagementController::class, 'showFile'])
                 ->middleware('api.permission:records.review')

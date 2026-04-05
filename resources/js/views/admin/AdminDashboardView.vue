@@ -79,7 +79,12 @@
               <td colspan="5" class="px-6 py-8 text-center text-sm text-gray-500">No hay actas pendientes de revisión.</td>
             </tr>
             <tr v-for="row in rows" :key="row.id" class="hover:bg-gray-50/50 transition-colors">
-              <td class="px-6 py-4 font-medium text-gray-900">{{ row.polling_table?.name || row.polling_table?.code || ('Acta '+row.id) }}</td>
+              <td class="px-6 py-4 font-medium text-gray-900">
+                <div class="space-y-1">
+                  <p>{{ row.polling_table?.name || row.polling_table?.code || ('Acta '+row.id) }}</p>
+                  <p class="text-xs text-gray-500">{{ row.polling_table?.location || 'Dirección no registrada' }}</p>
+                </div>
+              </td>
               <td class="px-6 py-4">{{ row.jury_name }}</td>
               <td class="px-6 py-4 text-gray-500">{{ row.transmitted_at_human || 'Sin fecha' }}</td>
               <td class="px-6 py-4">

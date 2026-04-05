@@ -113,12 +113,22 @@
             <input :value="integration.recordId || ''" type="number" readonly class="w-full px-3 py-2 bg-gray-100 border border-gray-200 rounded-lg text-sm text-gray-700" placeholder="Se asigna automaticamente">
           </div>
           <div>
-            <label class="text-[10px] font-bold text-gray-400 uppercase">Mesa de Votacion ID</label>
-            <input v-model.number="integration.pollingTableId" type="number" min="1" class="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700" placeholder="Solo requerida primera vez">
+            <label class="text-[10px] font-bold text-gray-400 uppercase">Mesa de Votacion</label>
+            <input
+              v-model.number="integration.pollingTableId"
+              type="number"
+              min="1"
+              :readonly="Boolean(integration.pollingTableId)"
+              class="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700 disabled:opacity-80"
+              :class="integration.pollingTableId ? 'bg-gray-100' : 'bg-gray-50'"
+              :placeholder="integration.pollingTableId ? 'Asignada automaticamente' : 'Solo requerida la primera vez'"
+            >
           </div>
         </div>
 
-        <p class="mt-2 text-[11px] text-gray-500">Si ya existe un acta previa del jurado, el sistema la reutiliza y no vuelve a pedir configuración.</p>
+        <p class="mt-2 text-[11px] text-gray-500">
+          Si el sistema puede identificar tu barrio, la mesa se autocompleta. Si no, puedes ingresarla una sola vez y se guardará para las siguientes cargas.
+        </p>
 
         <button @click="extractCurrentPage" :disabled="isExtracting" class="mt-4 w-full sm:w-auto px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-bold disabled:opacity-60">
           {{ isExtracting ? 'Procesando...' : 'Extraer texto de esta página' }}

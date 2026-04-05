@@ -8,10 +8,14 @@ use App\Models\Commune;
 use App\Models\Neighborhood;
 use App\Models\ElectionBlock;
 use App\Models\ElectionBlockPosition;
+use App\Models\PollingTable;
+use App\Models\Position;
+use App\Models\Slate;
 use App\Models\ScrutinyBlockResult;
 use App\Models\Candidate;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class NeighborhoodDirectoryController extends Controller
 {
@@ -98,18 +102,9 @@ class NeighborhoodDirectoryController extends Controller
             ], 422);
         }
 
-        $timestamp = now()->format('YmdHis');
-        $year = (int) now()->format('Y');
-
-        $election = Election::create([
-            'neighborhood_id' => $neighborhood->id,
-            'name' => 'Eleccion JAC '.$neighborhood->name.' '.$year,
-            'code' => 'JAC-'.$neighborhood->code.'-'.$timestamp,
-            'election_date' => now()->toDateString(),
-            'period_year' => $year,
-            'is_active' => true,
-            'description' => 'Creada desde Geografia Electoral.',
-        ]);
+        $election = DB::transaction(function () use ($neighborhood): Election {
+            return $this->scaffoldElection($neighborhood);
+        });
 
         return response()->json([
             'success' => true,
@@ -140,6 +135,10 @@ class NeighborhoodDirectoryController extends Controller
         $activeElection->is_active = false;
         $activeElection->save();
 
+        PollingTable::query()
+            ->where('election_id', $activeElection->id)
+            ->update(['is_active' => false]);
+
         return response()->json([
             'success' => true,
             'message' => 'Elección cerrada correctamente.',
@@ -163,18 +162,9 @@ class NeighborhoodDirectoryController extends Controller
                 continue;
             }
 
-            $timestamp = now()->format('YmdHis');
-            $year = (int) now()->format('Y');
-
-            Election::create([
-                'neighborhood_id' => $neighborhood->id,
-                'name' => 'Eleccion JAC '.$neighborhood->name.' '.$year,
-                'code' => 'JAC-'.$neighborhood->code.'-'.$timestamp.'-'.$neighborhood->id,
-                'election_date' => now()->toDateString(),
-                'period_year' => $year,
-                'is_active' => true,
-                'description' => 'Creada desde Geografia Electoral.',
-            ]);
+            DB::transaction(function () use ($neighborhood): void {
+                $this->scaffoldElection($neighborhood);
+            });
 
             $created++;
         }
@@ -242,6 +232,118 @@ class NeighborhoodDirectoryController extends Controller
         }
 
         return $query;
+    }
+
+    private function scaffoldElection(Neighborhood $neighborhood): Election
+    {
+        $timestamp = now()->format('YmdHis');
+        $year = (int) now()->format('Y');
+
+        $election = Election::create([
+            'neighborhood_id' => $neighborhood->id,
+            'name' => 'Eleccion JAC '.$neighborhood->name.' '.$year,
+            'code' => 'JAC-'.$neighborhood->code.'-'.$timestamp,
+            'election_date' => now()->toDateString(),
+            'period_year' => $year,
+            'is_active' => true,
+            'description' => 'Creada desde Geografia Electoral.',
+        ]);
+
+        PollingTable::updateOrCreate(
+            [
+                'election_id' => $election->id,
+                'code' => 'MESA-001',
+            ],
+            [
+                'name' => 'Mesa Única',
+                'location' => $neighborhood->name,
+                'capacity' => 500,
+                'is_active' => true,
+            ]
+        );
+
+        $blockIds = DB::table('blocks')
+            ->whereIn('code', ['DIR', 'DEL', 'FIS'])
+            ->pluck('id', 'code');
+
+        $positions = Position::query()
+            ->whereIn('code', ['DIR_PRES', 'DIR_VICE', 'DIR_TESO', 'DEL_1', 'DEL_2', 'FIS_PRIN'])
+            ->get(['id', 'block_id', 'code']);
+
+        $electionBlockIds = [];
+        foreach (['DIR', 'DEL', 'FIS'] as $blockCode) {
+            $blockId = $blockIds[$blockCode] ?? null;
+            if (! $blockId) {
+                continue;
+            }
+
+            $electionBlock = ElectionBlock::updateOrCreate(
+                [
+                    'election_id' => $election->id,
+                    'block_id' => $blockId,
+                ],
+                [
+                    'is_active' => true,
+                ]
+            );
+
+            $electionBlockIds[$blockCode] = $electionBlock->id;
+        }
+
+        foreach ($positions as $position) {
+            $blockCode = array_search($position->block_id, $blockIds->all(), true);
+            $electionBlockId = $blockCode !== false ? ($electionBlockIds[$blockCode] ?? null) : null;
+
+            if (! $electionBlockId) {
+                continue;
+            }
+
+            ElectionBlockPosition::updateOrCreate(
+                [
+                    'election_block_id' => $electionBlockId,
+                    'position_id' => $position->id,
+                ],
+                [
+                    'block_id' => $position->block_id,
+                    'vacancies' => 1,
+                    'is_active' => true,
+                ]
+            );
+        }
+
+        $slates = [];
+        foreach ([1, 2, 3] as $number) {
+            $slates[$number] = Slate::updateOrCreate(
+                [
+                    'election_id' => $election->id,
+                    'code' => 'P'.$number,
+                ],
+                [
+                    'name' => 'Plancha '.$number,
+                    'description' => 'Plancha base '.$number.' para la elección '.$neighborhood->name,
+                    'is_active' => true,
+                ]
+            );
+        }
+
+        foreach ($slates as $slate) {
+            foreach ($electionBlockIds as $blockCode => $electionBlockId) {
+                DB::table('slate_blocks')->updateOrInsert(
+                    [
+                        'slate_id' => $slate->id,
+                        'election_block_id' => $electionBlockId,
+                    ],
+                    [
+                        'election_id' => $election->id,
+                        'is_active' => true,
+                        'updated_at' => now(),
+                        'created_at' => now(),
+                    ]
+                );
+            }
+        }
+
+        return $election;
     }
 
     private function toNeighborhoodRow($neighborhood): array

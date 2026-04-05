@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Election;
 use App\Models\PollingTable;
 use App\Models\ScrutinyRecord;
 use App\Models\ScrutinyRecordFile;
@@ -21,6 +22,7 @@ class JuryIngestController extends Controller
     {
         $user = $request->user();
         $storageDisk = $this->storageDisk();
+        $suggestedPollingTableId = $this->resolveDefaultPollingTableId($request);
 
         $lastOpenRecord = ScrutinyRecord::query()
             ->where('created_by_user_id', $user->id)
@@ -32,7 +34,7 @@ class JuryIngestController extends Controller
             'success' => true,
             'data' => [
                 'suggested_scrutiny_record_id' => $lastOpenRecord?->id,
-                'suggested_polling_table_id' => $lastOpenRecord?->polling_table_id,
+                'suggested_polling_table_id' => $lastOpenRecord?->polling_table_id ?? $suggestedPollingTableId,
                 'suggested_election_id' => $lastOpenRecord?->election_id,
                 'storage_disk' => $storageDisk,
             ],
@@ -301,8 +303,12 @@ class JuryIngestController extends Controller
             return ScrutinyRecord::findOrFail((int) $validated['scrutiny_record_id']);
         }
 
-        if (! empty($validated['polling_table_id'])) {
-            $pollingTable = PollingTable::findOrFail((int) $validated['polling_table_id']);
+        $pollingTableId = ! empty($validated['polling_table_id'])
+            ? (int) $validated['polling_table_id']
+            : ($this->resolveDefaultPollingTableId($request) ?? 0);
+
+        if ($pollingTableId > 0) {
+            $pollingTable = PollingTable::findOrFail($pollingTableId);
 
             $existing = ScrutinyRecord::query()
                 ->where('polling_table_id', $pollingTable->id)
@@ -342,6 +348,66 @@ class JuryIngestController extends Controller
         throw ValidationException::withMessages([
             'polling_table_id' => 'No hay acta previa para este usuario. Debes enviar polling_table_id al menos una vez.',
         ]);
+    }
+
+    private function resolveDefaultPollingTableId(Request $request): ?int
+    {
+        $user = $request->user();
+
+        if (! $user) {
+            return null;
+        }
+
+        $lastOpenRecord = ScrutinyRecord::query()
+            ->where('created_by_user_id', $user->id)
+            ->whereIn('status', ['draft', 'pending'])
+            ->latest()
+            ->first();
+
+        if ($lastOpenRecord?->polling_table_id) {
+            return (int) $lastOpenRecord->polling_table_id;
+        }
+
+        $neighborhoodId = $user->person?->neighborhood_id;
+        if ($neighborhoodId) {
+            $activeElection = Election::query()
+                ->where('neighborhood_id', $neighborhoodId)
+                ->where('is_active', true)
+                ->latest('election_date')
+                ->first();
+
+            if ($activeElection) {
+                $pollingTableId = PollingTable::query()
+                    ->where('election_id', $activeElection->id)
+                    ->where('is_active', true)
+                    ->orderBy('id')
+                    ->value('id');
+
+                if ($pollingTableId) {
+                    return (int) $pollingTableId;
+                }
+
+                $pollingTableId = PollingTable::query()
+                    ->where('election_id', $activeElection->id)
+                    ->orderBy('id')
+                    ->value('id');
+
+                if ($pollingTableId) {
+                    return (int) $pollingTableId;
+                }
+            }
+        }
+
+        $activePollingTables = PollingTable::query()
+            ->where('is_active', true)
+            ->orderBy('id')
+            ->get(['id']);
+
+        if ($activePollingTables->count() === 1) {
+            return (int) $activePollingTables->first()->id;
+        }
+
+        return null;
     }
 
     private function decodeJsonLikePayload(mixed $payload): mixed

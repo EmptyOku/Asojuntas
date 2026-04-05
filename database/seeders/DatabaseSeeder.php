@@ -8,6 +8,9 @@ class DatabaseSeeder extends Seeder
 {
     public function run(): void
     {
+        // Seeders principales (entorno real limpio)
+        // - Cargan catalogos, seguridad base y geografia
+        // - NO crean actas, extracciones OCR, resultados ni candidatos de prueba
         $this->call([
             DocumentTypeSeeder::class,
             RoleSeeder::class,
@@ -19,10 +22,17 @@ class DatabaseSeeder extends Seeder
             CommuneSeeder::class,
             NeighborhoodSeeder::class,
             ElectoralCatalogSeeder::class,
-            GlobalElectionsSeeder::class,
-            ScrutinyExtractionSeeder::class,
-            CandidateDraftSeeder::class,
-            ElectionExtendedBlocksSeeder::class,
         ]);
+
+        // Seeders de pruebas/demo (activar solo cuando se necesiten datos simulados)
+        // $this->call([
+        //     GlobalElectionsSeeder::class,
+        //     ScrutinyExtractionSeeder::class,
+        //     CandidateDraftSeeder::class,
+        //     ElectionExtendedBlocksSeeder::class,
+        //     ElectionMvpSeeder::class,
+        //     CandidateSeeder::class,
+        //     GeographicDemoSeeder::class,
+        // ]);
     }
 }
