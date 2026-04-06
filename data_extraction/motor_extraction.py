@@ -59,9 +59,32 @@ def infer_media_type(image_path: Path) -> str:
     return "image/jpeg"
 
 
+def build_bedrock_error_message(exc: Exception, region: str, model_id: str) -> str:
+    error_text = str(exc).strip()
+
+    if exc.__class__.__name__ == "EndpointConnectionError" or "Could not connect to the endpoint URL" in error_text:
+        return (
+            "No se pudo conectar a AWS Bedrock en la region "
+            f"{region} usando el modelo {model_id}. Verifica que haya salida a Internet, "
+            "que la region sea correcta y que el equipo tenga acceso de red al endpoint de AWS."
+        )
+
+    if exc.__class__.__name__ in {"NoCredentialsError", "PartialCredentialsError"}:
+        return (
+            "Faltan credenciales AWS validas para consultar Bedrock. "
+            "Revisa AWS_ACCESS_KEY_ID y AWS_SECRET_ACCESS_KEY en el .env."
+        )
+
+    if exc.__class__.__name__ == "ClientError":
+        return f"Bedrock rechazo la solicitud: {error_text}"
+
+    return error_text
+
+
 def extract_with_bedrock(image_path: Path):
     try:
         import boto3
+        from botocore.exceptions import ClientError, EndpointConnectionError, NoCredentialsError, PartialCredentialsError
     except ImportError as exc:
         raise RuntimeError("Falta dependencia boto3. Instala requirements con: pip install -r data_extraction/requirements.txt") from exc
 
@@ -74,12 +97,13 @@ def extract_with_bedrock(image_path: Path):
     if aws_access_key.upper().startswith("TU_") or aws_secret_key.upper().startswith("TU_"):
         raise RuntimeError("Credenciales AWS de ejemplo detectadas en .env. Configura claves reales con acceso a Bedrock")
 
+    region = os.getenv("AWS_REGION", "us-east-1")
+    model_id = os.getenv("BEDROCK_MODEL_ID", "anthropic.claude-3-haiku-20240307-v1:0")
+
     client = boto3.client(
         service_name="bedrock-runtime",
-        region_name=os.getenv("AWS_REGION", "us-east-1"),
+        region_name=region,
     )
-
-    model_id = os.getenv("BEDROCK_MODEL_ID", "anthropic.claude-3-haiku-20240307-v1:0")
 
     prompt_text = """
 ERES UN ANALISTA DE DATOS ELECTORALES.
@@ -143,7 +167,11 @@ Formato esperado:
         ],
     }
 
-    response = client.invoke_model(modelId=model_id, body=json.dumps(body))
+    try:
+        response = client.invoke_model(modelId=model_id, body=json.dumps(body))
+    except (EndpointConnectionError, NoCredentialsError, PartialCredentialsError, ClientError) as exc:
+        raise RuntimeError(build_bedrock_error_message(exc, region, model_id)) from exc
+
     raw_text = json.loads(response["body"].read())["content"][0]["text"]
     parsed_json = parse_json_from_response(raw_text)
 

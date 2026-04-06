@@ -39,6 +39,8 @@ python data_extraction/motor_extraction.py --record-id 1 --image storage/app/pri
 
 - El record_id debe existir en scrutiny_records.
 - La API usa el header X-Ingest-Token.
+- El extractor depende de AWS Bedrock y requiere salida a Internet, credenciales AWS validas y acceso al endpoint de la region configurada.
+- Si aparece un error como `Could not connect to the endpoint URL`, revisa `AWS_REGION`, conectividad de red, proxy/VPN y permisos IAM para `bedrock:InvokeModel`.
 - Si ya tienes scrutiny_record_file_id, puedes omitir upload:
 
 ```bash
