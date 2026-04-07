@@ -95,6 +95,8 @@
             <tr>
               <th class="text-left font-medium px-3 py-2.5">Usuario</th>
               <th class="text-left font-medium px-3 py-2.5">Correo</th>
+              <th class="text-left font-medium px-3 py-2.5">Barrio</th>
+              <th class="text-left font-medium px-3 py-2.5">Mesa Sugerida</th>
               <th class="text-left font-medium px-3 py-2.5">Estado</th>
               <th class="text-left font-medium px-3 py-2.5">Roles</th>
               <th class="text-left font-medium px-3 py-2.5">Acción</th>
@@ -104,6 +106,16 @@
             <tr v-for="user in filteredUsers" :key="user.id" class="border-t border-gray-100">
               <td class="px-3 py-2.5 text-gray-900">{{ user.username }}</td>
               <td class="px-3 py-2.5 text-gray-700">{{ user.email }}</td>
+              <td class="px-3 py-2.5 text-gray-700">
+                <span v-if="user.person?.neighborhood">{{ user.person.neighborhood.name }}</span>
+                <span v-else class="text-gray-400">Sin asignar</span>
+              </td>
+              <td class="px-3 py-2.5 text-gray-700">
+                <template v-if="suggestedTableForUser(user)">
+                  {{ suggestedTableForUser(user).name }} ({{ suggestedTableForUser(user).code }})
+                </template>
+                <span v-else class="text-gray-400">Sin mesa activa</span>
+              </td>
               <td class="px-3 py-2.5">
                 <span class="text-xs px-2 py-1 rounded-md" :class="user.is_active ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-700'">
                   {{ user.is_active ? 'Activo' : 'Inactivo' }}
@@ -123,6 +135,13 @@
                   @click="openRoleEditor(user)"
                 >
                   Editar Roles
+                </button>
+                <button
+                  type="button"
+                  class="text-xs px-3 py-1.5 rounded-md border border-gray-200 text-gray-700 hover:bg-gray-50 ml-2"
+                  @click="openNeighborhoodEditor(user)"
+                >
+                  Asignar Barrio
                 </button>
               </td>
             </tr>
@@ -155,6 +174,39 @@
         </div>
       </div>
     </div>
+
+    <div v-if="editingNeighborhoodUser" class="fixed inset-0 z-40 flex items-center justify-center p-4 bg-black/40">
+      <div class="w-full max-w-lg bg-white rounded-2xl border border-gray-100 shadow-xl p-5">
+        <h3 class="text-lg font-semibold text-gray-900 mb-1">Asignar barrio a {{ editingNeighborhoodUser.username }}</h3>
+        <p class="text-sm text-gray-500 mb-4">La mesa se sugiere automáticamente según la elección activa del barrio.</p>
+
+        <label class="block text-sm text-gray-700 mb-1">Barrio</label>
+        <select v-model="editingNeighborhoodId" class="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white">
+          <option value="">Sin barrio asignado</option>
+          <option v-for="item in assignmentContext" :key="item.id" :value="String(item.id)">
+            {{ item.name }}
+          </option>
+        </select>
+
+        <div class="mt-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+          <p class="font-medium">Mesa sugerida:</p>
+          <p v-if="editingSuggestedTable">{{ editingSuggestedTable.name }} ({{ editingSuggestedTable.code }})</p>
+          <p v-else class="text-gray-500">No hay mesa activa disponible para el barrio seleccionado.</p>
+        </div>
+
+        <div class="flex items-center justify-end gap-2 mt-4">
+          <button type="button" class="px-3 py-2 rounded-lg border border-gray-200 text-gray-700" @click="closeNeighborhoodEditor">Cancelar</button>
+          <button
+            type="button"
+            class="px-3 py-2 rounded-lg bg-aso-primary text-white hover:bg-aso-primary-dark disabled:opacity-60"
+            :disabled="loading"
+            @click="saveNeighborhood"
+          >
+            Guardar
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -168,6 +220,7 @@ const errorMessage = ref('');
 const users = ref([]);
 const roles = ref([]);
 const search = ref('');
+const assignmentContext = ref([]);
 
 const createForm = ref({
   username: '',
@@ -178,6 +231,8 @@ const createForm = ref({
 
 const editingUser = ref(null);
 const editingRoles = ref([]);
+const editingNeighborhoodUser = ref(null);
+const editingNeighborhoodId = ref('');
 
 const filteredUsers = computed(() => {
   if (!search.value) return users.value;
@@ -198,11 +253,33 @@ const loadUsers = async () => {
   users.value = data.data?.data ?? data.data ?? [];
 };
 
+const loadAssignmentContext = async () => {
+  const { data } = await axios.get('/admin/users/assignment-context');
+  assignmentContext.value = Array.isArray(data.data) ? data.data : [];
+};
+
+const getSuggestedTableByNeighborhood = (neighborhoodId) => {
+  const targetId = Number(neighborhoodId || 0);
+  if (!targetId) {
+    return null;
+  }
+
+  const item = assignmentContext.value.find((row) => Number(row.id) === targetId);
+  return item?.suggested_polling_table || null;
+};
+
+const suggestedTableForUser = (user) => {
+  const neighborhoodId = user?.person?.neighborhood_id;
+  return getSuggestedTableByNeighborhood(neighborhoodId);
+};
+
+const editingSuggestedTable = computed(() => getSuggestedTableByNeighborhood(editingNeighborhoodId.value));
+
 const loadAll = async () => {
   loading.value = true;
   errorMessage.value = '';
   try {
-    await Promise.all([loadRoles(), loadUsers()]);
+    await Promise.all([loadRoles(), loadUsers(), loadAssignmentContext()]);
   } catch (error) {
     errorMessage.value = error?.response?.data?.message || 'No fue posible cargar usuarios y roles.';
   } finally {
@@ -243,6 +320,16 @@ const closeRoleEditor = () => {
   editingRoles.value = [];
 };
 
+const openNeighborhoodEditor = (user) => {
+  editingNeighborhoodUser.value = user;
+  editingNeighborhoodId.value = user?.person?.neighborhood_id ? String(user.person.neighborhood_id) : '';
+};
+
+const closeNeighborhoodEditor = () => {
+  editingNeighborhoodUser.value = null;
+  editingNeighborhoodId.value = '';
+};
+
 const saveRoles = async () => {
   if (!editingUser.value) return;
 
@@ -257,6 +344,28 @@ const saveRoles = async () => {
     closeRoleEditor();
   } catch (error) {
     errorMessage.value = error?.response?.data?.message || 'No se pudieron actualizar los roles.';
+  } finally {
+    loading.value = false;
+  }
+};
+
+const saveNeighborhood = async () => {
+  if (!editingNeighborhoodUser.value) {
+    return;
+  }
+
+  loading.value = true;
+  errorMessage.value = '';
+
+  try {
+    await axios.put(`/admin/users/${editingNeighborhoodUser.value.id}/neighborhood`, {
+      neighborhood_id: editingNeighborhoodId.value ? Number(editingNeighborhoodId.value) : null,
+    });
+
+    await loadUsers();
+    closeNeighborhoodEditor();
+  } catch (error) {
+    errorMessage.value = error?.response?.data?.message || 'No se pudo actualizar el barrio del usuario.';
   } finally {
     loading.value = false;
   }

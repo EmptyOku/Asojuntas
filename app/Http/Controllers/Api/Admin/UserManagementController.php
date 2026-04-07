@@ -3,6 +3,9 @@
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Election;
+use App\Models\Neighborhood;
+use App\Models\PollingTable;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -14,7 +17,7 @@ class UserManagementController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $query = User::with(['person', 'roles:id,name,display_name']);
+        $query = User::with(['person.neighborhood:id,name,code', 'roles:id,name,display_name']);
 
         if ($request->filled('search')) {
             $search = $request->string('search')->toString();
@@ -38,6 +41,51 @@ class UserManagementController extends Controller
         return response()->json([
             'success' => true,
             'data' => $users,
+        ]);
+    }
+
+    public function assignmentContext(): JsonResponse
+    {
+        $neighborhoods = Neighborhood::query()
+            ->select(['id', 'name', 'code'])
+            ->with([
+                'elections' => function ($query): void {
+                    $query->select(['id', 'neighborhood_id', 'is_active', 'name', 'election_date'])
+                        ->where('is_active', true)
+                        ->latest('election_date')
+                        ->with([
+                            'pollingTables' => function ($tableQuery): void {
+                                $tableQuery->select(['id', 'election_id', 'name', 'code', 'is_active'])
+                                    ->where('is_active', true)
+                                    ->orderBy('id');
+                            },
+                        ]);
+                },
+            ])
+            ->orderBy('name')
+            ->get();
+
+        $payload = $neighborhoods->map(function (Neighborhood $neighborhood): array {
+            $activeElection = $neighborhood->elections->first();
+            $suggestedTable = $activeElection?->pollingTables?->first();
+
+            return [
+                'id' => $neighborhood->id,
+                'name' => $neighborhood->name,
+                'code' => $neighborhood->code,
+                'active_election_id' => $activeElection?->id,
+                'active_election_name' => $activeElection?->name,
+                'suggested_polling_table' => $suggestedTable ? [
+                    'id' => $suggestedTable->id,
+                    'name' => $suggestedTable->name,
+                    'code' => $suggestedTable->code,
+                ] : null,
+            ];
+        })->values();
+
+        return response()->json([
+            'success' => true,
+            'data' => $payload,
         ]);
     }
 
@@ -105,6 +153,54 @@ class UserManagementController extends Controller
             'success' => true,
             'message' => 'Roles actualizados correctamente',
             'data' => $user,
+        ]);
+    }
+
+    public function syncNeighborhood(Request $request, User $user): JsonResponse
+    {
+        $validated = $request->validate([
+            'neighborhood_id' => 'nullable|exists:neighborhoods,id',
+        ]);
+
+        if (! $user->person_id) {
+            return response()->json([
+                'success' => false,
+                'message' => 'El usuario no tiene persona asociada para asignar barrio.',
+            ], 422);
+        }
+
+        $user->loadMissing('person');
+
+        $user->person->update([
+            'neighborhood_id' => $validated['neighborhood_id'] ?? null,
+        ]);
+
+        $suggestedPollingTable = null;
+        if (! empty($validated['neighborhood_id'])) {
+            $activeElectionId = Election::query()
+                ->where('neighborhood_id', (int) $validated['neighborhood_id'])
+                ->where('is_active', true)
+                ->latest('election_date')
+                ->value('id');
+
+            if ($activeElectionId) {
+                $suggestedPollingTable = PollingTable::query()
+                    ->where('election_id', (int) $activeElectionId)
+                    ->where('is_active', true)
+                    ->orderBy('id')
+                    ->first(['id', 'name', 'code']);
+            }
+        }
+
+        $user->load(['person.neighborhood:id,name,code', 'roles:id,name,display_name']);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Barrio del usuario actualizado correctamente.',
+            'data' => [
+                'user' => $user,
+                'suggested_polling_table' => $suggestedPollingTable,
+            ],
         ]);
     }
 }

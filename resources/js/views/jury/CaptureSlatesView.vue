@@ -93,6 +93,9 @@ const isUploading = ref(false);
 const uploadError = ref('');
 const uploadStep = ref('');
 const REQUIRED_SCRUTINY_PAGES = 3;
+const PREVIEW_MAX_ATTEMPTS = 3;
+const PREVIEW_BASE_BACKOFF_MS = 1200;
+const PREVIEW_TIMEOUT_MS = 240000;
 const docStore = useDocumentStore();
 
 const isPlancha = computed(() => route.query.doc === 'plancha');
@@ -112,24 +115,53 @@ const scrutinyWarningText = computed(() => {
 });
 const canSendPackage = computed(() => isPlancha.value || capturedImages.value.length === REQUIRED_SCRUTINY_PAGES);
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const isRetryablePreviewError = (error) => {
+  const status = error?.response?.status;
+  if (!status) {
+    return true;
+  }
+
+  if ([408, 422, 429, 500, 502, 503, 504].includes(status)) {
+    return true;
+  }
+
+  return false;
+};
+
 const extractPreviewForPage = async (image, pageIndex) => {
   const form = new FormData();
   form.append('document_file', image.file);
   form.append('document_type', isPlancha.value ? 'plancha' : 'escrutinio');
   form.append('page_number', String(pageIndex + 1));
 
-  const { data } = await axios.post('/jury/extract-preview', form, {
-    headers: {
-      'Content-Type': 'multipart/form-data',
-    },
-  });
+  for (let attempt = 1; attempt <= PREVIEW_MAX_ATTEMPTS; attempt += 1) {
+    try {
+      const { data } = await axios.post('/jury/extract-preview', form, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+        timeout: PREVIEW_TIMEOUT_MS,
+      });
 
-  const pageData = data?.data?.review_page_data;
-  if (!pageData || !Array.isArray(pageData.bloques)) {
-    throw new Error(`La extracción de la página ${pageIndex + 1} no devolvió bloques válidos.`);
+      const pageData = data?.data?.review_page_data;
+      if (!pageData || !Array.isArray(pageData.bloques)) {
+        throw new Error(`La extracción de la página ${pageIndex + 1} no devolvió bloques válidos.`);
+      }
+
+      return pageData;
+    } catch (error) {
+      if (attempt >= PREVIEW_MAX_ATTEMPTS || !isRetryablePreviewError(error)) {
+        throw error;
+      }
+
+      uploadStep.value = `Conexión inestable. Reintentando página ${pageIndex + 1} (${attempt + 1}/${PREVIEW_MAX_ATTEMPTS})...`;
+      await sleep(PREVIEW_BASE_BACKOFF_MS * attempt);
+    }
   }
 
-  return pageData;
+  throw new Error(`La extracción de la página ${pageIndex + 1} agotó los reintentos.`);
 };
 
 const handleImageUpload = (event) => {

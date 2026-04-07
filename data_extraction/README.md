@@ -13,7 +13,10 @@ Este flujo hace 3 pasos en un solo comando:
 - AWS_REGION
 - EXTRACTOR_INGEST_TOKEN
 - INGEST_API_BASE_URL (ejemplo: http://127.0.0.1:8000/api)
+- EXTRACTOR_PYTHON_BIN (opcional; evita copiar rutas absolutas de otro equipo)
 - BEDROCK_MODEL_ID (opcional)
+- BEDROCK_MAX_RETRIES (opcional, por defecto 3)
+- BEDROCK_RETRY_BASE_SECONDS (opcional, por defecto 1.2)
 
 ## Instalacion
 

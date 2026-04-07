@@ -5,6 +5,7 @@ import mimetypes
 import os
 import re
 import sys
+import time
 from pathlib import Path
 
 try:
@@ -81,10 +82,44 @@ def build_bedrock_error_message(exc: Exception, region: str, model_id: str) -> s
     return error_text
 
 
+def is_retryable_bedrock_error(exc: Exception) -> bool:
+    if exc.__class__.__name__ in {"EndpointConnectionError", "ConnectTimeoutError", "ReadTimeoutError"}:
+        return True
+
+    if exc.__class__.__name__ == "ClientError":
+        response = getattr(exc, "response", {}) or {}
+        error_data = response.get("Error", {}) if isinstance(response, dict) else {}
+        code = str(error_data.get("Code", "")).strip()
+
+        return code in {
+            "InternalServerException",
+            "ModelTimeoutException",
+            "ServiceUnavailableException",
+            "ThrottlingException",
+            "TooManyRequestsException",
+        }
+
+    return False
+
+
+def invoke_model_with_retry(client, model_id: str, payload: dict):
+    max_attempts = max(1, int(os.getenv("BEDROCK_MAX_RETRIES", "3")))
+    base_delay = max(0.2, float(os.getenv("BEDROCK_RETRY_BASE_SECONDS", "1.2")))
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            return client.invoke_model(modelId=model_id, body=json.dumps(payload))
+        except Exception as exc:
+            if attempt >= max_attempts or not is_retryable_bedrock_error(exc):
+                raise
+
+            time.sleep(base_delay * attempt)
+
+
 def extract_with_bedrock(image_path: Path):
     try:
         import boto3
-        from botocore.exceptions import ClientError, EndpointConnectionError, NoCredentialsError, PartialCredentialsError
+        from botocore.exceptions import ClientError, ConnectTimeoutError, EndpointConnectionError, NoCredentialsError, PartialCredentialsError, ReadTimeoutError
     except ImportError as exc:
         raise RuntimeError("Falta dependencia boto3. Instala requirements con: pip install -r data_extraction/requirements.txt") from exc
 
@@ -168,8 +203,8 @@ Formato esperado:
     }
 
     try:
-        response = client.invoke_model(modelId=model_id, body=json.dumps(body))
-    except (EndpointConnectionError, NoCredentialsError, PartialCredentialsError, ClientError) as exc:
+        response = invoke_model_with_retry(client, model_id, body)
+    except (EndpointConnectionError, ConnectTimeoutError, ReadTimeoutError, NoCredentialsError, PartialCredentialsError, ClientError) as exc:
         raise RuntimeError(build_bedrock_error_message(exc, region, model_id)) from exc
 
     raw_text = json.loads(response["body"].read())["content"][0]["text"]

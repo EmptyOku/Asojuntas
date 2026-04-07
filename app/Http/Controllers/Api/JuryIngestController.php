@@ -13,6 +13,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use RuntimeException;
 use Symfony\Component\Process\Process;
 use Throwable;
 
@@ -43,6 +44,8 @@ class JuryIngestController extends Controller
 
     public function submit(Request $request, ScrutinyExtractionImporter $importer): JsonResponse
     {
+        $this->extendExecutionTimeout();
+
         $maxFileSizeKb = (int) config('services.extractor.max_upload_kb', 10240);
 
         $validated = $request->validate([
@@ -187,6 +190,8 @@ class JuryIngestController extends Controller
 
     public function previewExtraction(Request $request): JsonResponse
     {
+        $this->extendExecutionTimeout();
+
         $maxFileSizeKb = (int) config('services.extractor.max_upload_kb', 10240);
 
         $validated = $request->validate([
@@ -203,7 +208,16 @@ class JuryIngestController extends Controller
 
         $tmpName = 'preview_'.uniqid('', true).'_'.$file->getClientOriginalName();
         $tmpPath = $file->move($tempDir, $tmpName)->getPathname();
-        $pythonBinary = $this->resolvePythonBinary();
+
+        try {
+            $pythonBinary = $this->resolvePythonBinary();
+        } catch (RuntimeException $exception) {
+            return response()->json([
+                'success' => false,
+                'message' => $exception->getMessage(),
+                'error' => $exception->getMessage(),
+            ], 422);
+        }
 
         try {
             $process = new Process([
@@ -279,6 +293,19 @@ class JuryIngestController extends Controller
     private function storageDisk(): string
     {
         return (string) config('services.extractor.storage_disk', config('filesystems.default', 'local'));
+    }
+
+    private function extendExecutionTimeout(): void
+    {
+        $seconds = max(30, (int) config('services.extractor.request_timeout_seconds', 180));
+
+        @set_time_limit($seconds);
+
+        try {
+            ini_set('max_execution_time', (string) $seconds);
+        } catch (Throwable) {
+            // Ignore environments where ini_set is restricted.
+        }
     }
 
     private function resolveStorageDisk(string $path): ?string
@@ -497,20 +524,46 @@ class JuryIngestController extends Controller
     private function resolvePythonBinary(): string
     {
         $configured = trim((string) env('EXTRACTOR_PYTHON_BIN', ''));
+        $candidates = [];
+
         if ($configured !== '') {
-            return $configured;
+            $candidates[] = $configured;
         }
 
         $venvWindows = base_path('.venv/Scripts/python.exe');
-        if (is_file($venvWindows)) {
-            return $venvWindows;
-        }
-
         $venvPosix = base_path('.venv/bin/python');
-        if (is_file($venvPosix)) {
-            return $venvPosix;
+        $candidates[] = $venvWindows;
+        $candidates[] = $venvPosix;
+        $candidates[] = 'python';
+        $candidates[] = 'python3';
+
+        foreach ($candidates as $candidate) {
+            if (! $this->canRunPythonBinary($candidate)) {
+                continue;
+            }
+
+            return $candidate;
         }
 
-        return PHP_OS_FAMILY === 'Windows' ? 'python' : 'python3';
+        throw new RuntimeException(
+            'No se encontro un ejecutable de Python valido para OCR. '
+            .'Crea .venv en la raiz del proyecto o configura EXTRACTOR_PYTHON_BIN con la ruta local de tu equipo.'
+        );
+    }
+
+    private function canRunPythonBinary(string $binary): bool
+    {
+        if (str_contains($binary, DIRECTORY_SEPARATOR) && ! is_file($binary)) {
+            return false;
+        }
+
+        try {
+            $process = new Process([$binary, '--version'], base_path(), null, null, 10);
+            $process->run();
+
+            return $process->isSuccessful();
+        } catch (Throwable) {
+            return false;
+        }
     }
 }

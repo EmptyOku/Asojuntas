@@ -39,6 +39,7 @@ return [
         'ingest_token' => env('EXTRACTOR_INGEST_TOKEN'),
         'max_upload_kb' => (int) env('EXTRACTOR_MAX_UPLOAD_KB', 10240),
         'storage_disk' => env('EXTRACTOR_STORAGE_DISK', env('FILESYSTEM_DISK', 'local')),
+        'request_timeout_seconds' => (int) env('EXTRACTOR_REQUEST_TIMEOUT_SECONDS', 180),
     ],
 
 ];

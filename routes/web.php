@@ -79,6 +79,10 @@ Route::prefix('api')->name('api.')->group(function (): void {
                 ->middleware('api.permission:users.view')
                 ->name('admin.users.index');
 
+            Route::get('/users/assignment-context', [UserManagementController::class, 'assignmentContext'])
+                ->middleware('api.permission:users.view')
+                ->name('admin.users.assignment-context');
+
             Route::post('/users', [UserManagementController::class, 'store'])
                 ->middleware('api.permission:users.create')
                 ->name('admin.users.store');
@@ -86,6 +90,10 @@ Route::prefix('api')->name('api.')->group(function (): void {
             Route::put('/users/{user}/roles', [UserManagementController::class, 'syncRoles'])
                 ->middleware('api.permission:roles.assign')
                 ->name('admin.users.roles.sync');
+
+            Route::put('/users/{user}/neighborhood', [UserManagementController::class, 'syncNeighborhood'])
+                ->middleware('api.permission:users.update')
+                ->name('admin.users.neighborhood.sync');
 
             Route::get('/roles', [RoleManagementController::class, 'index'])
                 ->middleware('api.permission:roles.view')
