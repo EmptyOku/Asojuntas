@@ -1,21 +1,17 @@
 <template>
   <div class="space-y-6 flex-1 flex flex-col">
     
-    <!-- Encabezado -->
     <div class="flex items-center gap-4">
-      <router-link to="/jury/dashboard" class="p-2 bg-white text-gray-500 hover:text-gray-900 rounded-full shadow-sm border border-gray-100 transition-colors">
+      <button @click="goBack" class="p-2 bg-white text-gray-500 hover:text-gray-900 rounded-full shadow-sm border border-gray-100 transition-colors">
         <ArrowLeft class="w-5 h-5" />
-      </router-link>
+      </button>
       <h2 class="text-xl font-bold text-gray-900">Capturar {{ isPlancha ? 'Planchas' : 'Escrutinio' }}</h2>
     </div>
 
-    <!-- Contenedor Principal -->
     <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex-1 flex flex-col">
       
-      <!-- INPUT OCULTO: Al no tener capture="environment" y tener "multiple", el celular preguntará si usar Cámara o Galería y permitirá seleccionar varias -->
       <input type="file" accept="image/*" multiple id="cameraInput" class="hidden" @change="handleImageUpload">
 
-      <!-- ESTADO 1: PANTALLA INICIAL (CERO FOTOS) -->
       <div v-if="capturedImages.length === 0" class="flex-1 flex flex-col items-center justify-center text-center space-y-6">
         <div :class="isPlancha ? 'bg-orange-50 text-orange-500' : 'bg-green-50 text-aso-primary'" class="w-24 h-24 rounded-full flex items-center justify-center">
           <ScanLine class="w-12 h-12" />
@@ -35,7 +31,6 @@
         </label>
       </div>
 
-      <!-- ESTADO 2: CUADRÍCULA DE FOTOS TOMADAS -->
       <div v-else class="flex-1 flex flex-col h-full space-y-4">
         <h3 class="text-sm font-bold text-gray-500 uppercase tracking-wider">
           Páginas capturadas ({{ capturedImages.length }})
@@ -45,31 +40,26 @@
           {{ scrutinyWarningText }}
         </div>
         
-        <!-- Grid responsivo para las miniaturas -->
         <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 overflow-y-auto flex-1 p-1">
           
           <div v-for="(img, index) in capturedImages" :key="img.id" class="relative group aspect-[3/4] bg-gray-100 rounded-xl overflow-hidden border border-gray-200 shadow-sm">
             <img :src="img.url" class="w-full h-full object-cover">
             
-            <!-- Etiqueta de Número de Página -->
             <div class="absolute top-2 left-2 bg-black/60 text-white text-xs font-bold px-2 py-1 rounded-md">
               Pág {{ index + 1 }}
             </div>
             
-            <!-- Botón Eliminar -->
             <button @click="removeImage(img.id)" class="absolute top-2 right-2 p-1.5 bg-red-500 text-white rounded-lg opacity-90 hover:opacity-100 shadow-md transition-opacity">
               <X class="w-4 h-4" />
             </button>
           </div>
           
-          <!-- Botón "Añadir otra" como una tarjeta más en el Grid -->
           <label for="cameraInput" class="aspect-[3/4] flex flex-col items-center justify-center gap-2 border-2 border-dashed border-gray-300 rounded-xl bg-gray-50 hover:bg-gray-100 cursor-pointer transition-colors">
              <Plus class="w-8 h-8 text-gray-400" />
              <span class="text-xs font-bold text-gray-500 text-center px-2">Añadir página</span>
           </label>
         </div>
 
-        <!-- Botón de Envío Fijo al fondo -->
         <button @click="enviarActa" :disabled="isUploading || !canSendPackage" class="w-full py-4 bg-aso-primary text-white font-bold rounded-xl shadow-md hover:bg-aso-primary-dark transition-all flex items-center justify-center gap-2 disabled:opacity-70 mt-4 shrink-0">
           <template v-if="isUploading">
             <Loader2 class="w-5 h-5 animate-spin" /> Extrayendo paquete...
@@ -199,6 +189,14 @@ const enviarActa = async () => {
   } finally {
     isUploading.value = false;
     uploadStep.value = '';
+  }
+};
+
+const goBack = () => {
+  if (route.path.includes('/secretary')) {
+    router.push('/secretary/dashboard');
+  } else {
+    router.push('/jury/dashboard');
   }
 };
 
