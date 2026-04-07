@@ -2,11 +2,17 @@ import { createRouter, createWebHistory } from 'vue-router';
 import { useAuthStore } from '@/stores/auth';
 import { startRouteLoading, stopRouteLoading } from '@/state/loading';
 
-// Los Layouts se importan de forma estática
+// ==========================================
+// Importación de Layouts (Estáticos)
+// ==========================================
 import AdminLayout from '@/layouts/AdminLayout.vue';
 import JuryLayout from '@/layouts/JuryLayout.vue';
+import SecretaryLayout from '@/layouts/SecretaryLayout.vue';
 
-// Vistas para el módulo de candidatos y resultados
+// Importación de vistas estáticas
+import SecretaryDashboardView from '@/views/secretary/SecretaryDashboardView.vue';
+import SecretaryPlanchasList from '@/views/secretary/SecretaryPlanchasList.vue';
+import SecretaryPlanchaDetailView from '@/views/secretary/SecretaryPlanchaDetailView.vue';
 import CandidatesDirectoryView from '@/views/admin/CandidatesDirectoryView.vue';
 import NeighborhoodResultsView from '@/views/admin/NeighborhoodResultsView.vue';
 
@@ -22,7 +28,7 @@ const routes = [
   },
 
   // ==========================================
-  // Módulo de Jurados
+  // Módulo de Jurados (Solo Escrutinio)
   // ==========================================
   {
     path: '/jury',
@@ -32,6 +38,22 @@ const routes = [
       { path: 'dashboard', name: 'jury-dashboard', component: () => import('@/views/jury/JuryDashboardView.vue') },
       { path: 'capture', name: 'jury-capture', component: () => import('@/views/jury/CaptureSlatesView.vue') },
       { path: 'review', name: 'jury-review', component: () => import('@/views/jury/PreviousReviewView.vue') }
+    ]
+  },
+
+  // ==========================================
+  // Módulo de Secretaría 
+  // ==========================================
+  {
+    path: '/secretary',
+    component: SecretaryLayout,
+    // TODO: Ajusta el 'permission' según lo que tengas en tu base de datos para la secretaria
+    meta: { requiresAuth: true, permission: 'records.upload' }, 
+    children: [
+      { path: 'dashboard', name: 'secretary-dashboard', component: SecretaryDashboardView },
+      { path: 'capture', name: 'secretary-capture', component: () => import('@/views/jury/CaptureSlatesView.vue') },
+      { path: 'planchas', name: 'secretary-planchas', component: SecretaryPlanchasList },
+      { path: 'planchas/:id', name: 'secretary-plancha-detail', component: SecretaryPlanchaDetailView }
     ]
   },
 
@@ -49,19 +71,8 @@ const routes = [
       { path: 'geography', name: 'admin-geography', component: () => import('@/views/admin/GeographyView.vue') },
       { path: 'audit/:id', name: 'admin-audit-detail', component: () => import('@/views/admin/VoteValidationView.vue') },
       { path: 'roles', name: 'admin-roles', component: () => import('@/views/security-config/RolesPermissionsView.vue') },
-      { path: 'neighborhood/:id/results', name: 'admin-neighborhood-results', component: () => import('@/views/admin/NeighborhoodResultsView.vue') },
-
-      // RUTAS DE CANDIDATOS Y RESULTADOS
-      {
-        path: 'candidates',
-        name: 'admin.candidates',
-        component: CandidatesDirectoryView
-      },
-      {
-        path: 'neighborhood/:id/results', // URL específica para resultados
-        name: 'admin.neighborhood.results',
-        component: NeighborhoodResultsView
-      }
+      { path: 'candidates', name: 'admin.candidates', component: CandidatesDirectoryView },
+      { path: 'neighborhood/:id/results', name: 'admin.neighborhood.results', component: NeighborhoodResultsView }
     ]
   },
 
