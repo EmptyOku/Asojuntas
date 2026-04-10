@@ -7,7 +7,7 @@
         <p class="mt-1 text-sm text-gray-500">Estamos leyendo la imagen y reemplazando los valores de validación.</p>
       </div>
     </div>
-    
+
     <!-- 1. CARRUSEL DE IMAGEN (Sticky) -->
     <div class="w-full h-[40vh] bg-[#1a1c23] relative flex flex-col sticky top-0 z-20 shadow-lg lg:h-[45vh]">
       <div class="absolute top-0 inset-x-0 p-4 flex justify-between items-center bg-gradient-to-b from-black/80 to-transparent z-30">
@@ -27,20 +27,24 @@
 
     <!-- 2. SECCIÓN DE DATOS DINÁMICOS POR PÁGINA -->
     <div class="w-full flex-1 overflow-y-auto p-4 sm:p-6 lg:max-w-3xl lg:mx-auto">
-      
+
+      <div v-if="docStore.extractionWarning" class="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-900">
+        <p class="text-sm font-semibold">{{ docStore.extractionWarning }}</p>
+      </div>
+
       <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-6">
         <div class="bg-gray-50 px-5 py-4 border-b border-gray-100">
           <h2 class="text-lg font-bold text-gray-900">{{ isPlancha ? 'Validación de Planchas' : 'Validación de Acta' }}</h2>
           <p class="text-[10px] text-gray-400 uppercase font-black tracking-widest mt-1">Página Actual: {{ currentPage + 1 }}</p>
         </div>
-        
+
         <div class="p-5 space-y-8">
-          
+
           <!-- FLUJO A: PLANILLAS DE CANDIDATOS -->
           <template v-if="isPlancha">
             <div v-for="(bloque, bIdx) in currentDataPage?.bloques" :key="bIdx" class="space-y-6">
               <h3 class="bg-aso-primary/5 text-aso-primary text-xs font-black p-2 rounded-md border-l-4 border-aso-primary uppercase">{{ bloque.titulo }}</h3>
-              
+
               <div v-for="(cargo, cIdx) in bloque.cargos" :key="cIdx" class="space-y-3 bg-gray-50/50 p-3 rounded-xl border border-gray-100">
                 <h4 class="text-sm font-bold text-gray-800">{{ cargo.puesto }}</h4>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -69,7 +73,7 @@
           <template v-else>
             <div v-for="(bloque, bIdx) in scrutinyBlocksForReview" :key="`${bloque.pageIndex}-${bloque.blockIndex}`" class="space-y-4">
               <h3 class="bg-aso-primary/5 text-aso-primary text-xs font-black p-2 rounded-md border-l-4 border-aso-primary uppercase">{{ bloque.titulo }} · Pág {{ bloque.pageIndex + 1 }}</h3>
-              
+
               <div class="grid grid-cols-2 gap-3">
                 <div v-for="(valor, label) in bloque.votos" :key="label" class="p-3 bg-white border border-gray-100 rounded-xl shadow-sm">
                   <label class="block text-[10px] font-bold text-gray-400 uppercase mb-1">{{ label }}</label>
@@ -250,7 +254,7 @@ const extractCurrentPage = async () => {
     await extractPageAt(currentPage.value, currentImage.value);
     submitSuccess.value = 'Valores actualizados con datos extraídos de la imagen.';
   } catch (error) {
-    const backendMessage = error?.response?.data?.error || error?.response?.data?.message || error?.message;
+    const backendMessage = error?.response?.data?.message || error?.response?.data?.error || error?.message;
     submitError.value = `No se pudo extraer texto: ${backendMessage}`;
   } finally {
     isExtracting.value = false;
@@ -261,9 +265,9 @@ const extractCurrentPage = async () => {
 const rejectAndReturn = () => {
   const typeBeforeClear = docStore.documentType; // Guardamos el tipo antes de borrar
   docStore.clearStore();
-  router.push({ 
-    name: 'jury-capture', 
-    query: { doc: typeBeforeClear } 
+  router.push({
+    name: 'jury-capture',
+    query: { doc: typeBeforeClear }
   });
 };
 

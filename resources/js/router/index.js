@@ -15,6 +15,7 @@ import SecretaryPlanchasList from '@/views/secretary/SecretaryPlanchasList.vue';
 import SecretaryPlanchaDetailView from '@/views/secretary/SecretaryPlanchaDetailView.vue';
 import CandidatesDirectoryView from '@/views/admin/CandidatesDirectoryView.vue';
 import NeighborhoodResultsView from '@/views/admin/NeighborhoodResultsView.vue';
+import RegistrationPlatesView from '@/views/admin/RegistrationPlatesView.vue';
 
 const routes = [
   {
@@ -72,7 +73,8 @@ const routes = [
       { path: 'audit/:id', name: 'admin-audit-detail', component: () => import('@/views/admin/VoteValidationView.vue') },
       { path: 'roles', name: 'admin-roles', component: () => import('@/views/security-config/RolesPermissionsView.vue') },
       { path: 'candidates', name: 'admin.candidates', component: CandidatesDirectoryView },
-      { path: 'neighborhood/:id/results', name: 'admin.neighborhood.results', component: NeighborhoodResultsView }
+      { path: 'neighborhood/:id/results', name: 'admin.neighborhood.results', component: NeighborhoodResultsView },
+      { path: 'registration', name: 'admin.registration', component: RegistrationPlatesView}
     ]
   },
 

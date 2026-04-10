@@ -22,6 +22,9 @@ use App\Http\Controllers\Api\Admin\AuditLogController as SystemAuditLogControlle
 // EL CONTROLADOR DE BARRIOS UNIFICADO
 use App\Http\Controllers\Api\Admin\NeighborhoodDirectoryController;
 
+// Controlador para la gestión de candidatos OCR
+use App\Http\Controllers\Admin\OcrCandidateController;
+
 Route::get('/', function () {
     return view('welcome');
 });
@@ -122,6 +125,11 @@ Route::prefix('api')->name('api.')->group(function (): void {
             Route::post('/audit-records/{scrutinyRecord}/decision', [AuditManagementController::class, 'decide'])
                 ->middleware('api.permission:records.review')
                 ->name('admin.audit-records.decision');
+
+            // Rutas para gestión de candidatos OCR
+            route::post('/ocr/process', [OcrCandidateController::class, 'process'])
+                ->middleware('api.permission:ocr.process')
+                ->name('admin.ocr.process');
         });
     });
 });

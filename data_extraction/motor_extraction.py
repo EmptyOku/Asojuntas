@@ -16,12 +16,33 @@ except ImportError:
 
 
 def load_project_env() -> Path:
+    """
+    Busca el archivo .env de forma flexible. Primero en el directorio actual de ejecución,
+    luego subiendo niveles desde la ubicación del script.
+    """
+    # Opción 1: Buscar en el directorio actual desde donde se ejecutó el comando en la consola
+    current_working_dir = Path.cwd()
+    env_path_cwd = current_working_dir / ".env"
+
+    if env_path_cwd.exists():
+        load_dotenv(env_path_cwd)
+        return current_working_dir
+
+    # Opción 2: Búsqueda ascendente desde donde está guardado el script
     script_dir = Path(__file__).resolve().parent
-    project_root = script_dir.parent
-    env_path = project_root / ".env"
-    if env_path.exists():
-        load_dotenv(env_path)
-    return project_root
+    current_dir = script_dir
+
+    # Subir hasta 3 niveles buscando el .env
+    for _ in range(3):
+        env_path = current_dir / ".env"
+        if env_path.exists():
+            load_dotenv(env_path)
+            return current_dir
+        current_dir = current_dir.parent
+
+    # Fallback: Si no lo encuentra, intentar cargar las variables del entorno del sistema
+    load_dotenv()
+    return script_dir.parent
 
 
 def safe_int(value):
@@ -62,6 +83,7 @@ def infer_media_type(image_path: Path) -> str:
 
 def build_bedrock_error_message(exc: Exception, region: str, model_id: str) -> str:
     error_text = str(exc).strip()
+
 
     if exc.__class__.__name__ == "ProxyConnectionError":
         return (

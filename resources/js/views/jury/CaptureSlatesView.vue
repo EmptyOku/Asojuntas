@@ -1,6 +1,6 @@
 <template>
   <div class="space-y-6 flex-1 flex flex-col">
-    
+
     <div class="flex items-center gap-4">
       <button @click="goBack" class="p-2 bg-white text-gray-500 hover:text-gray-900 rounded-full shadow-sm border border-gray-100 transition-colors">
         <ArrowLeft class="w-5 h-5" />
@@ -9,14 +9,14 @@
     </div>
 
     <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex-1 flex flex-col">
-      
+
       <input type="file" accept="image/*" multiple id="cameraInput" class="hidden" @change="handleImageUpload">
 
       <div v-if="capturedImages.length === 0" class="flex-1 flex flex-col items-center justify-center text-center space-y-6">
         <div :class="isPlancha ? 'bg-orange-50 text-orange-500' : 'bg-green-50 text-aso-primary'" class="w-24 h-24 rounded-full flex items-center justify-center">
           <ScanLine class="w-12 h-12" />
         </div>
-        
+
         <div>
           <h3 class="text-lg font-bold text-gray-900">
             Fotografía {{ isPlancha ? 'las Planchas de Candidatos' : 'el Formato de Escrutinio' }}
@@ -25,7 +25,7 @@
             {{ isPlancha ? 'Son alrededor de 6 páginas. Asegúrate de que los nombres y números sean legibles.' : 'Debes subir el paquete completo de 3 páginas juntas. Enfoca claramente las tablas con los totales numéricos.' }}
           </p>
         </div>
-        
+
         <label for="cameraInput" class="w-full sm:w-auto inline-flex items-center justify-center gap-3 bg-gray-900 hover:bg-black text-white px-8 py-4 rounded-2xl font-bold text-lg shadow-md cursor-pointer transition-transform hover:-translate-y-1">
           <Camera class="w-6 h-6" /> Abrir Cámara / Galería
         </label>
@@ -39,21 +39,21 @@
         <div v-if="showScrutinyWarning" class="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-amber-800 text-sm font-semibold">
           {{ scrutinyWarningText }}
         </div>
-        
+
         <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 overflow-y-auto flex-1 p-1">
-          
+
           <div v-for="(img, index) in capturedImages" :key="img.id" class="relative group aspect-[3/4] bg-gray-100 rounded-xl overflow-hidden border border-gray-200 shadow-sm">
             <img :src="img.url" class="w-full h-full object-cover">
-            
+
             <div class="absolute top-2 left-2 bg-black/60 text-white text-xs font-bold px-2 py-1 rounded-md">
               Pág {{ index + 1 }}
             </div>
-            
+
             <button @click="removeImage(img.id)" class="absolute top-2 right-2 p-1.5 bg-red-500 text-white rounded-lg opacity-90 hover:opacity-100 shadow-md transition-opacity">
               <X class="w-4 h-4" />
             </button>
           </div>
-          
+
           <label for="cameraInput" class="aspect-[3/4] flex flex-col items-center justify-center gap-2 border-2 border-dashed border-gray-300 rounded-xl bg-gray-50 hover:bg-gray-100 cursor-pointer transition-colors">
              <Plus class="w-8 h-8 text-gray-400" />
              <span class="text-xs font-bold text-gray-500 text-center px-2">Añadir página</span>
@@ -88,7 +88,7 @@ const router = useRouter();
 const route = useRoute();
 
 // Array reactivo para almacenar el paquete de fotos
-const capturedImages = ref([]); 
+const capturedImages = ref([]);
 const isUploading = ref(false);
 const uploadError = ref('');
 const uploadStep = ref('');
@@ -96,6 +96,7 @@ const REQUIRED_SCRUTINY_PAGES = 3;
 const PREVIEW_MAX_ATTEMPTS = 3;
 const PREVIEW_BASE_BACKOFF_MS = 1200;
 const PREVIEW_TIMEOUT_MS = 240000;
+const DEFAULT_SCRUTINY_BLOCKS = 3;
 const docStore = useDocumentStore();
 
 const isPlancha = computed(() => route.query.doc === 'plancha');
@@ -117,13 +118,52 @@ const canSendPackage = computed(() => isPlancha.value || capturedImages.value.le
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+const createManualVotesTemplate = () => ({
+  'Votos totales': 0,
+  'Plancha 1': 0,
+  'Plancha 2': 0,
+  'Plancha 3': 0,
+  'Votos blancos': 0,
+  'Votos nulos': 0,
+  'Votos no marcados': 0,
+  'Votos validos': 0,
+});
+
+const createManualScrutinyPageTemplate = () => ({
+  bloques: Array.from({ length: DEFAULT_SCRUTINY_BLOCKS }, (_, index) => ({
+    titulo: `Bloque - BLOQUE ${index + 1}`,
+    votos: createManualVotesTemplate(),
+  })),
+});
+
+const shouldFallbackToManualReview = (error) => {
+  const status = error?.response?.status;
+  const code = error?.response?.data?.error_code;
+
+  if (status === 503) {
+    return true;
+  }
+
+  return code === 'bedrock_connectivity_error' || code === 'bedrock_credentials_error';
+};
+
 const isRetryablePreviewError = (error) => {
+  const backendRetryable = error?.response?.data?.retriable;
+  if (typeof backendRetryable === 'boolean') {
+    return backendRetryable;
+  }
+
+  const backendCode = error?.response?.data?.error_code;
+  if (backendCode === 'bedrock_connectivity_error') {
+    return true;
+  }
+
   const status = error?.response?.status;
   if (!status) {
     return true;
   }
 
-  if ([408, 422, 429, 500, 502, 503, 504].includes(status)) {
+  if ([408, 429, 500, 502, 503, 504].includes(status)) {
     return true;
   }
 
@@ -175,17 +215,17 @@ const handleImageUpload = (event) => {
       url: URL.createObjectURL(files[i])
     });
   }
-  
-  // Limpiamos el valor del input para que el evento @change vuelva a dispararse 
+
+  // Limpiamos el valor del input para que el evento @change vuelva a dispararse
   // incluso si el usuario selecciona la misma foto dos veces seguidas
-  event.target.value = ''; 
+  event.target.value = '';
 };
 
 const removeImage = (idToRemove) => {
   // Liberamos la memoria del navegador revocando la URL temporal
   const imageToOmit = capturedImages.value.find(img => img.id === idToRemove);
   if (imageToOmit) URL.revokeObjectURL(imageToOmit.url);
-  
+
   capturedImages.value = capturedImages.value.filter(img => img.id !== idToRemove);
 };
 
@@ -195,12 +235,13 @@ const enviarActa = async () => {
   if (!isPlancha.value && capturedImages.value.length !== REQUIRED_SCRUTINY_PAGES) {
     return alert(`Para escrutinio debes subir exactamente ${REQUIRED_SCRUTINY_PAGES} fotos antes de continuar.`);
   }
-  
+
   // 2. Activamos el estado de carga para que el botón muestre el "Enviando..."
   isUploading.value = true;
   uploadError.value = '';
   uploadStep.value = '';
-  
+  docStore.clearExtractionWarning();
+
   try {
     const extractedPages = {};
     for (let index = 0; index < capturedImages.value.length; index += 1) {
@@ -216,7 +257,23 @@ const enviarActa = async () => {
 
     router.push('/jury/review');
   } catch (error) {
-    const backendMessage = error?.response?.data?.error || error?.response?.data?.message || error?.message;
+    if (shouldFallbackToManualReview(error)) {
+      const extractedPages = {};
+      for (let index = 0; index < capturedImages.value.length; index += 1) {
+        extractedPages[index] = createManualScrutinyPageTemplate();
+      }
+
+      docStore.setImages(capturedImages.value, isPlancha.value ? 'plancha' : 'escrutinio');
+      docStore.setExtractedData(extractedPages);
+      docStore.setExtractionWarning(
+        'OCR no disponible temporalmente. Puedes continuar con validacion manual y ajustar los votos antes de enviar.'
+      );
+
+      router.push('/jury/review');
+      return;
+    }
+
+    const backendMessage = error?.response?.data?.message || error?.response?.data?.error || error?.message;
     uploadError.value = `No se pudo completar la extracción del paquete: ${backendMessage}`;
   } finally {
     isUploading.value = false;

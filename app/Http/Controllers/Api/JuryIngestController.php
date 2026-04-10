@@ -10,6 +10,7 @@ use App\Models\ScrutinyRecordFile;
 use App\Services\ScrutinyExtractionImporter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -195,7 +196,7 @@ class JuryIngestController extends Controller
         $maxFileSizeKb = (int) config('services.extractor.max_upload_kb', 10240);
 
         $validated = $request->validate([
-            'document_file' => 'required|file|mimes:jpeg,png,jpg,pdf|max:'.$maxFileSizeKb,
+            'document_file' => 'required|file|mimes:jpeg,png,jpg|max:'.$maxFileSizeKb,
             'document_type' => 'nullable|in:plancha,escrutinio',
             'page_number' => 'nullable|integer|min:1',
         ]);
@@ -226,21 +227,32 @@ class JuryIngestController extends Controller
                 '--image',
                 $tmpPath,
                 '--dry-run',
-            ], base_path(), null, null, 180);
+            ], base_path(), $this->buildExtractorProcessEnvironment(), null, 180);
 
             $process->run();
 
             if (! $process->isSuccessful()) {
                 $errorDetail = trim($process->getErrorOutput() ?: $process->getOutput());
+                $classified = $this->classifyExtractorError($errorDetail);
+
+                Log::warning('previewExtraction extractor failure', [
+                    'status' => $classified['status'],
+                    'error_code' => $classified['error_code'],
+                    'retriable' => $classified['retriable'],
+                    'python_bin' => $pythonBinary,
+                    'detail' => $classified['detail'],
+                ]);
 
                 return response()->json([
                     'success' => false,
-                    'message' => $errorDetail !== ''
-                        ? 'Fallo el extractor de texto: '.$errorDetail
+                    'message' => $classified['message'] !== ''
+                        ? 'Fallo el extractor de texto: '.$classified['message']
                         : 'Fallo el extractor de texto.',
-                    'error' => $errorDetail,
+                    'error' => $classified['detail'],
+                    'error_code' => $classified['error_code'],
+                    'retriable' => $classified['retriable'],
                     'python_bin' => $pythonBinary,
-                ], 422);
+                ], $classified['status']);
             }
 
             $stdout = trim($process->getOutput());
@@ -251,7 +263,9 @@ class JuryIngestController extends Controller
                     'success' => false,
                     'message' => 'La salida del extractor no es JSON válido.',
                     'raw' => $stdout,
-                ], 422);
+                    'error_code' => 'extractor_invalid_json',
+                    'retriable' => false,
+                ], 502);
             }
 
             $normalizedPayload = $json['normalized_payload'] ?? [];
@@ -565,5 +579,90 @@ class JuryIngestController extends Controller
         } catch (Throwable) {
             return false;
         }
+    }
+
+    private function buildExtractorProcessEnvironment(): array
+    {
+        $resolvedRegion = (string) (env('AWS_REGION')
+            ?: env('AWS_DEFAULT_REGION')
+            ?: config('services.ses.region', 'us-east-1'));
+
+        $env = [
+            'APP_ENV' => (string) config('app.env', 'production'),
+            'AWS_ACCESS_KEY_ID' => (string) env('AWS_ACCESS_KEY_ID', ''),
+            'AWS_SECRET_ACCESS_KEY' => (string) env('AWS_SECRET_ACCESS_KEY', ''),
+            'AWS_SESSION_TOKEN' => (string) env('AWS_SESSION_TOKEN', ''),
+            'AWS_REGION' => $resolvedRegion,
+            'AWS_DEFAULT_REGION' => $resolvedRegion,
+            'BEDROCK_CONNECT_TIMEOUT_SECONDS' => (string) env('BEDROCK_CONNECT_TIMEOUT_SECONDS', ''),
+            'BEDROCK_READ_TIMEOUT_SECONDS' => (string) env('BEDROCK_READ_TIMEOUT_SECONDS', ''),
+            'BEDROCK_MAX_RETRIES' => (string) env('BEDROCK_MAX_RETRIES', ''),
+            'BEDROCK_RETRY_BASE_SECONDS' => (string) env('BEDROCK_RETRY_BASE_SECONDS', ''),
+            'HTTPS_PROXY' => (string) env('HTTPS_PROXY', ''),
+            'HTTP_PROXY' => (string) env('HTTP_PROXY', ''),
+            'NO_PROXY' => (string) env('NO_PROXY', ''),
+            'PATH' => (string) env('PATH', (string) getenv('PATH')),
+            'PYTHONUTF8' => '1',
+        ];
+
+        return array_filter($env, static fn ($value): bool => $value !== '');
+    }
+
+    private function classifyExtractorError(string $errorDetail): array
+    {
+        $detail = trim($errorDetail);
+        $message = $detail;
+
+        $decoded = $this->decodeJsonLikePayload($detail);
+        if (is_array($decoded)) {
+            $message = trim((string) ($decoded['error'] ?? $decoded['message'] ?? $decoded['detail'] ?? $detail));
+            $detail = trim((string) ($decoded['detail'] ?? $decoded['error'] ?? $detail));
+        }
+
+        if ($message === '') {
+            $message = 'Error desconocido del extractor.';
+        }
+
+        $normalized = Str::lower($message.' '.$detail);
+
+        if (
+            str_contains($normalized, 'no se pudo conectar a aws bedrock')
+            || str_contains($normalized, 'could not connect to the endpoint url')
+            || str_contains($normalized, 'proxy')
+            || str_contains($normalized, 'ssl')
+            || str_contains($normalized, 'timed out')
+            || str_contains($normalized, 'timeout')
+        ) {
+            return [
+                'status' => 503,
+                'error_code' => 'bedrock_connectivity_error',
+                'retriable' => true,
+                'message' => $message,
+                'detail' => $detail,
+            ];
+        }
+
+        if (
+            str_contains($normalized, 'faltan credenciales aws')
+            || str_contains($normalized, 'credenciales aws')
+            || str_contains($normalized, 'accessdeniedexception')
+            || str_contains($normalized, 'unrecognizedclientexception')
+        ) {
+            return [
+                'status' => 503,
+                'error_code' => 'bedrock_credentials_error',
+                'retriable' => false,
+                'message' => $message,
+                'detail' => $detail,
+            ];
+        }
+
+        return [
+            'status' => 422,
+            'error_code' => 'extractor_process_failed',
+            'retriable' => false,
+            'message' => $message,
+            'detail' => $detail,
+        ];
     }
 }

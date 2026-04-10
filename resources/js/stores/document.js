@@ -4,12 +4,13 @@ import { ref } from 'vue';
 export const useDocumentStore = defineStore('document', () => {
   // Aquí guardaremos el array de fotos que toma el jurado
   const capturedImages = ref([]);
-  
+
   // Para saber si estamos validando una 'plancha' o un 'escrutinio'
-  const documentType = ref(null); 
-  
+  const documentType = ref(null);
+
   // Datos de extracción por página (preview OCR)
   const extractedData = ref({});
+  const extractionWarning = ref('');
 
   const setImages = (images, type) => {
     capturedImages.value = images;
@@ -27,19 +28,31 @@ export const useDocumentStore = defineStore('document', () => {
     };
   };
 
+  const setExtractionWarning = (message) => {
+    extractionWarning.value = message || '';
+  };
+
+  const clearExtractionWarning = () => {
+    extractionWarning.value = '';
+  };
+
   const clearStore = () => {
     capturedImages.value = [];
     documentType.value = null;
     extractedData.value = {};
+    extractionWarning.value = '';
   };
 
-  return { 
-    capturedImages, 
-    documentType, 
-    extractedData, 
-    setImages, 
-    setExtractedData, 
+  return {
+    capturedImages,
+    documentType,
+    extractedData,
+    extractionWarning,
+    setImages,
+    setExtractedData,
     setExtractedPage,
-    clearStore 
+    setExtractionWarning,
+    clearExtractionWarning,
+    clearStore
   };
 });
