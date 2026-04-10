@@ -84,19 +84,6 @@ def infer_media_type(image_path: Path) -> str:
 def build_bedrock_error_message(exc: Exception, region: str, model_id: str) -> str:
     error_text = str(exc).strip()
 
-
-    if exc.__class__.__name__ == "ProxyConnectionError":
-        return (
-            "No se pudo conectar al proxy configurado para salir a AWS Bedrock. "
-            "Revisa HTTPS_PROXY/HTTP_PROXY o desactiva el proxy en este entorno."
-        )
-
-    if exc.__class__.__name__ == "SSLError":
-        return (
-            "AWS boto3 fallo por SSL/TLS al conectar con Bedrock. "
-            "Revisa inspeccion HTTPS, antivirus corporativo o certificados raiz del equipo."
-        )
-
     if exc.__class__.__name__ == "EndpointConnectionError" or "Could not connect to the endpoint URL" in error_text:
         return (
             "No se pudo conectar a AWS Bedrock en la region "
