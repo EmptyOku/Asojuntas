@@ -114,6 +114,12 @@ const handleLogin = async () => {
   try {
     await authStore.login(credentials.value);
 
+    const isElectoralSecretary = authStore.roles.includes('admin_electoral') || authStore.roles.includes('electoral_admin');
+    if (isElectoralSecretary) {
+      router.push('/secretary/dashboard');
+      return;
+    }
+
     if (authStore.permissions.includes('users.view')) {
       router.push('/admin/dashboard');
       return;

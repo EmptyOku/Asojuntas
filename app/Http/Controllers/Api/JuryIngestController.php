@@ -209,6 +209,7 @@ class JuryIngestController extends Controller
 
         $tmpName = 'preview_'.uniqid('', true).'_'.$file->getClientOriginalName();
         $tmpPath = $file->move($tempDir, $tmpName)->getPathname();
+        $documentType = $validated['document_type'] ?? 'escrutinio';
 
         try {
             $pythonBinary = $this->resolvePythonBinary();
@@ -221,9 +222,13 @@ class JuryIngestController extends Controller
         }
 
         try {
+            $extractorScript = $documentType === 'plancha'
+                ? 'data_extraction/extraer_candidatos.py'
+                : 'data_extraction/motor_extraction.py';
+
             $process = new Process([
                 $pythonBinary,
-                base_path('data_extraction/motor_extraction.py'),
+                base_path($extractorScript),
                 '--image',
                 $tmpPath,
                 '--dry-run',
@@ -271,7 +276,7 @@ class JuryIngestController extends Controller
             $normalizedPayload = $json['normalized_payload'] ?? [];
             $pageData = $this->mapNormalizedToReviewPage(
                 is_array($normalizedPayload) ? $normalizedPayload : [],
-                $validated['document_type'] ?? 'escrutinio'
+                $documentType
             );
 
             return response()->json([
@@ -468,6 +473,42 @@ class JuryIngestController extends Controller
     private function mapNormalizedToReviewPage(array $normalizedPayload, string $documentType): array
     {
         if ($documentType === 'plancha') {
+            $planchaBlocks = $normalizedPayload['plancha_blocks'] ?? [];
+            if (is_array($planchaBlocks) && ! empty($planchaBlocks)) {
+                $bloques = [];
+                foreach ($planchaBlocks as $block) {
+                    if (! is_array($block)) {
+                        continue;
+                    }
+
+                    $cargos = [];
+                    foreach ((array) ($block['cargos'] ?? []) as $cargo) {
+                        if (! is_array($cargo)) {
+                            continue;
+                        }
+
+                        $cargos[] = [
+                            'puesto' => (string) ($cargo['puesto'] ?? 'SIN CARGO'),
+                            'nombre' => (string) ($cargo['nombre'] ?? ''),
+                            'identificacion' => (string) ($cargo['identificacion'] ?? ''),
+                            'celular' => (string) ($cargo['celular'] ?? ''),
+                            'correo' => (string) ($cargo['correo'] ?? ''),
+                        ];
+                    }
+
+                    if (! empty($cargos)) {
+                        $bloques[] = [
+                            'titulo' => (string) ($block['titulo'] ?? 'Bloque - SIN BLOQUE'),
+                            'cargos' => $cargos,
+                        ];
+                    }
+                }
+
+                return [
+                    'bloques' => $bloques,
+                ];
+            }
+
             return [
                 'bloques' => [],
             ];

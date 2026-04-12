@@ -11,6 +11,7 @@ export const useDocumentStore = defineStore('document', () => {
   // Datos de extracción por página (preview OCR)
   const extractedData = ref({});
   const extractionWarning = ref('');
+  const captureBatchUuid = ref(null);
 
   const setImages = (images, type) => {
     capturedImages.value = images;
@@ -32,6 +33,10 @@ export const useDocumentStore = defineStore('document', () => {
     extractionWarning.value = message || '';
   };
 
+  const setCaptureBatchUuid = (value) => {
+    captureBatchUuid.value = value || null;
+  };
+
   const clearExtractionWarning = () => {
     extractionWarning.value = '';
   };
@@ -41,6 +46,7 @@ export const useDocumentStore = defineStore('document', () => {
     documentType.value = null;
     extractedData.value = {};
     extractionWarning.value = '';
+    captureBatchUuid.value = null;
   };
 
   return {
@@ -48,10 +54,12 @@ export const useDocumentStore = defineStore('document', () => {
     documentType,
     extractedData,
     extractionWarning,
+    captureBatchUuid,
     setImages,
     setExtractedData,
     setExtractedPage,
     setExtractionWarning,
+    setCaptureBatchUuid,
     clearExtractionWarning,
     clearStore
   };

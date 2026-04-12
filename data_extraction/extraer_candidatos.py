@@ -3,6 +3,7 @@ import sys
 import json
 import base64
 import re
+import argparse
 import unicodedata
 import hashlib
 from pathlib import Path
@@ -221,11 +222,67 @@ def process_classification_engine(raw_candidates: list) -> list:
 
     return structured_output
 
+
+def normalize_plancha_payload(structured_blocks: list) -> dict:
+    """Convierte la salida clasificada a un payload homogéneo para Laravel/Vue."""
+    plancha_blocks = []
+    elected_people = []
+
+    for block in structured_blocks:
+        block_name = str(block.get("bloque_nombre", "SIN BLOQUE")).strip() or "SIN BLOQUE"
+        block_candidates = []
+
+        for cand in block.get("candidatos", []):
+            cargo = str(cand.get("cargo", "")).strip()
+            nombre = str(cand.get("nombre", "")).strip()
+            identificacion = str(cand.get("identificacion", "")).strip()
+            celular = str(cand.get("celular", "")).strip()
+            correo = str(cand.get("correo", "")).strip()
+
+            if not cargo and not nombre:
+                continue
+
+            block_candidates.append({
+                "puesto": cargo,
+                "nombre": nombre,
+                "identificacion": identificacion,
+                "celular": celular,
+                "correo": correo,
+            })
+
+            if nombre:
+                parts = nombre.split()
+                first_name = parts[0] if parts else ""
+                last_name = " ".join(parts[1:]) if len(parts) > 1 else "SIN_APELLIDO"
+
+                elected_people.append({
+                    "first_name": first_name,
+                    "last_name": last_name,
+                    "document_number": identificacion or None,
+                    "phone": celular or None,
+                    "email": correo or None,
+                    "notes": f"Cargo OCR: {cargo or 'SIN_CARGO'}",
+                    "review_status": "pending",
+                })
+
+        if block_candidates:
+            plancha_blocks.append({
+                "titulo": f"Bloque - {block_name}",
+                "cargos": block_candidates,
+            })
+
+    return {
+        "block_results": [],
+        "block_votes": [],
+        "elected_people": elected_people,
+        "plancha_blocks": plancha_blocks,
+    }
+
 # ==========================================
 # INVOCACIÓN AWS BEDROCK
 # ==========================================
 def invoke_bedrock_parsing(image_path: Path):
-    sys.stdout.write(f"[INFO] Initializing parsing routine for: {image_path.name}\n")
+    sys.stderr.write(f"[INFO] Initializing parsing routine for: {image_path.name}\n")
 
     with image_path.open("rb") as f:
         encoded_image = base64.b64encode(f.read()).decode("utf-8")
@@ -274,14 +331,14 @@ def invoke_bedrock_parsing(image_path: Path):
                 candidates_list = parsed_data.get("candidatos_detectados", [])
                 audit_data = parsed_data.get("auditoria", {})
                 
-                sys.stdout.write(f"[SUCCESS] Entities detected: {len(candidates_list)}\n")
+                sys.stderr.write(f"[SUCCESS] Entities detected: {len(candidates_list)}\n")
                 for c in candidates_list:
                     c["foto_origen"] = image_path.name
                     
                 audit_data["status"] = "SUCCESS"
                 return candidates_list, audit_data
 
-        sys.stdout.write(f"[WARN] Schema binding failed for {image_path.name}\n")
+        sys.stderr.write(f"[WARN] Schema binding failed for {image_path.name}\n")
         return [], {"status": "SCHEMA_BINDING_FAILURE", "confidence_score": 0, "anomaly_flag": "Schema missing"}
 
     except Exception as e:
@@ -339,11 +396,52 @@ def batch_process_directory(target_directory: str):
     sys.stdout.write(json.dumps(final_response, indent=2, ensure_ascii=False) + "\n")
     sys.stdout.write("=" * 80 + "\n")
 
-if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        sys.stderr.write(
-            "[ERROR] Argument missing. Usage: python data_extraction/extraer_candidatos.py <source_directory>\n"
-        )
+
+def process_single_image(image_path: str, dry_run: bool):
+    image = Path(image_path).resolve()
+    if not image.exists() or not image.is_file():
+        sys.stderr.write(json.dumps({"error": f"Imagen invalida: {image}"}))
         sys.exit(1)
 
-    batch_process_directory(sys.argv[1])
+    candidates, audit_info = invoke_bedrock_parsing(image)
+    structured = process_classification_engine(candidates)
+    normalized_payload = normalize_plancha_payload(structured)
+
+    if dry_run:
+        sys.stdout.write(json.dumps({"normalized_payload": normalized_payload}, ensure_ascii=True, indent=2))
+        return
+
+    response = {
+        "status": "200_OK",
+        "execution_logs": [
+            {
+                "source_file": image.name,
+                "operation_status": audit_info.get("status", "UNKNOWN"),
+                "confidence_score": audit_info.get("confidence_score", 0),
+                "anomaly_flag": audit_info.get("anomaly_flag", "None"),
+            }
+        ],
+        "payload": structured,
+        "normalized_payload": normalized_payload,
+    }
+    sys.stdout.write(json.dumps(response, ensure_ascii=False, indent=2))
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Extractor OCR de candidatos (planchas)")
+    parser.add_argument("source_directory", nargs="?", help="Directorio con imagenes (modo batch)")
+    parser.add_argument("--image", type=str, help="Ruta de una imagen individual")
+    parser.add_argument("--dry-run", action="store_true", help="Imprime solo normalized_payload")
+    args = parser.parse_args()
+
+    if args.image:
+        process_single_image(args.image, args.dry_run)
+        sys.exit(0)
+
+    if args.source_directory:
+        batch_process_directory(args.source_directory)
+        sys.exit(0)
+
+    sys.stderr.write(
+        "[ERROR] Debes indicar <source_directory> o --image <ruta_imagen>.\n"
+    )
+    sys.exit(1)

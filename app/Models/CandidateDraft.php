@@ -16,6 +16,7 @@ class CandidateDraft extends Model
         'position_id',
         'slate_id',
         'slate_block_id',
+        'capture_batch_uuid',
         'document_type_id',
         'person_id',
         'document_number',

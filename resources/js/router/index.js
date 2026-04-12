@@ -11,6 +11,7 @@ import SecretaryLayout from '@/layouts/SecretaryLayout.vue';
 
 // Importación de vistas estáticas
 import SecretaryDashboardView from '@/views/secretary/SecretaryDashboardView.vue';
+import SecretaryCaptureView from '@/views/secretary/SecretaryCaptureView.vue';
 import SecretaryPlanchasList from '@/views/secretary/SecretaryPlanchasList.vue';
 import SecretaryPlanchaDetailView from '@/views/secretary/SecretaryPlanchaDetailView.vue';
 import CandidatesDirectoryView from '@/views/admin/CandidatesDirectoryView.vue';
@@ -48,11 +49,14 @@ const routes = [
   {
     path: '/secretary',
     component: SecretaryLayout,
-    // TODO: Ajusta el 'permission' según lo que tengas en tu base de datos para la secretaria
-    meta: { requiresAuth: true, permission: 'records.upload' }, 
+    meta: {
+      requiresAuth: true,
+      permission: 'records.upload',
+      roles: ['admin_electoral', 'electoral_admin']
+    },
     children: [
       { path: 'dashboard', name: 'secretary-dashboard', component: SecretaryDashboardView },
-      { path: 'capture', name: 'secretary-capture', component: () => import('@/views/jury/CaptureSlatesView.vue') },
+      { path: 'capture', name: 'secretary-capture', component: SecretaryCaptureView },
       { path: 'planchas', name: 'secretary-planchas', component: SecretaryPlanchasList },
       { path: 'planchas/:id', name: 'secretary-plancha-detail', component: SecretaryPlanchaDetailView }
     ]
@@ -119,6 +123,16 @@ router.beforeEach(async (to) => {
     // Verificación de permisos (RBAC)
     if (to.meta.permission && !auth.permissions.includes(to.meta.permission)) {
       return { name: 'unauthorized' };
+    }
+
+    // Verificación opcional de roles para módulos específicos.
+    if (to.meta.roles) {
+      const allowedRoles = Array.isArray(to.meta.roles) ? to.meta.roles : [to.meta.roles];
+      const hasAllowedRole = auth.roles.some((role) => allowedRoles.includes(role));
+
+      if (!hasAllowedRole) {
+        return { name: 'unauthorized' };
+      }
     }
   }
 

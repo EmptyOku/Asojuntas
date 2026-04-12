@@ -13,6 +13,7 @@ use App\Http\Controllers\Admin\UserController;
 // Controladores de la API SPA
 use App\Http\Controllers\Api\JuryIngestController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\Secretary\PlanchaDraftController;
 use App\Http\Controllers\Api\Admin\PermissionManagementController;
 use App\Http\Controllers\Api\Admin\RoleManagementController;
 use App\Http\Controllers\Api\Admin\UserManagementController;
@@ -53,6 +54,38 @@ Route::prefix('api')->name('api.')->group(function (): void {
 
     Route::middleware('auth')->group(function (): void {
         Route::get('/user', [AuthController::class, 'user'])->name('user');
+
+        Route::prefix('secretary')->middleware('api.permission:records.upload')->group(function (): void {
+            Route::post('/planchas/extract-preview', [PlanchaDraftController::class, 'previewExtraction'])
+                ->name('secretary.planchas.extract-preview');
+
+            Route::post('/planchas/drafts', [PlanchaDraftController::class, 'storeDrafts'])
+                ->name('secretary.planchas.drafts.store');
+
+            Route::get('/planchas/drafts', [PlanchaDraftController::class, 'index'])
+                ->name('secretary.planchas.drafts.index');
+
+            Route::put('/planchas/drafts/{candidateDraft}', [PlanchaDraftController::class, 'update'])
+                ->name('secretary.planchas.drafts.update');
+
+            Route::post('/planchas/drafts/{candidateDraft}/decision', [PlanchaDraftController::class, 'decide'])
+                ->name('secretary.planchas.drafts.decision');
+
+            Route::post('/planchas/drafts/decision/batch', [PlanchaDraftController::class, 'decideBatch'])
+                ->name('secretary.planchas.drafts.decision.batch');
+
+            Route::post('/planchas/drafts/promote', [PlanchaDraftController::class, 'promoteApproved'])
+                ->name('secretary.planchas.drafts.promote');
+
+            Route::post('/planchas/evidence', [PlanchaDraftController::class, 'uploadDraftFiles'])
+                ->name('secretary.planchas.evidence.store');
+
+            Route::get('/planchas/evidence/{captureBatchUuid}', [PlanchaDraftController::class, 'listEvidenceByBatch'])
+                ->name('secretary.planchas.evidence.index');
+
+            Route::get('/planchas/evidence/files/{candidateDraftFile}', [PlanchaDraftController::class, 'showEvidenceFile'])
+                ->name('secretary.planchas.evidence.show');
+        });
 
         Route::prefix('admin')->group(function (): void {
 
