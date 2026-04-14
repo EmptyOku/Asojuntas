@@ -13,8 +13,8 @@ class Person extends Model
     use HasFactory;
 
     /**
-     * ⚠️ ATENCIÓN: Por defecto Laravel busca la tabla "people".
-     * Como tu migración dice "persons", debemos declararlo estrictamente aquí.
+     * Por defecto Laravel busca la tabla "people".
+     * Como la migración está declarado "persons", se declara estrictamente aquí.
      */
     protected $table = 'persons';
 

@@ -1,5 +1,33 @@
 <template>
   <div class="space-y-6">
+    <section class=" bg-white border border-gray-100 rounded-2xl p-5 sm:p-6 shadow-sm">
+      <div class="flex items-start justify-between gap-3 mb-6">
+        <div>
+          <h1 class="text-xl sm:text-2xl font-semibold text-gray-900">Módulo para crear personas antes que usuarios.</h1>
+          <p class="text-sm text-gray-500 mt-1">Agrega las personas al programa antes de agregar sus usuarios</p>
+        </div>
+        <button
+          type="button"
+          class="px-3 py-2 text-sm font-medium rounded-lg bg-aso-primary text-white hover:bg-aso-primary-dark transition-colors shrink-0"
+          @click="loadAll"
+          :disabled="loading"
+          >
+          Recargar
+        </button>
+      </div>
+
+      <div v-if="errorMessage" class="mb-4 rounded-xl bg-red-50 border border-red-200 text-red-700 px-4 py-3 text-sm">
+        {{ errorMessage }}
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div class="rounded-xl border border-gray-100 bg-gray-50 p-4">
+          <h2 class="text-base font-semibold text-gray-900 mb-3">Crear Persona</h2>
+          <form class="space-y-3" @submit.prevent="createPerson"></form>
+        </div>
+      </div>
+    </section>
+
     <section class="bg-white border border-gray-100 rounded-2xl p-5 sm:p-6 shadow-sm">
       <div class="flex items-start justify-between gap-3 mb-4">
         <div>
@@ -229,6 +257,9 @@ const createForm = ref({
   roles: [],
 });
 
+const createPerson = ref({
+  name: '',
+});
 const editingUser = ref(null);
 const editingRoles = ref([]);
 const editingNeighborhoodUser = ref(null);

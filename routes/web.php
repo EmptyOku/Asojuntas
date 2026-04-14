@@ -26,6 +26,9 @@ use App\Http\Controllers\Api\Admin\NeighborhoodDirectoryController;
 // Controlador para la gestión de candidatos OCR
 use App\Http\Controllers\Admin\OcrCandidateController;
 
+//Controlador de personas físicas
+use App\Http\Controllers\Admin\PersonController;
+
 Route::get('/', function () {
     return view('welcome');
 });
@@ -34,9 +37,6 @@ Route::get('/login', function () {
     return view('app');
 })->name('login');
 
-// =========================================================================
-// AQUÍ EMPIEZA LO QUE REALMENTE USA TU APLICACIÓN VUE (LA API DE SESIÓN)
-// =========================================================================
 
 // Endpoints para jurados autenticados con sesión web (SPA)
 Route::middleware(['auth', 'api.permission:records.upload'])->prefix('api/jury')->name('api.jury.')->group(function (): void {
@@ -110,6 +110,12 @@ Route::prefix('api')->name('api.')->group(function (): void {
             Route::post('/neighborhoods/elections/close-all', [NeighborhoodDirectoryController::class, 'closeAllElections'])
                 ->name('admin.neighborhoods.elections.close-all');
             // =========================================================
+
+            Route::post('/people', [\App\Http\Controllers\Admin\PersonController::class, 'store'])
+                ->name('admin.people.store');
+
+            Route::get('/people/without-users', [\App\Http\Controllers\Api\Admin\UserManagementController::class, 'getAvailablePersons'])
+                ->name('admin.people.without-users');
 
             Route::get('/users', [UserManagementController::class, 'index'])
                 ->middleware('api.permission:users.view')
