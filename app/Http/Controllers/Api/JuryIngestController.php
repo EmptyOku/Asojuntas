@@ -628,6 +628,13 @@ class JuryIngestController extends Controller
             ?: env('AWS_DEFAULT_REGION')
             ?: config('services.ses.region', 'us-east-1'));
 
+        $baseEnv = array_merge($_SERVER, $_ENV);
+
+        if (PHP_OS_FAMILY === 'Windows') {
+            $baseEnv['SystemRoot'] = $baseEnv['SystemRoot'] ?? getenv('SystemRoot') ?: 'C:\\Windows';
+            $baseEnv['WINDIR'] = $baseEnv['WINDIR'] ?? getenv('WINDIR') ?: $baseEnv['SystemRoot'];
+        }
+
         $env = [
             'APP_ENV' => (string) config('app.env', 'production'),
             'AWS_ACCESS_KEY_ID' => (string) env('AWS_ACCESS_KEY_ID', ''),
@@ -642,11 +649,23 @@ class JuryIngestController extends Controller
             'HTTPS_PROXY' => (string) env('HTTPS_PROXY', ''),
             'HTTP_PROXY' => (string) env('HTTP_PROXY', ''),
             'NO_PROXY' => (string) env('NO_PROXY', ''),
-            'PATH' => (string) env('PATH', (string) getenv('PATH')),
+            'PATH' => (string) (getenv('PATH') ?: ''),
             'PYTHONUTF8' => '1',
         ];
 
-        return array_filter($env, static fn ($value): bool => $value !== '');
+        $normalizedBaseEnv = [];
+        foreach ($baseEnv as $key => $value) {
+            if (! is_string($key) || $key === '' || is_array($value) || is_object($value) || $value === null) {
+                continue;
+            }
+
+            $normalizedBaseEnv[$key] = (string) $value;
+        }
+
+        return array_filter(
+            array_merge($normalizedBaseEnv, $env),
+            static fn ($value): bool => $value !== ''
+        );
     }
 
     private function classifyExtractorError(string $errorDetail): array
