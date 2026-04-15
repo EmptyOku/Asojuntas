@@ -228,4 +228,48 @@ class NeighborhoodController extends Controller
             ]
         ]);
     }
+
+    /**
+     * Buscador de barrios para el módulo de captura de planchas.
+     */
+    public function search(Request $request): JsonResponse
+    {
+        $term = $request->query('q');
+
+        if (empty($term)) {
+            return response()->json(['success' => true, 'data' => []]);
+        }
+
+        $neighborhoods = Neighborhood::with(['commune'])
+            ->where('name', 'ilike', "%{$term}%")
+            ->orWhere('code', 'ilike', "%{$term}%")
+            ->orderBy('name')
+            ->get()
+            ->map(function ($neighborhood) {
+                // Buscamos la elección activa para este barrio
+                $activeElection = $neighborhood->elections()
+                    ->where('is_active', true)
+                    ->latest('election_date')
+                    ->first();
+
+                return [
+                    'id' => $neighborhood->id,
+                    'name' => $neighborhood->name,
+                    'commune' => [
+                        'name' => $neighborhood->commune->name ?? 'S/C',
+                    ],
+                    'active_election' => $activeElection ? [
+                        'id' => $activeElection->id,
+                        'name' => $activeElection->name,
+                        // Contamos las planchas (slates) vinculadas a esta elección
+                        'slates_count' => $activeElection->slates()->count(),
+                    ] : null,
+                ];
+            });
+
+        return response()->json([
+            'success' => true,
+            'data' => $neighborhoods
+        ]);
+    }
 }
