@@ -19,6 +19,7 @@ use App\Http\Controllers\Api\Admin\RoleManagementController;
 use App\Http\Controllers\Api\Admin\UserManagementController;
 use App\Http\Controllers\Api\Admin\AuditManagementController;
 use App\Http\Controllers\Api\Admin\AuditLogController as SystemAuditLogController;
+use App\Http\Controllers\Api\Admin\NeighborhoodController;
 
 // EL CONTROLADOR DE BARRIOS UNIFICADO
 use App\Http\Controllers\Api\Admin\NeighborhoodDirectoryController;
@@ -85,6 +86,9 @@ Route::prefix('api')->name('api.')->group(function (): void {
 
             Route::get('/planchas/evidence/files/{candidateDraftFile}', [PlanchaDraftController::class, 'showEvidenceFile'])
                 ->name('secretary.planchas.evidence.show');
+
+            // Busca la sección de barrios y añade esta línea:
+            Route::get('/neighborhoods/search', [App\Http\Controllers\Admin\NeighborhoodController::class, 'search']);
         });
 
         Route::prefix('admin')->group(function (): void {
