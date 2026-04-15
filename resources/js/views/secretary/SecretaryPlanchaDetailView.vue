@@ -189,6 +189,8 @@ import axios from '@/services/axios';
 const route = useRoute();
 const router = useRouter();
 const docStore = useDocumentStore();
+
+// --- 1. VARIABLES REACTIVAS (Ordenadas correctamente) ---
 const isEditing = ref(false);
 const activeBlock = ref('directiva');
 const isSaving = ref(false);
@@ -196,6 +198,7 @@ const evidenceFiles = ref([]);
 const isPromoting = ref(false);
 const currentBatchUuid = ref((route.query.batch ?? docStore.captureBatchUuid ?? null));
 const promotableDraftCount = ref(0);
+const localEvidenceImages = ref([]); // <-- CORRECCIÓN: Movida hacia arriba
 
 const bloques = [
   { id: 'directiva', nombre: '1. Directiva', icon: Users },
@@ -204,10 +207,9 @@ const bloques = [
   { id: 'convivencia', nombre: '4. Convivencia', icon: Handshake }
 ];
 
-// Estructura Reactiva completa de la Plancha
 const planchaData = reactive({
   numero: 'Plancha No. 1',
-  nombreBarrio: 'Bello Horizonte',
+  nombreBarrio: 'Cargando territorio...',
   nombrePlancha: 'Transparencia Comunal',
   bloque1: {
     presidente: { nombre: 'María González', identificacion: '11223344', celular: '3101234567', correo: 'maria@ejemplo.com' },
@@ -233,29 +235,20 @@ const planchaData = reactive({
 });
 
 const normalizeCargoLabel = (value) =>
-  String(value || '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toUpperCase()
-    .replace(/\s+/g, ' ')
-    .trim();
+  String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/\s+/g, ' ').trim();
 
 const buildCandidateLookup = () => {
   const lookup = {};
   const pages = Object.values(docStore.extractedData || {});
-
   for (const page of pages) {
     for (const block of page?.bloques || []) {
       for (const cargo of block?.cargos || []) {
         const key = normalizeCargoLabel(cargo?.puesto);
-        if (!key || lookup[key]) {
-          continue;
-        }
+        if (!key || lookup[key]) continue;
         lookup[key] = cargo;
       }
     }
   }
-
   return lookup;
 };
 
@@ -267,27 +260,18 @@ const fillFromLookup = (target, source = {}) => {
 };
 
 const composeDraftFullName = (draft) =>
-  [draft?.first_name, draft?.middle_name, draft?.last_name, draft?.second_last_name]
-    .filter(Boolean)
-    .join(' ')
-    .replace(/\s+/g, ' ')
-    .trim();
+  [draft?.first_name, draft?.middle_name, draft?.last_name, draft?.second_last_name].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
 
 const extractCargoFromNotes = (notes) => {
-  const noteText = String(notes || '');
-  const match = noteText.match(/Cargo:\s*(.+)$/i);
+  const match = String(notes || '').match(/Cargo:\s*(.+)$/i);
   return match ? match[1].trim() : '';
 };
 
 const resolveDraftCargoLabel = (draft) =>
-  draft?.position?.name
-  || draft?.position?.code
-  || extractCargoFromNotes(draft?.notes)
-  || '';
+  draft?.position?.name || draft?.position?.code || extractCargoFromNotes(draft?.notes) || '';
 
 const applyDraftToPlancha = (draft) => {
   const label = normalizeCargoLabel(resolveDraftCargoLabel(draft));
-
   const lookup = {
     PRESIDENTE: planchaData.bloque1.presidente,
     VICEPRESIDENTE: planchaData.bloque1.vicepresidente,
@@ -308,9 +292,7 @@ const applyDraftToPlancha = (draft) => {
   };
 
   const target = lookup[label];
-  if (!target) {
-    return;
-  }
+  if (!target) return;
 
   fillFromLookup(target, {
     nombre: composeDraftFullName(draft),
@@ -320,43 +302,40 @@ const applyDraftToPlancha = (draft) => {
   });
 };
 
+// --- 2. CARGA DE DATOS SANEADA ---
 const hydratePlanchaFromDrafts = async () => {
-  const params = {
-    per_page: 100,
-  };
+  // CORRECCIÓN: Eliminamos per_page
+  const params = {};
 
-  if (route.params.id && route.params.id !== 'preview') {
-    params.draft_id = route.params.id;
-  }
-
-  if (currentBatchUuid.value) {
-    params.capture_batch_uuid = currentBatchUuid.value;
-  }
+  if (route.params.id && route.params.id !== 'preview') params.draft_id = route.params.id;
+  if (currentBatchUuid.value) params.capture_batch_uuid = currentBatchUuid.value;
 
   try {
     const { data } = await axios.get('/secretary/planchas/drafts', { params });
     const apiDrafts = data?.data?.data ?? [];
-    if (apiDrafts.length === 0) {
-      return;
-    }
+    if (apiDrafts.length === 0) return;
 
     const first = apiDrafts[0];
+
+    const fetchedName = first?.neighborhood_name 
+                     || first?.election?.neighborhood?.name 
+                     || 'JAC Sin Identificar';
+                     
+    planchaData.nombreBarrio = fetchedName;
+
     if (!currentBatchUuid.value && first?.capture_batch_uuid) {
       currentBatchUuid.value = first.capture_batch_uuid;
       docStore.setCaptureBatchUuid(first.capture_batch_uuid);
     }
-
     apiDrafts.forEach((draft) => applyDraftToPlancha(draft));
-  } catch {
-    // If hydration fails, keep current view values and allow manual editing.
+  } catch (error) {
+    console.error("Hydration fallback", error);
   }
 };
 
 const hydratePlanchaFromExtraction = () => {
   const lookup = buildCandidateLookup();
-  if (Object.keys(lookup).length === 0) {
-    return;
-  }
+  if (Object.keys(lookup).length === 0) return;
 
   fillFromLookup(planchaData.bloque1.presidente, lookup.PRESIDENTE);
   fillFromLookup(planchaData.bloque1.vicepresidente, lookup.VICEPRESIDENTE);
@@ -379,12 +358,13 @@ const hydratePlanchaFromExtraction = () => {
   fillFromLookup(planchaData.bloque4.empresarial, lookup['COMISION EMPRESARIAL']);
 };
 
-// Capturar el parámetro ?edit=true de la URL cuando venimos desde la vista de lista
 onMounted(async () => {
-  if (route.query.edit === 'true') {
-    isEditing.value = true;
-  }
+  if (route.query.edit === 'true') isEditing.value = true;
 
+  if (route.query.neighborhood_name) {
+    planchaData.nombreBarrio = route.query.neighborhood_name; 
+  }
+  
   localEvidenceImages.value = docStore.capturedImages || [];
 
   const batchFromRoute = route.query.batch ?? docStore.captureBatchUuid ?? null;
@@ -407,10 +387,9 @@ onMounted(async () => {
   }
 });
 
-const cancelEdit = () => {
-  isEditing.value = false;
-};
+const cancelEdit = () => { isEditing.value = false; };
 
+// --- 3. GUARDADO SANEADO CON ELECTION ID ---
 const saveChanges = () => {
   const generatedBatchUuid = currentBatchUuid.value || (globalThis.crypto?.randomUUID?.() ?? null);
   const captureBatchUuid = generatedBatchUuid || `batch-${Date.now()}`;
@@ -423,42 +402,30 @@ const saveChanges = () => {
 
   const reviewPageData = {
     bloques: [
-      {
-        titulo: 'Bloque - Directiva',
-        cargos: [
-          { puesto: 'PRESIDENTE', ...planchaData.bloque1.presidente },
-          { puesto: 'VICEPRESIDENTE', ...planchaData.bloque1.vicepresidente },
-          { puesto: 'TESORERO', ...planchaData.bloque1.tesorero },
-          { puesto: 'SECRETARIO', ...planchaData.bloque1.secretario },
-        ],
-      },
-      {
-        titulo: 'Bloque - Delegados Asojuntas',
-        cargos: [
-          { puesto: 'DELEGADO ASOJUNTAS 1', ...planchaData.bloque2.delegado1 },
-          { puesto: 'SUPLENTE DELEGADO ASOJUNTAS 1', ...planchaData.bloque2.suplente1 },
-          { puesto: 'DELEGADO ASOJUNTAS 2', ...planchaData.bloque2.delegado2 },
-          { puesto: 'SUPLENTE DELEGADO ASOJUNTAS 2', ...planchaData.bloque2.suplente2 },
-          { puesto: 'DELEGADO ASOJUNTAS 3', ...planchaData.bloque2.delegado3 },
-          { puesto: 'SUPLENTE DELEGADO ASOJUNTAS 3', ...planchaData.bloque2.suplente3 },
-        ],
-      },
-      {
-        titulo: 'Bloque - Fiscal',
-        cargos: [
-          { puesto: 'FISCAL', ...planchaData.bloque3.fiscal },
-          { puesto: 'SUPLENTE FISCAL', ...planchaData.bloque3.suplente },
-        ],
-      },
-      {
-        titulo: 'Bloque - Comisión de convivencia y conciliación',
-        cargos: [
-          { puesto: 'CONCILIADOR 1', ...planchaData.bloque4.conciliador1 },
-          { puesto: 'CONCILIADOR 2', ...planchaData.bloque4.conciliador2 },
-          { puesto: 'CONCILIADOR 3', ...planchaData.bloque4.conciliador3 },
-          { puesto: 'COMISION EMPRESARIAL', ...planchaData.bloque4.empresarial },
-        ],
-      },
+      { titulo: 'Bloque - Directiva', cargos: [
+        { puesto: 'PRESIDENTE', ...planchaData.bloque1.presidente },
+        { puesto: 'VICEPRESIDENTE', ...planchaData.bloque1.vicepresidente },
+        { puesto: 'TESORERO', ...planchaData.bloque1.tesorero },
+        { puesto: 'SECRETARIO', ...planchaData.bloque1.secretario },
+      ]},
+      { titulo: 'Bloque - Delegados Asojuntas', cargos: [
+        { puesto: 'DELEGADO ASOJUNTAS 1', ...planchaData.bloque2.delegado1 },
+        { puesto: 'SUPLENTE DELEGADO ASOJUNTAS 1', ...planchaData.bloque2.suplente1 },
+        { puesto: 'DELEGADO ASOJUNTAS 2', ...planchaData.bloque2.delegado2 },
+        { puesto: 'SUPLENTE DELEGADO ASOJUNTAS 2', ...planchaData.bloque2.suplente2 },
+        { puesto: 'DELEGADO ASOJUNTAS 3', ...planchaData.bloque2.delegado3 },
+        { puesto: 'SUPLENTE DELEGADO ASOJUNTAS 3', ...planchaData.bloque2.suplente3 },
+      ]},
+      { titulo: 'Bloque - Fiscal', cargos: [
+        { puesto: 'FISCAL', ...planchaData.bloque3.fiscal },
+        { puesto: 'SUPLENTE FISCAL', ...planchaData.bloque3.suplente },
+      ]},
+      { titulo: 'Bloque - Comisión de convivencia y conciliación', cargos: [
+        { puesto: 'CONCILIADOR 1', ...planchaData.bloque4.conciliador1 },
+        { puesto: 'CONCILIADOR 2', ...planchaData.bloque4.conciliador2 },
+        { puesto: 'CONCILIADOR 3', ...planchaData.bloque4.conciliador3 },
+        { puesto: 'COMISION EMPRESARIAL', ...planchaData.bloque4.empresarial },
+      ]},
     ],
   };
 
@@ -470,6 +437,7 @@ const saveChanges = () => {
     slate_code: slateCode,
     review_page_data: reviewPageData,
     replace_pending: route.query.preview === '1',
+    election_id: route.query.election_id // <-- CORRECCIÓN: Enlace crucial añadido
   })
     .then(async () => {
       let evidenceWarning = '';
@@ -487,14 +455,11 @@ const saveChanges = () => {
           });
 
           await axios.post('/secretary/planchas/evidence', form, {
-            headers: {
-              'Content-Type': 'multipart/form-data',
-            },
+            headers: { 'Content-Type': 'multipart/form-data' },
             timeout: 240000,
           });
         } catch (error) {
-          const backendMessage = error?.response?.data?.message || error?.response?.data?.error || error?.message;
-          evidenceWarning = ` La evidencia no se completo: ${backendMessage}`;
+          evidenceWarning = ` La evidencia no se guardó: ${error?.response?.data?.message || error?.message}`;
         }
       }
 
@@ -508,11 +473,10 @@ const saveChanges = () => {
         query: { batch: captureBatchUuid },
       });
 
-      window.alert(`Plancha guardada en borradores para revision.${evidenceWarning}`);
+      window.alert(`Plancha guardada en borradores.${evidenceWarning}`);
     })
     .catch((error) => {
-      const backendMessage = error?.response?.data?.message || error?.response?.data?.error || error?.message;
-      window.alert(`No se pudo guardar la plancha: ${backendMessage}`);
+      window.alert(`No se pudo guardar la plancha: ${error?.response?.data?.message || error?.message}`);
     })
     .finally(() => {
       isSaving.value = false;
@@ -520,11 +484,7 @@ const saveChanges = () => {
 };
 
 const loadEvidence = async (batchUuid) => {
-  if (!batchUuid) {
-    evidenceFiles.value = [];
-    return;
-  }
-
+  if (!batchUuid) return;
   try {
     const { data } = await axios.get(`/secretary/planchas/evidence/${batchUuid}`);
     evidenceFiles.value = data?.data?.files ?? [];
@@ -540,15 +500,14 @@ const loadPromotableCount = async (batchUuid) => {
   }
 
   try {
+    // CORRECCIÓN: Convertimos boolean a 0, y removemos per_page
     const { data } = await axios.get('/secretary/planchas/drafts', {
       params: {
         capture_batch_uuid: batchUuid,
         review_status: 'approved',
-        is_processed: false,
-        per_page: 1,
+        is_processed: 0, 
       },
     });
-
     promotableDraftCount.value = Number(data?.data?.total ?? 0);
   } catch {
     promotableDraftCount.value = 0;
@@ -556,12 +515,10 @@ const loadPromotableCount = async (batchUuid) => {
 };
 
 const promoteApprovedBatch = async () => {
-  if (!currentBatchUuid.value || isPromoting.value) {
-    return;
-  }
+  if (!currentBatchUuid.value || isPromoting.value) return;
 
   if (promotableDraftCount.value === 0) {
-    window.alert('No hay borradores aprobados pendientes por promover en este lote.');
+    window.alert('No hay borradores aprobados pendientes en este lote.');
     return;
   }
 
@@ -571,22 +528,13 @@ const promoteApprovedBatch = async () => {
     const { data } = await axios.post('/secretary/planchas/drafts/promote', {
       capture_batch_uuid: currentBatchUuid.value,
     });
-
-    const result = data?.data;
+    
     await loadPromotableCount(currentBatchUuid.value);
-    window.alert(
-      `Promocion finalizada. Procesados: ${result?.processed ?? 0}, ` +
-      `Personas creadas: ${result?.persons_created ?? 0}, ` +
-      `Candidatos creados: ${result?.candidates_created ?? 0}, ` +
-      `Omitidos: ${result?.skipped ?? 0}.`
-    );
+    window.alert('Promoción finalizada con éxito.');
   } catch (error) {
-    const backendMessage = error?.response?.data?.message || error?.response?.data?.error || error?.message;
-    window.alert(`No se pudo ejecutar la promocion oficial: ${backendMessage}`);
+    window.alert(`Fallo al promover: ${error?.response?.data?.message || error?.message}`);
   } finally {
     isPromoting.value = false;
   }
 };
-
-const localEvidenceImages = ref([]);
 </script>
