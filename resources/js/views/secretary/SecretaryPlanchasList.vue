@@ -389,6 +389,7 @@ const openDraftInDetail = (draft) => {
     query: {
       batch: draft.capture_batch_uuid,
       edit: true,
+      neighborhood_name: draft.neighborhood_name || 'JAC Sin Identificar'
     },
   });
 };
