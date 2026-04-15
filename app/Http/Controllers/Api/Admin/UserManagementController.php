@@ -47,7 +47,7 @@ class UserManagementController extends Controller
     /**
      * Retorna las personas físicas activas que aún no tienen una cuenta de usuario.
      */
-    public function getAvailablePersons(\Illuminate\Http\Request $request): \Illuminate\Http\JsonResponse
+    public function getAvailablePersons(Request $request): JsonResponse
     {
         $persons = \App\Models\Person::whereDoesntHave('user')
             ->where('is_active', true)
@@ -61,7 +61,9 @@ class UserManagementController extends Controller
         ]);
     }
 
-
+    /**
+     * Retorna el contexto de asignación para Vue (Barrios, mesas y si están ocupados).
+     */
     public function assignmentContext(): JsonResponse
     {
         $neighborhoods = Neighborhood::query()
@@ -87,7 +89,7 @@ class UserManagementController extends Controller
             $activeElection = $neighborhood->elections->first();
             $suggestedTable = $activeElection?->pollingTables?->first();
 
-            //Verifica si ya existe un USUARIO asociado a alguna PERSONA de este barrio
+            // Verifica si ya existe un USUARIO asociado a alguna PERSONA de este barrio
             $isAssigned = \App\Models\User::whereHas('person', function ($q) use ($neighborhood) {
                 $q->where('neighborhood_id', $neighborhood->id);
             })->exists();
@@ -98,7 +100,7 @@ class UserManagementController extends Controller
                 'code' => $neighborhood->code,
                 'active_election_id' => $activeElection?->id,
                 'active_election_name' => $activeElection?->name,
-                'is_assigned' => $isAssigned, // <-- ESTO ENVÍA EL ESTADO AL FRONTEND
+                'is_assigned' => $isAssigned, // <-- ESTO ENVÍA EL ESTADO EXACTO AL FRONTEND
                 'suggested_polling_table' => $suggestedTable ? [
                     'id' => $suggestedTable->id,
                     'name' => $suggestedTable->name,
@@ -123,15 +125,15 @@ class UserManagementController extends Controller
             'roles'     => 'required|array|min:1',
             'roles.*'   => 'exists:roles,id',
             
-            // --- NUEVO CANDADO ESTRICTO PARA JURADOS ---
+            // --- CANDADO ESTRICTO PARA JURADOS (DIGITIZER) ---
             'neighborhood_id' => [
                 'nullable',
                 function ($attribute, $value, $fail) use ($request) {
-                    // 1. Buscamos el ID del rol de jurado
+                    // 1. Buscamos el ID del rol de jurado (digitizer)
                     $juradoRoleId = \App\Models\Role::where('name', 'digitizer')->value('id');
                     
                     // 2. Si el administrador seleccionó el rol de Jurado...
-                    if (in_array($juradoRoleId, $request->roles ?? [])) {
+                    if ($juradoRoleId && in_array($juradoRoleId, $request->roles ?? [])) {
                         
                         if (empty($value)) {
                             $fail('El barrio es estrictamente obligatorio para los Jurados.');
@@ -152,43 +154,50 @@ class UserManagementController extends Controller
             'is_active' => 'sometimes|boolean',
         ]);
 
-        $user = DB::transaction(function () use ($validated) {
-            
-            // --- ACTUALIZACIÓN DE PERSONA ---
-            // Si enviaron un barrio (porque es jurado), le amarramos ese barrio a su registro físico
-            if (!empty($validated['neighborhood_id'])) {
-                \App\Models\Person::where('id', $validated['person_id'])
-                    ->update(['neighborhood_id' => $validated['neighborhood_id']]);
-            }
+        try {
+            $user = DB::transaction(function () use ($validated) {
+                
+                // --- ACTUALIZACIÓN DE PERSONA ---
+                if (!empty($validated['neighborhood_id'])) {
+                    \App\Models\Person::where('id', $validated['person_id'])
+                        ->update(['neighborhood_id' => $validated['neighborhood_id']]);
+                }
 
-            // CREACIÓN DE USUARIO
-            $user = User::create([
-                'person_id' => $validated['person_id'], 
-                'username'  => $validated['username'],
-                'email'     => $validated['email'],
-                'password'  => Hash::make($validated['password']),
-                'is_active' => $validated['is_active'] ?? true,
-                'email_verified_at' => now(),
-            ]);
+                // CREACIÓN DE USUARIO
+                $user = User::create([
+                    'person_id' => $validated['person_id'], 
+                    'username'  => $validated['username'],
+                    'email'     => $validated['email'],
+                    'password'  => Hash::make($validated['password']),
+                    'is_active' => $validated['is_active'] ?? true,
+                    'email_verified_at' => now(),
+                ]);
 
-            // ASIGNACIÓN DE ROLES
-            $pivotData = [];
-            foreach ($validated['roles'] as $roleId) {
-                $pivotData[$roleId] = [
-                    'assigned_at' => now(),
-                    'assigned_by' => Auth::id(),
-                ];
-            }
-            $user->roles()->sync($pivotData);
+                // ASIGNACIÓN DE ROLES
+                $pivotData = [];
+                foreach ($validated['roles'] as $roleId) {
+                    $pivotData[$roleId] = [
+                        'assigned_at' => now(),
+                        'assigned_by' => Auth::id() ?? 1,
+                    ];
+                }
+                $user->roles()->sync($pivotData);
 
-            return $user->load(['person.neighborhood', 'roles:id,name,display_name']);
-        });
+                return $user->load(['person.neighborhood', 'roles:id,name,display_name']);
+            });
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Usuario vinculado y creado correctamente',
-            'data'    => $user,
-        ], 201);
+            return response()->json([
+                'success' => true,
+                'message' => 'Usuario vinculado y creado correctamente.',
+                'data'    => $user,
+            ], 201);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al vincular el usuario: ' . $e->getMessage()
+            ], 500);
+        }
     }
 
     public function syncRoles(Request $request, User $user): JsonResponse
@@ -202,7 +211,7 @@ class UserManagementController extends Controller
         foreach ($validated['roles'] as $roleId) {
             $pivotData[$roleId] = [
                 'assigned_at' => now(),
-                'assigned_by' => Auth::id(),
+                'assigned_by' => Auth::id() ?? 1,
             ];
         }
 
@@ -211,7 +220,7 @@ class UserManagementController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Roles actualizados correctamente',
+            'message' => 'Roles actualizados correctamente.',
             'data' => $user,
         ]);
     }
@@ -224,11 +233,12 @@ class UserManagementController extends Controller
                 'exists:neighborhoods,id',
                 function ($attribute, $value, $fail) use ($user) {
                     if ($value) {
-                        //Verifica si otro usuario ya tiene asignada una persona de ese barrio
-                        $isTaken = \App\Models\User::where('di', '!=', $user->id)
+                        // Verifica si otro usuario ya tiene asignada una persona de ese barrio
+                        $isTaken = \App\Models\User::where('id', '!=', $user->id)
                             ->whereHas('person', function ($q) use ($value) {
                                 $q->where('neighborhood_id', $value);
                             })->exists();
+                            
                         if ($isTaken) {
                             $fail('Este barrio ya está asignado a otro usuario. Por favor elige un barrio diferente.');
                         }
@@ -240,7 +250,7 @@ class UserManagementController extends Controller
         if (! $user->person_id) {
             return response()->json([
                 'success' => false,
-                'message' => 'El usuario no tiene persona asociada para asignar barrio.',
+                'message' => 'El usuario no tiene una persona asociada para asignarle un barrio.',
             ], 422);
         }
 

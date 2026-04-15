@@ -29,6 +29,7 @@ use App\Http\Controllers\Admin\OcrCandidateController;
 //Controlador de personas físicas
 use App\Http\Controllers\Admin\PersonController;
 
+
 Route::get('/', function () {
     return view('welcome');
 });
