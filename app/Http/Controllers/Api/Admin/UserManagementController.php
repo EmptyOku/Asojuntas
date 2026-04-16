@@ -44,6 +44,26 @@ class UserManagementController extends Controller
         ]);
     }
 
+    /**
+     * Retorna las personas físicas activas que aún no tienen una cuenta de usuario.
+     */
+    public function getAvailablePersons(Request $request): JsonResponse
+    {
+        $persons = \App\Models\Person::whereDoesntHave('user')
+            ->where('is_active', true)
+            ->select('id', 'first_name', 'last_name', 'document_number')
+            ->orderBy('last_name')
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $persons
+        ]);
+    }
+
+    /**
+     * Retorna el contexto de asignación para Vue (Barrios, mesas y si están ocupados).
+     */
     public function assignmentContext(): JsonResponse
     {
         $neighborhoods = Neighborhood::query()
@@ -69,12 +89,18 @@ class UserManagementController extends Controller
             $activeElection = $neighborhood->elections->first();
             $suggestedTable = $activeElection?->pollingTables?->first();
 
+            // Verifica si ya existe un USUARIO asociado a alguna PERSONA de este barrio
+            $isAssigned = \App\Models\User::whereHas('person', function ($q) use ($neighborhood) {
+                $q->where('neighborhood_id', $neighborhood->id);
+            })->exists();
+
             return [
                 'id' => $neighborhood->id,
                 'name' => $neighborhood->name,
                 'code' => $neighborhood->code,
                 'active_election_id' => $activeElection?->id,
                 'active_election_name' => $activeElection?->name,
+                'is_assigned' => $isAssigned, // <-- ESTO ENVÍA EL ESTADO EXACTO AL FRONTEND
                 'suggested_polling_table' => $suggestedTable ? [
                     'id' => $suggestedTable->id,
                     'name' => $suggestedTable->name,
@@ -92,43 +118,86 @@ class UserManagementController extends Controller
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'person_id' => 'nullable|exists:persons,id|unique:users,person_id',
-            'username' => 'required|string|max:50|unique:users,username',
-            'email' => 'required|email|max:150|unique:users,email',
-            'password' => 'required|string|min:8',
-            'roles' => 'required|array|min:1',
-            'roles.*' => 'exists:roles,id',
+            'person_id' => 'required|exists:persons,id|unique:users,person_id',
+            'username'  => 'required|string|max:50|unique:users,username',
+            'email'     => 'required|email|max:150|unique:users,email',
+            'password'  => 'required|string|min:8',
+            'roles'     => 'required|array|min:1',
+            'roles.*'   => 'exists:roles,id',
+            
+            // --- CANDADO ESTRICTO PARA JURADOS (DIGITIZER) ---
+            'neighborhood_id' => [
+                'nullable',
+                function ($attribute, $value, $fail) use ($request) {
+                    // 1. Buscamos el ID del rol de jurado (digitizer)
+                    $juradoRoleId = \App\Models\Role::where('name', 'digitizer')->value('id');
+                    
+                    // 2. Si el administrador seleccionó el rol de Jurado...
+                    if ($juradoRoleId && in_array($juradoRoleId, $request->roles ?? [])) {
+                        
+                        if (empty($value)) {
+                            $fail('El barrio es estrictamente obligatorio para los Jurados.');
+                            return;
+                        }
+                        
+                        // 3. Verificamos que el barrio no esté ocupado por OTRO jurado
+                        $isTaken = \App\Models\User::whereHas('person', function ($q) use ($value) {
+                            $q->where('neighborhood_id', $value);
+                        })->exists();
+
+                        if ($isTaken) {
+                            $fail('Auditoría: Este barrio ya tiene un jurado asignado en el sistema.');
+                        }
+                    }
+                }
+            ],
             'is_active' => 'sometimes|boolean',
         ]);
 
-        $user = DB::transaction(function () use ($validated) {
-            $user = User::create([
-                'person_id' => $validated['person_id'] ?? null,
-                'username' => $validated['username'],
-                'email' => $validated['email'],
-                'password' => Hash::make($validated['password']),
-                'is_active' => $validated['is_active'] ?? true,
-                'email_verified_at' => now(),
-            ]);
+        try {
+            $user = DB::transaction(function () use ($validated) {
 
-            $pivotData = [];
-            foreach ($validated['roles'] as $roleId) {
-                $pivotData[$roleId] = [
-                    'assigned_at' => now(),
-                    'assigned_by' => Auth::id(),
-                ];
-            }
+                // --- ACTUALIZACIÓN DE PERSONA ---
+                if (!empty($validated['neighborhood_id'])) {
+                    \App\Models\Person::where('id', $validated['person_id'])
+                        ->update(['neighborhood_id' => $validated['neighborhood_id']]);
+                }
 
-            $user->roles()->sync($pivotData);
+                // CREACIÓN DE USUARIO
+                $user = User::create([
+                    'person_id' => $validated['person_id'], 
+                    'username'  => $validated['username'],
+                    'email'     => $validated['email'],
+                    'password'  => Hash::make($validated['password']),
+                    'is_active' => $validated['is_active'] ?? true,
+                    'email_verified_at' => now(),
+                ]);
 
-            return $user->load(['person', 'roles:id,name,display_name']);
-        });
+                // ASIGNACIÓN DE ROLES
+                $pivotData = [];
+                foreach ($validated['roles'] as $roleId) {
+                    $pivotData[$roleId] = [
+                        'assigned_at' => now(),
+                        'assigned_by' => Auth::id() ?? 1,
+                    ];
+                }
+                $user->roles()->sync($pivotData);
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Usuario creado correctamente',
-            'data' => $user,
-        ], 201);
+                return $user->load(['person.neighborhood', 'roles:id,name,display_name']);
+            });
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Usuario vinculado y creado correctamente.',
+                'data'    => $user,
+            ], 201);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al vincular el usuario: ' . $e->getMessage()
+            ], 500);
+        }
     }
 
     public function syncRoles(Request $request, User $user): JsonResponse
@@ -142,7 +211,7 @@ class UserManagementController extends Controller
         foreach ($validated['roles'] as $roleId) {
             $pivotData[$roleId] = [
                 'assigned_at' => now(),
-                'assigned_by' => Auth::id(),
+                'assigned_by' => Auth::id() ?? 1,
             ];
         }
 
@@ -151,7 +220,7 @@ class UserManagementController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Roles actualizados correctamente',
+            'message' => 'Roles actualizados correctamente.',
             'data' => $user,
         ]);
     }
@@ -159,13 +228,29 @@ class UserManagementController extends Controller
     public function syncNeighborhood(Request $request, User $user): JsonResponse
     {
         $validated = $request->validate([
-            'neighborhood_id' => 'nullable|exists:neighborhoods,id',
+            'neighborhood_id' => [
+                'nullable',
+                'exists:neighborhoods,id',
+                function ($attribute, $value, $fail) use ($user) {
+                    if ($value) {
+                        // Verifica si otro usuario ya tiene asignada una persona de ese barrio
+                        $isTaken = \App\Models\User::where('id', '!=', $user->id)
+                            ->whereHas('person', function ($q) use ($value) {
+                                $q->where('neighborhood_id', $value);
+                            })->exists();
+                            
+                        if ($isTaken) {
+                            $fail('Este barrio ya está asignado a otro usuario. Por favor elige un barrio diferente.');
+                        }
+                    }
+                },
+            ],
         ]);
 
         if (! $user->person_id) {
             return response()->json([
                 'success' => false,
-                'message' => 'El usuario no tiene persona asociada para asignar barrio.',
+                'message' => 'El usuario no tiene una persona asociada para asignarle un barrio.',
             ], 422);
         }
 
@@ -201,6 +286,50 @@ class UserManagementController extends Controller
                 'user' => $user,
                 'suggested_polling_table' => $suggestedPollingTable,
             ],
+        ]);
+    }
+
+    /**
+     * =========================================================================
+     * NUEVO: Endpoint ligero para buscar personas físicas en el formulario de 
+     * creación de usuarios.
+     * =========================================================================
+     */
+    public function searchPersonsForDropdown(Request $request): JsonResponse
+    {
+        $term = $request->query('q');
+
+        $query = \App\Models\Person::query()
+            ->select('id', 'document_number', 'first_name', 'middle_name', 'last_name', 'second_last_name');
+
+        if (!empty($term)) {
+            $query->where(function ($q) use ($term) {
+                $q->where('first_name', 'ilike', "%{$term}%")
+                  ->orWhere('last_name', 'ilike', "%{$term}%")
+                  ->orWhere('document_number', 'ilike', "%{$term}%")
+                  ->orWhereRaw("first_name || ' ' || last_name ILIKE ?", ["%{$term}%"]);
+            });
+        }
+
+        $persons = $query->orderBy('first_name')->limit(15)->get();
+
+        $data = $persons->map(function ($person) {
+            $fullName = trim(
+                $person->first_name . ' ' .
+                ($person->middle_name ? $person->middle_name . ' ' : '') .
+                $person->last_name . ' ' .
+                ($person->second_last_name ?? '')
+            );
+
+            return [
+                'id' => $person->id,
+                'label' => $person->document_number . ' - ' . $fullName
+            ];
+        });
+
+        return response()->json([
+            'success' => true,
+            'data'    => $data
         ]);
     }
 }

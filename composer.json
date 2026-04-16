@@ -15,6 +15,7 @@
         "league/flysystem-sftp-v3": "^3.33"
     },
     "require-dev": {
+        "barryvdh/laravel-debugbar": "^4.2",
         "fakerphp/faker": "^1.23",
         "laravel/pail": "^1.2.5",
         "laravel/pint": "^1.27",

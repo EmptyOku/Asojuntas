@@ -21,6 +21,7 @@ class NeighborhoodDirectoryController extends Controller
 {
     /**
      * Lista todos los barrios con sus respectivos presidentes y vicepresidentes.
+     * OPTIMIZADO: Paginación de servidor (15 registros) para carga ultra rápida.
      */
     public function index(Request $request): JsonResponse
     {
@@ -36,17 +37,15 @@ class NeighborhoodDirectoryController extends Controller
             'elections.candidates.electionBlockPosition.position'
         ]);
 
-        $perPage = max(1, min(100, (int) $request->integer('per_page', 10)));
-        $page = max(1, (int) $request->integer('page', 1));
+        // 🔥 PAGINACIÓN DE SERVIDOR: Solo procesamos 15 registros por consulta
+        $neighborhoodsPaginator = $query->orderBy('name', 'asc')->paginate(15);
 
-        $paginated = $query
-            ->orderBy('name', 'asc')
-            ->paginate($perPage, ['*'], 'page', $page);
-
-        $neighborhoods = $paginated->getCollection()->map(function ($neighborhood) {
+        // Transformamos solo los 15 registros de la página actual
+        $neighborhoodsItems = collect($neighborhoodsPaginator->items())->map(function ($neighborhood) {
             return $this->toNeighborhoodRow($neighborhood);
-        })->values();
+        });
 
+        // Conteos masivos para indicadores superiores
         $bulkBaseQuery = $this->filteredNeighborhoodQuery($request);
         $bulkCreateCount = (clone $bulkBaseQuery)
             ->whereDoesntHave('elections', function ($electionQuery): void {
@@ -68,14 +67,12 @@ class NeighborhoodDirectoryController extends Controller
         return response()->json([
             'success' => true,
             'data' => [
-                'neighborhoods' => $neighborhoods,
+                'neighborhoods' => $neighborhoodsItems,
                 'pagination' => [
-                    'current_page' => $paginated->currentPage(),
-                    'last_page' => $paginated->lastPage(),
-                    'per_page' => $paginated->perPage(),
-                    'total' => $paginated->total(),
-                    'from' => $paginated->firstItem(),
-                    'to' => $paginated->lastItem(),
+                    'current_page' => $neighborhoodsPaginator->currentPage(),
+                    'last_page'    => $neighborhoodsPaginator->lastPage(),
+                    'per_page'     => $neighborhoodsPaginator->perPage(),
+                    'total'        => $neighborhoodsPaginator->total(),
                 ],
                 'communes' => $communes,
                 'bulk_counts' => [
@@ -396,10 +393,6 @@ class NeighborhoodDirectoryController extends Controller
         ];
     }
 
-    /**
-     * Muestra los resultados del escrutinio para un barrio, con el detalle
-     * completo de cada cargo de la plancha ganadora (formato acta física).
-     */
     public function show($id, Request $request): JsonResponse
     {
         ini_set('max_execution_time', 120);
@@ -703,6 +696,19 @@ class NeighborhoodDirectoryController extends Controller
         ]);
     }
 
+    public function listForForms(): JsonResponse
+    {
+        $neighborhoods = Neighborhood::query()
+            ->select('id', 'name')
+            ->orderBy('name', 'asc')
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'data'    => $neighborhoods
+        ]);
+    }
+
     private function allocateSeatsByQuota(array $planchas, int $cargosAProveer, int $blancos): array
     {
         $normalizedPlanchas = [];
@@ -788,5 +794,36 @@ class NeighborhoodDirectoryController extends Controller
         $normalized = preg_replace('/\s+/', ' ', $normalized) ?? $normalized;
 
         return $normalized;
+    }
+
+    /**
+     * Endpoint ligero para el autocompletado de barrios al crear una Persona.
+     */
+    public function searchForDropdown(Request $request): JsonResponse
+    {
+        $term = $request->query('q');
+
+        $query = Neighborhood::query()
+            ->select('id', 'name', 'commune_id')
+            ->with('commune:id,name');
+
+        if (!empty($term)) {
+            $query->where('name', 'ilike', "%{$term}%")
+                  ->orWhere('code', 'ilike', "%{$term}%");
+        }
+
+        $neighborhoods = $query->orderBy('name')->limit(15)->get();
+
+        $data = $neighborhoods->map(function ($neighborhood) {
+            return [
+                'id' => $neighborhood->id,
+                'label' => $neighborhood->name . ' (' . ($neighborhood->commune->name ?? 'Sin comuna') . ')'
+            ];
+        });
+
+        return response()->json([
+            'success' => true,
+            'data'    => $data
+        ]);
     }
 }

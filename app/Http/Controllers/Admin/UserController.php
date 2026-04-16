@@ -5,161 +5,172 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Models\Person;
+use App\Models\Neighborhood;
 use App\Models\Role;
 use Illuminate\Http\Request;
-use Illuminate\View\View;
-use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Validation\Rule;
 
 class UserController extends Controller
 {
     /**
-     * Lista los usuarios del sistema con sus roles y estado.
+     * Lista los usuarios para la tabla de Vue.
      */
-    public function index(Request $request): View
+    public function index(Request $request): JsonResponse
     {
-        // Auditoría: Carga de la persona física y los roles asignados
-        $query = User::with(['person.documentType', 'roles']);
+        $query = User::with(['person.neighborhood', 'roles']);
 
-        if ($request->filled('search')) {
-            $query->where('username', 'ilike', "%{$request->search}%")
-                  ->orWhere('email', 'ilike', "%{$request->search}%")
-                  ->orWhereHas('person', function($q) use ($request) {
-                      $q->where('document_number', 'ilike', "%{$request->search}%")
-                        ->orWhere('first_name', 'ilike', "%{$request->search}%")
-                        ->orWhere('last_name', 'ilike', "%{$request->search}%");
-                  });
-        }
+        // Aquí puedes agregar filtros de búsqueda si los necesitas
+        $users = $query->latest()->get(); // O paginate() si configuras paginación en Vue
 
-        if ($request->filled('status')) {
-            $query->where('is_active', $request->status === 'active');
-        }
-
-        $users = $query->latest()->paginate(20)->withQueryString();
-
-        return view('admin.users.index', compact('users'));
-    }
-
-    public function create(): View
-    {
-        // Solo traemos personas que NO tengan un usuario ya creado y estén activas
-        $people = Person::whereDoesntHave('user')->where('is_active', true)->orderBy('last_name')->get();
-        $roles = Role::where('is_active', true)->orderBy('display_name')->get();
-
-        return view('admin.users.create', compact('people', 'roles'));
+        return response()->json([
+            'data' => $users
+        ]);
     }
 
     /**
-     * Almacena el usuario y le asigna roles dejando rastro de auditoría.
+     * Devuelve los barrios y marca si están ocupados (is_taken).
      */
-    public function store(Request $request): RedirectResponse
+    public function assignmentContext(): JsonResponse
     {
+        $neighborhoods = Neighborhood::withExists('persons as is_taken')
+            ->select('id', 'name', 'code')
+            ->orderBy('name')
+            ->get();
+
+        return response()->json([
+            'data' => $neighborhoods
+        ]);
+    }
+
+    /**
+     * Devuelve los roles disponibles.
+     */
+    public function getRoles(): JsonResponse
+    {
+        $roles = Role::with('permissions')->where('is_active', true)->orderBy('display_name')->get();
+        return response()->json(['data' => $roles]);
+    }
+
+    /**
+     * Crea Persona, Usuario y asigna Barrio en una sola transacción.
+     * ESTE ES EL NÚCLEO DEL BLOQUEO.
+     */
+    public function store(Request $request): JsonResponse
+    {
+        // 1. Validación Estricta
         $validated = $request->validate([
-            'person_id' => 'required|exists:persons,id|unique:users,person_id',
-            'username'  => 'required|string|max:50|unique:users,username',
-            'email'     => 'required|email|max:150|unique:users,email',
-            'password'  => 'required|string|min:8|confirmed',
-            'roles'     => 'required|array|min:1',
-            'roles.*'   => 'exists:roles,id',
+            // Validaciones de Persona
+            'person.document_type_id' => 'required|exists:document_types,id',
+            'person.document_number'  => 'required|string|max:30|unique:persons,document_number',
+            'person.first_name'       => 'required|string|max:100',
+            'person.last_name'        => 'required|string|max:100',
+            // BLOQUEO DE BARRIO: Nadie más puede tener este neighborhood_id
+            'person.neighborhood_id'  => 'required|exists:neighborhoods,id|unique:persons,neighborhood_id',
+
+            // Validaciones de Usuario
+            'user.username'           => 'required|string|max:50|unique:users,username',
+            'user.email'              => 'required|email|max:150|unique:users,email',
+            'user.password'           => 'required|string|min:8',
+            'user.roles'              => 'required|array|min:1',
+            'user.roles.*'            => 'exists:roles,id',
+        ], [
+            'person.neighborhood_id.unique' => 'Este barrio ya está asignado a otro jurado y está bloqueado.',
         ]);
 
-        $validated['password']  = Hash::make($validated['password']);
-        $validated['is_active'] = $request->has('is_active');
+        try {
+            DB::beginTransaction();
 
-        DB::transaction(function () use ($validated, $request) {
-            $user = User::create($validated);
+            // 2. Crear Persona
+            $person = Person::create([
+                'document_type_id' => $validated['person']['document_type_id'],
+                'document_number'  => $validated['person']['document_number'],
+                'first_name'       => $validated['person']['first_name'],
+                'last_name'        => $validated['person']['last_name'],
+                'neighborhood_id'  => $validated['person']['neighborhood_id'],
+                'is_active'        => true,
+            ]);
 
-            // Asignación de roles con registro de quién lo autorizó
+            // 3. Crear Usuario asociado
+            $user = User::create([
+                'person_id' => $person->id,
+                'username'  => $validated['user']['username'],
+                'email'     => $validated['user']['email'],
+                'password'  => Hash::make($validated['user']['password']),
+                'is_active' => true,
+            ]);
+
+            // 4. Asignar Roles
             $pivotData = [];
-            foreach ($validated['roles'] as $roleId) {
+            foreach ($validated['user']['roles'] as $roleId) {
                 $pivotData[$roleId] = [
                     'assigned_at' => now(),
-                    'assigned_by' => Auth::id()
+                    'assigned_by' => Auth::id() ?? 1
                 ];
             }
             $user->roles()->sync($pivotData);
-        });
 
-        return redirect()->route('admin.users.index')
-            ->with('success', 'Credenciales de acceso y roles configurados exitosamente.');
-    }
+            DB::commit();
 
-    public function edit(User $user): View
-    {
-        $roles = Role::where('is_active', true)->orderBy('display_name')->get();
-        return view('admin.users.edit', compact('user', 'roles'));
+            return response()->json([
+                'message' => 'Jurado registrado y barrio asignado exitosamente.'
+            ], 201);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json([
+                'message' => 'Error crítico al procesar la creación.',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
 
     /**
-     * Actualiza el usuario. La contraseña es opcional.
+     * Actualiza solo los roles de un usuario existente.
      */
-    public function update(Request $request, User $user): RedirectResponse
+    public function updateRoles(Request $request, User $user): JsonResponse
     {
-        // Protección: Un usuario no puede desactivarse a sí mismo
-        if ($user->id === Auth::id() && !$request->has('is_active')) {
-            return back()->with('error', 'Auditoría: Bloqueo de seguridad. No puede desactivar su propia cuenta.');
+        $validated = $request->validate([
+            'roles'   => 'required|array',
+            'roles.*' => 'exists:roles,id',
+        ]);
+
+        $pivotData = [];
+        foreach ($validated['roles'] as $roleId) {
+            $pivotData[$roleId] = [
+                'assigned_at' => now(),
+                'assigned_by' => Auth::id() ?? 1
+            ];
+        }
+        $user->roles()->sync($pivotData);
+
+        return response()->json(['message' => 'Roles actualizados.']);
+    }
+
+    /**
+     * Asigna un barrio a un usuario antiguo que no lo tenga.
+     */
+    public function assignNeighborhood(Request $request, User $user): JsonResponse
+    {
+        // Bloqueo: Si ya tiene barrio, rechazamos la petición
+        if ($user->person && $user->person->neighborhood_id) {
+            return response()->json(['message' => 'Este usuario ya tiene un barrio inalterable asignado.'], 403);
         }
 
         $validated = $request->validate([
-            'username' => 'required|string|max:50|unique:users,username,' . $user->id,
-            'email'    => 'required|email|max:150|unique:users,email,' . $user->id,
-            'password' => 'nullable|string|min:8|confirmed',
-            'roles'    => 'required|array|min:1',
+            'neighborhood_id' => 'required|exists:neighborhoods,id|unique:persons,neighborhood_id',
+        ], [
+            'neighborhood_id.unique' => 'Este barrio ya fue tomado por otra persona.',
         ]);
 
-        if ($request->filled('password')) {
-            $validated['password'] = Hash::make($validated['password']);
-        } else {
-            unset($validated['password']); // Evitamos sobreescribir con null
+        // Si el usuario no tiene una persona asociada (datos huérfanos), esto fallará. 
+        // Se asume que el usuario tiene un person_id válido.
+        if ($user->person) {
+            $user->person->update(['neighborhood_id' => $validated['neighborhood_id']]);
         }
 
-        $validated['is_active'] = $request->has('is_active');
-
-        DB::transaction(function () use ($user, $validated) {
-            $user->update($validated);
-
-            $pivotData = [];
-            foreach ($validated['roles'] as $roleId) {
-                $pivotData[$roleId] = [
-                    'assigned_at' => now(),
-                    'assigned_by' => Auth::id()
-                ];
-            }
-            $user->roles()->sync($pivotData);
-        });
-
-        return redirect()->route('admin.users.index')
-            ->with('success', 'Cuenta de usuario actualizada.');
-    }
-
-    /**
-     * Intenta eliminar al usuario (Extremadamente restringido).
-     */
-    public function destroy(User $user): RedirectResponse
-    {
-        if ($user->id === Auth::id()) {
-            return back()->with('error', 'Seguridad: No puede auto-eliminar su cuenta.');
-        }
-
-        // Auditoría Forense: Si el usuario tocó el escrutinio, es intocable.
-        if (
-            $user->createdScrutinyRecords()->exists() ||
-            $user->reviewedScrutinyReviews()->exists() ||
-            $user->consolidationRunsCreated()->exists() ||
-            $user->auditLogs()->exists()
-        ) {
-            return back()->with('error', 'Auditoría: Bloqueo de Integridad. Este usuario ha registrado actas, realizado revisiones de IA o generado consolidaciones. Eliminarlo corrompería el rastro forense. Debe desactivarlo (is_active = false).');
-        }
-
-        DB::transaction(function () use ($user) {
-            $user->roles()->detach();
-            $user->delete();
-        });
-
-        return redirect()->route('admin.users.index')
-            ->with('success', 'Usuario eliminado del sistema.');
+        return response()->json(['message' => 'Barrio asignado de forma inalterable.']);
     }
 }
