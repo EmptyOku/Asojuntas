@@ -156,7 +156,7 @@ class UserManagementController extends Controller
 
         try {
             $user = DB::transaction(function () use ($validated) {
-                
+
                 // --- ACTUALIZACIÓN DE PERSONA ---
                 if (!empty($validated['neighborhood_id'])) {
                     \App\Models\Person::where('id', $validated['person_id'])
@@ -286,6 +286,50 @@ class UserManagementController extends Controller
                 'user' => $user,
                 'suggested_polling_table' => $suggestedPollingTable,
             ],
+        ]);
+    }
+
+    /**
+     * =========================================================================
+     * NUEVO: Endpoint ligero para buscar personas físicas en el formulario de 
+     * creación de usuarios.
+     * =========================================================================
+     */
+    public function searchPersonsForDropdown(Request $request): JsonResponse
+    {
+        $term = $request->query('q');
+
+        $query = \App\Models\Person::query()
+            ->select('id', 'document_number', 'first_name', 'middle_name', 'last_name', 'second_last_name');
+
+        if (!empty($term)) {
+            $query->where(function ($q) use ($term) {
+                $q->where('first_name', 'ilike', "%{$term}%")
+                  ->orWhere('last_name', 'ilike', "%{$term}%")
+                  ->orWhere('document_number', 'ilike', "%{$term}%")
+                  ->orWhereRaw("first_name || ' ' || last_name ILIKE ?", ["%{$term}%"]);
+            });
+        }
+
+        $persons = $query->orderBy('first_name')->limit(15)->get();
+
+        $data = $persons->map(function ($person) {
+            $fullName = trim(
+                $person->first_name . ' ' .
+                ($person->middle_name ? $person->middle_name . ' ' : '') .
+                $person->last_name . ' ' .
+                ($person->second_last_name ?? '')
+            );
+
+            return [
+                'id' => $person->id,
+                'label' => $person->document_number . ' - ' . $fullName
+            ];
+        });
+
+        return response()->json([
+            'success' => true,
+            'data'    => $data
         ]);
     }
 }

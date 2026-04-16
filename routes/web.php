@@ -19,16 +19,17 @@ use App\Http\Controllers\Api\Admin\RoleManagementController;
 use App\Http\Controllers\Api\Admin\UserManagementController;
 use App\Http\Controllers\Api\Admin\AuditManagementController;
 use App\Http\Controllers\Api\Admin\AuditLogController as SystemAuditLogController;
+use App\Http\Controllers\Api\Admin\NeighborhoodController;
 
 // EL CONTROLADOR DE BARRIOS UNIFICADO
-use App\Http\Controllers\Api\Admin\NeighborhoodDirectoryController;
+use App\Http\Controllers\Api\Admin\rectoryController;
 
 // Controlador para la gestión de candidatos OCR
 use App\Http\Controllers\Admin\OcrCandidateController;
 
 //Controlador de personas físicas
 use App\Http\Controllers\Admin\PersonController;
-
+use App\Http\Controllers\Api\Admin\NeighborhoodDirectoryController;
 
 Route::get('/', function () {
     return view('welcome');
@@ -86,6 +87,9 @@ Route::prefix('api')->name('api.')->group(function (): void {
 
             Route::get('/planchas/evidence/files/{candidateDraftFile}', [PlanchaDraftController::class, 'showEvidenceFile'])
                 ->name('secretary.planchas.evidence.show');
+
+            // Busca la sección de barrios y añade esta línea:
+            Route::get('/neighborhoods/search', [App\Http\Controllers\Admin\NeighborhoodController::class, 'search']);
         });
 
         Route::prefix('admin')->group(function (): void {
@@ -95,6 +99,12 @@ Route::prefix('api')->name('api.')->group(function (): void {
             // =========================================================
             Route::get('/neighborhoods', [NeighborhoodDirectoryController::class, 'index'])
                 ->name('admin.neighborhoods.index');
+
+            Route::get('/neighborhoods/list-for-forms', [NeighborhoodDirectoryController::class, 'listForForms'])
+                ->name('admin.neighborhoods.list-for-forms');
+
+            Route::get('/neighborhoods/search-dropdown', [\App\Http\Controllers\Api\Admin\NeighborhoodDirectoryController::class, 'searchForDropdown'])
+                ->name('admin.neighborhoods.search-dropdown');
 
             Route::get('/neighborhoods/{id}', [NeighborhoodDirectoryController::class, 'show'])
                 ->name('admin.neighborhoods.show');
@@ -118,6 +128,10 @@ Route::prefix('api')->name('api.')->group(function (): void {
             Route::get('/people/without-users', [\App\Http\Controllers\Api\Admin\UserManagementController::class, 'getAvailablePersons'])
                 ->name('admin.people.without-users');
 
+            // 🔥 AQUÍ VA LA RUTA NUEVA DEL BUSCADOR DE PERSONAS
+            Route::get('/users/search-persons', [UserManagementController::class, 'searchPersonsForDropdown'])
+                ->name('admin.users.search-persons');
+
             Route::get('/users', [UserManagementController::class, 'index'])
                 ->middleware('api.permission:users.view')
                 ->name('admin.users.index');
@@ -137,6 +151,7 @@ Route::prefix('api')->name('api.')->group(function (): void {
             Route::put('/users/{user}/neighborhood', [UserManagementController::class, 'syncNeighborhood'])
                 ->middleware('api.permission:users.update')
                 ->name('admin.users.neighborhood.sync');
+            
 
             Route::get('/roles', [RoleManagementController::class, 'index'])
                 ->middleware('api.permission:roles.view')
@@ -167,7 +182,7 @@ Route::prefix('api')->name('api.')->group(function (): void {
                 ->name('admin.audit-records.decision');
 
             // Rutas para gestión de candidatos OCR
-            route::post('/ocr/process', [OcrCandidateController::class, 'process'])
+            Route::post('/ocr/process', [OcrCandidateController::class, 'process'])
                 ->middleware('api.permission:ocr.process')
                 ->name('admin.ocr.process');
         });

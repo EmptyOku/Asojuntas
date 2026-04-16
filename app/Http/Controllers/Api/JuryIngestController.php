@@ -658,6 +658,7 @@ class JuryIngestController extends Controller
             if (! is_string($key) || $key === '' || is_array($value) || is_object($value) || $value === null) {
                 continue;
             }
+
             $normalizedBaseEnv[$key] = (string) $value;
         }
 
