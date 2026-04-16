@@ -33,40 +33,48 @@
     </div>
 
     <div class="bg-white border border-gray-100 rounded-2xl shadow-[0_4px_20px_rgba(0,0,0,0.02)] overflow-hidden">
-      <div class="p-5 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-gray-50/30">
-
-        <div class="relative w-full sm:max-w-lg">
+      <div class="p-5 border-b border-gray-100 grid grid-cols-1 lg:grid-cols-4 gap-3 bg-gray-50/30">
+        <div class="relative lg:col-span-2">
           <Search class="w-4 h-4 absolute left-3.5 top-1/2 transform -translate-y-1/2 text-gray-400" />
           <input
             v-model.trim="search"
             type="text" 
-            placeholder="Buscar barrio por nombre, código o comuna..."
+            placeholder="Buscar barrio por nombre, código..."
             class="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-aso-primary/20 focus:border-aso-primary transition-colors"
           >
         </div>
 
-        <div class="flex items-center gap-2 w-full sm:w-auto">
-          <div class="relative w-full sm:w-64">
-            <Filter class="w-4 h-4 text-gray-400" />
-            <select
-              v-model="selectedCommuneId"
-              class="w-full py-2.5 pl-9 pr-9 border border-gray-200 rounded-xl text-sm bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-aso-primary/20 focus:border-aso-primary transition-colors appearance-none"
+        <div class="relative">
+          <Filter class="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 transform -translate-y-1/2" />
+          <select
+            v-model="selectedCommuneId"
+            class="w-full py-2.5 pl-9 pr-9 border border-gray-200 rounded-xl text-sm bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-aso-primary/20 focus:border-aso-primary transition-colors appearance-none"
+          >
+            <option value="">Todas las comunas</option>
+            <option
+              v-for="commune in communes"
+              :key="commune.id"
+              :value="String(commune.id)"
             >
-              <option value="">Todas las comunas</option>
-              <option
-                v-for="commune in communes"
-                :key="commune.id"
-                :value="String(commune.id)"
-              >
-                {{ commune.name }}
-              </option>
-            </select>
-          </div>
+              {{ commune.name }}
+            </option>
+          </select>
+        </div>
 
+        <div class="flex items-center gap-2">
           <button
             type="button"
-            class="inline-flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors shadow-sm"
+            class="flex-1 lg:flex-initial inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-aso-primary text-white rounded-xl text-sm font-semibold hover:bg-aso-primary-dark transition-colors disabled:opacity-60"
+            @click="fetchNeighborhoods"
+            :disabled="loading"
+          >
+            Buscar
+          </button>
+          <button
+            type="button"
+            class="inline-flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-50 transition-colors"
             @click="clearFilters"
+            :disabled="loading"
           >
             Limpiar
           </button>
@@ -297,6 +305,7 @@ const bulkCreateCount = computed(() => bulkCounts.value.create);
 const bulkCloseCount = computed(() => bulkCounts.value.close);
 
 let searchTimer = null;
+let communesCached = false; // Flag para cachear comunas
 
 const buildParams = () => {
   const params = {};
@@ -330,7 +339,13 @@ const fetchNeighborhoods = async () => {
     }
 
     neighborhoods.value = payload.neighborhoods;
-    communes.value = Array.isArray(payload.communes) ? payload.communes : [];
+    
+    // ✅ OPTIMIZACIÓN: Solo cargar comunas una sola vez
+    if (!communesCached && Array.isArray(payload?.communes)) {
+      communes.value = payload.communes;
+      communesCached = true;
+    }
+    
     bulkCounts.value = {
       create: Number(payload?.bulk_counts?.create || 0),
       close: Number(payload?.bulk_counts?.close || 0),
@@ -346,7 +361,6 @@ const fetchNeighborhoods = async () => {
   } catch (err) {
     console.error(err);
     neighborhoods.value = [];
-    communes.value = [];
     bulkCounts.value = { create: 0, close: 0 };
     pagination.value = {
       current_page: 1,
@@ -476,17 +490,6 @@ const changePage = (page) => {
 watch(selectedCommuneId, () => {
   currentPage.value = 1;
   fetchNeighborhoods();
-});
-
-watch(search, () => {
-  if (searchTimer) {
-    clearTimeout(searchTimer);
-  }
-
-  searchTimer = setTimeout(() => {
-    currentPage.value = 1;
-    fetchNeighborhoods();
-  }, 300);
 });
 
 onMounted(async () => {

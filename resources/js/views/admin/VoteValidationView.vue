@@ -112,7 +112,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ArrowLeft, ChevronLeft, ChevronRight, FileText, Users, Save } from 'lucide-vue-next';
 import axios from '@/services/axios';
@@ -137,6 +137,8 @@ const detail = ref({
 
 const editableBlocks = ref([]);
 const currentImageIndex = ref(0);
+const AUTO_REFRESH_MS = 5000;
+let autoRefreshTimer = null;
 
 const files = computed(() => detail.value.files || []);
 const currentFile = computed(() => files.value[currentImageIndex.value] || null);
@@ -181,6 +183,8 @@ const subtitle = computed(() => {
   return location ? `${election} • ${commune} • ${location}` : `${election} • ${commune}`;
 });
 
+const isFinalStatus = computed(() => ['approved', 'rejected', 'reviewed', 'consolidated'].includes(String(detail.value.status || '')));
+
 const calculateValidVotes = (block) => {
   return Number(block.votes.plancha_1 || 0)
     + Number(block.votes.plancha_2 || 0)
@@ -188,19 +192,46 @@ const calculateValidVotes = (block) => {
     + Number(block.votes.blancos || 0);
 };
 
-const fetchDetail = async () => {
-  isLoading.value = true;
+const stopAutoRefresh = () => {
+  if (autoRefreshTimer) {
+    clearInterval(autoRefreshTimer);
+    autoRefreshTimer = null;
+  }
+};
+
+const startAutoRefresh = () => {
+  stopAutoRefresh();
+
+  autoRefreshTimer = setInterval(async () => {
+    if (isSubmitting.value || isLoading.value || isFinalStatus.value) {
+      return;
+    }
+
+    await fetchDetail({ silent: true });
+  }, AUTO_REFRESH_MS);
+};
+
+const fetchDetail = async ({ silent = false } = {}) => {
+  if (!silent) {
+    isLoading.value = true;
+  }
   loadError.value = '';
 
   try {
     const { data } = await axios.get(`/admin/audit-records/${route.params.id}`);
     detail.value = data?.data || detail.value;
-    editableBlocks.value = JSON.parse(JSON.stringify(detail.value.blocks || []));
-    currentImageIndex.value = 0;
+    if (!isSubmitting.value) {
+      editableBlocks.value = JSON.parse(JSON.stringify(detail.value.blocks || []));
+    }
+    if (!silent) {
+      currentImageIndex.value = 0;
+    }
   } catch (error) {
     loadError.value = error?.response?.data?.message || 'No se pudo cargar el detalle del acta.';
   } finally {
-    isLoading.value = false;
+    if (!silent) {
+      isLoading.value = false;
+    }
   }
 };
 
@@ -238,6 +269,11 @@ const decide = async (decision) => {
 
 onMounted(async () => {
   await fetchDetail();
+  startAutoRefresh();
+});
+
+onBeforeUnmount(() => {
+  stopAutoRefresh();
 });
 </script>
 

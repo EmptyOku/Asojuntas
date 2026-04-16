@@ -193,6 +193,9 @@ const removeImage = (idToRemove) => {
 const extractPlanchas = async () => {
   extractError.value = '';
 
+  // Start each extraction flow with a fresh batch to avoid mixing records across neighborhoods.
+  docStore.setCaptureBatchUuid(null);
+
   if (!selectedNeighborhood.value?.active_election?.id) {
     extractError.value = 'El barrio seleccionado no tiene una elección activa configurada.';
     return;

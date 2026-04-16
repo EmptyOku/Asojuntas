@@ -389,6 +389,15 @@ onMounted(async () => {
 
 const cancelEdit = () => { isEditing.value = false; };
 
+const onlyDigits = (value) => String(value ?? '').replace(/\D+/g, '');
+
+const sanitizeCandidate = (candidate = {}) => ({
+  ...candidate,
+  identificacion: onlyDigits(candidate.identificacion).slice(0, 20),
+  celular: onlyDigits(candidate.celular).slice(0, 15),
+  correo: String(candidate.correo ?? '').trim(),
+});
+
 // --- 3. GUARDADO SANEADO CON ELECTION ID ---
 const saveChanges = () => {
   const generatedBatchUuid = currentBatchUuid.value || (globalThis.crypto?.randomUUID?.() ?? null);
@@ -403,28 +412,28 @@ const saveChanges = () => {
   const reviewPageData = {
     bloques: [
       { titulo: 'Bloque - Directiva', cargos: [
-        { puesto: 'PRESIDENTE', ...planchaData.bloque1.presidente },
-        { puesto: 'VICEPRESIDENTE', ...planchaData.bloque1.vicepresidente },
-        { puesto: 'TESORERO', ...planchaData.bloque1.tesorero },
-        { puesto: 'SECRETARIO', ...planchaData.bloque1.secretario },
+        { puesto: 'PRESIDENTE', ...sanitizeCandidate(planchaData.bloque1.presidente) },
+        { puesto: 'VICEPRESIDENTE', ...sanitizeCandidate(planchaData.bloque1.vicepresidente) },
+        { puesto: 'TESORERO', ...sanitizeCandidate(planchaData.bloque1.tesorero) },
+        { puesto: 'SECRETARIO', ...sanitizeCandidate(planchaData.bloque1.secretario) },
       ]},
       { titulo: 'Bloque - Delegados Asojuntas', cargos: [
-        { puesto: 'DELEGADO ASOJUNTAS 1', ...planchaData.bloque2.delegado1 },
-        { puesto: 'SUPLENTE DELEGADO ASOJUNTAS 1', ...planchaData.bloque2.suplente1 },
-        { puesto: 'DELEGADO ASOJUNTAS 2', ...planchaData.bloque2.delegado2 },
-        { puesto: 'SUPLENTE DELEGADO ASOJUNTAS 2', ...planchaData.bloque2.suplente2 },
-        { puesto: 'DELEGADO ASOJUNTAS 3', ...planchaData.bloque2.delegado3 },
-        { puesto: 'SUPLENTE DELEGADO ASOJUNTAS 3', ...planchaData.bloque2.suplente3 },
+        { puesto: 'DELEGADO ASOJUNTAS 1', ...sanitizeCandidate(planchaData.bloque2.delegado1) },
+        { puesto: 'SUPLENTE DELEGADO ASOJUNTAS 1', ...sanitizeCandidate(planchaData.bloque2.suplente1) },
+        { puesto: 'DELEGADO ASOJUNTAS 2', ...sanitizeCandidate(planchaData.bloque2.delegado2) },
+        { puesto: 'SUPLENTE DELEGADO ASOJUNTAS 2', ...sanitizeCandidate(planchaData.bloque2.suplente2) },
+        { puesto: 'DELEGADO ASOJUNTAS 3', ...sanitizeCandidate(planchaData.bloque2.delegado3) },
+        { puesto: 'SUPLENTE DELEGADO ASOJUNTAS 3', ...sanitizeCandidate(planchaData.bloque2.suplente3) },
       ]},
       { titulo: 'Bloque - Fiscal', cargos: [
-        { puesto: 'FISCAL', ...planchaData.bloque3.fiscal },
-        { puesto: 'SUPLENTE FISCAL', ...planchaData.bloque3.suplente },
+        { puesto: 'FISCAL', ...sanitizeCandidate(planchaData.bloque3.fiscal) },
+        { puesto: 'SUPLENTE FISCAL', ...sanitizeCandidate(planchaData.bloque3.suplente) },
       ]},
       { titulo: 'Bloque - Comisión de convivencia y conciliación', cargos: [
-        { puesto: 'CONCILIADOR 1', ...planchaData.bloque4.conciliador1 },
-        { puesto: 'CONCILIADOR 2', ...planchaData.bloque4.conciliador2 },
-        { puesto: 'CONCILIADOR 3', ...planchaData.bloque4.conciliador3 },
-        { puesto: 'COMISION EMPRESARIAL', ...planchaData.bloque4.empresarial },
+        { puesto: 'CONCILIADOR 1', ...sanitizeCandidate(planchaData.bloque4.conciliador1) },
+        { puesto: 'CONCILIADOR 2', ...sanitizeCandidate(planchaData.bloque4.conciliador2) },
+        { puesto: 'CONCILIADOR 3', ...sanitizeCandidate(planchaData.bloque4.conciliador3) },
+        { puesto: 'COMISION EMPRESARIAL', ...sanitizeCandidate(planchaData.bloque4.empresarial) },
       ]},
     ],
   };
@@ -527,6 +536,8 @@ const promoteApprovedBatch = async () => {
   try {
     const { data } = await axios.post('/secretary/planchas/drafts/promote', {
       capture_batch_uuid: currentBatchUuid.value,
+    }, {
+      timeout: 180000,
     });
     
     await loadPromotableCount(currentBatchUuid.value);

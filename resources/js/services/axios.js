@@ -6,6 +6,7 @@ const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '/api';
 const instance = axios.create({
     baseURL: apiBaseUrl,
     withCredentials: true,
+    timeout: 30000, // Aumentado de 12s a 30s para endpoints lentos
     headers: {
         'X-Requested-With': 'XMLHttpRequest',
         'Content-Type': 'application/json',
@@ -15,7 +16,13 @@ const instance = axios.create({
 
 instance.interceptors.request.use(
     (config) => {
-        startRequestLoading();
+        const skipGlobalLoading = config?.skipGlobalLoading === true;
+        config.__loadingTracked = !skipGlobalLoading;
+
+        if (config.__loadingTracked) {
+            startRequestLoading();
+        }
+
         return config;
     },
     (error) => {
@@ -26,11 +33,17 @@ instance.interceptors.request.use(
 
 instance.interceptors.response.use(
     (response) => {
-        stopRequestLoading();
+        if (response?.config?.__loadingTracked) {
+            stopRequestLoading();
+        }
+
         return response;
     },
     (error) => {
-        stopRequestLoading();
+        if (error?.config?.__loadingTracked) {
+            stopRequestLoading();
+        }
+
         return Promise.reject(error);
     }
 );

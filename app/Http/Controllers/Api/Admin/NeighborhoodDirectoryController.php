@@ -28,7 +28,7 @@ class NeighborhoodDirectoryController extends Controller
         $query = $this->filteredNeighborhoodQuery($request)->with([
             'commune',
             'elections' => function ($query) {
-                $query->latest('election_date')->where('is_active', true);
+                $query->latest('election_date')->where('is_active', true)->limit(1);
             },
             'elections.candidates' => function ($query) {
                 $query->where('is_active', true);
@@ -41,9 +41,10 @@ class NeighborhoodDirectoryController extends Controller
         $neighborhoodsPaginator = $query->orderBy('name', 'asc')->paginate(15);
 
         // Transformamos solo los 15 registros de la página actual
-        $neighborhoodsItems = collect($neighborhoodsPaginator->items())->map(function ($neighborhood) {
-            return $this->toNeighborhoodRow($neighborhood);
-        });
+        $neighborhoodsItems = collect($neighborhoodsPaginator->items())
+            ->map(fn($neighborhood) => $this->toNeighborhoodRow($neighborhood))
+            ->values()
+            ->toArray();
 
         // Conteos masivos para indicadores superiores
         $bulkBaseQuery = $this->filteredNeighborhoodQuery($request);
@@ -62,9 +63,14 @@ class NeighborhoodDirectoryController extends Controller
         $communes = Commune::query()
             ->select('id', 'name')
             ->orderBy('name')
-            ->get();
+            ->get()
+            ->map(fn($commune) => [
+                'id' => $commune->id,
+                'name' => $commune->name,
+            ])
+            ->toArray();
 
-        return response()->json([
+        $response = [
             'success' => true,
             'data' => [
                 'neighborhoods' => $neighborhoodsItems,
@@ -80,7 +86,9 @@ class NeighborhoodDirectoryController extends Controller
                     'close' => $bulkCloseCount,
                 ],
             ],
-        ]);
+        ];
+        
+        return response()->json($response);
     }
 
     public function createElection(int $id): JsonResponse
@@ -379,7 +387,10 @@ class NeighborhoodDirectoryController extends Controller
             'id' => $neighborhood->id,
             'name' => $neighborhood->name,
             'code' => $neighborhood->code,
-            'commune' => $neighborhood->commune,
+            'commune' => $neighborhood->commune ? [
+                'id' => $neighborhood->commune->id,
+                'name' => $neighborhood->commune->name,
+            ] : null,
             'president_name' => $presidentName,
             'vicepresident_name' => $vicepresidentName,
             'has_active_election' => $latestElection !== null,
@@ -696,12 +707,46 @@ class NeighborhoodDirectoryController extends Controller
         ]);
     }
 
-    public function listForForms(): JsonResponse
+    /**
+     * Obtiene solo las comunas (para selector rápido)
+     */
+    public function communes(): JsonResponse
     {
-        $neighborhoods = Neighborhood::query()
+        $communes = Commune::query()
             ->select('id', 'name')
-            ->orderBy('name', 'asc')
-            ->get();
+            ->orderBy('name')
+            ->get()
+            ->map(fn($commune) => [
+                'id' => $commune->id,
+                'name' => $commune->name,
+            ])
+            ->toArray();
+
+        return response()->json([
+            'success' => true,
+            'data' => $communes,
+        ]);
+    }
+
+    public function listForForms(Request $request): JsonResponse
+    {
+        $query = Neighborhood::query()
+            ->select('id', 'name', 'commune_id')
+            ->orderBy('name', 'asc');
+
+        // Filtrar por comuna si se proporciona
+        if ($request->filled('commune_id')) {
+            $query->where('commune_id', $request->integer('commune_id'));
+        }
+
+        $neighborhoods = $query
+            ->limit(100)
+            ->get()
+            ->map(fn($neighborhood) => [
+                'id' => $neighborhood->id,
+                'name' => $neighborhood->name,
+            ])
+            ->toArray();
 
         return response()->json([
             'success' => true,
@@ -814,12 +859,12 @@ class NeighborhoodDirectoryController extends Controller
 
         $neighborhoods = $query->orderBy('name')->limit(15)->get();
 
-        $data = $neighborhoods->map(function ($neighborhood) {
-            return [
+        $data = $neighborhoods
+            ->map(fn($neighborhood) => [
                 'id' => $neighborhood->id,
                 'label' => $neighborhood->name . ' (' . ($neighborhood->commune->name ?? 'Sin comuna') . ')'
-            ];
-        });
+            ])
+            ->toArray();
 
         return response()->json([
             'success' => true,

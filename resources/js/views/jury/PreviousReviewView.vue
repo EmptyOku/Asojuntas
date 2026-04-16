@@ -434,6 +434,7 @@ const confirmAndSend = async () => {
   }
 
   isSubmitting.value = true;
+  const queueModes = [];
 
   try {
     const recordId = Number(integration.value.recordId);
@@ -447,21 +448,23 @@ const confirmAndSend = async () => {
       return;
     }
 
-    for (let index = 0; index < docStore.capturedImages.length; index += 1) {
+    const uploadPage = async (index, forcedRecordId = null) => {
       const image = docStore.capturedImages[index];
       if (!image) {
-        continue;
+        return null;
       }
 
       const file = await toFileFromImage(image);
       const pageData = extractedPages.value[index] || { bloques: [] };
       const uploadForm = new FormData();
 
-      if (integration.value.recordId) {
-        uploadForm.append('scrutiny_record_id', String(integration.value.recordId));
+      const effectiveRecordId = forcedRecordId || integration.value.recordId;
+
+      if (effectiveRecordId) {
+        uploadForm.append('scrutiny_record_id', String(effectiveRecordId));
       }
 
-      if (!integration.value.recordId && hasPollingTableId) {
+      if (!effectiveRecordId && hasPollingTableId) {
         uploadForm.append('polling_table_id', String(pollingTableId));
       }
 
@@ -491,13 +494,43 @@ const confirmAndSend = async () => {
       integration.value.recordId = data.scrutiny_record_id || integration.value.recordId;
       integration.value.lastStoragePath = data.storage_path || integration.value.lastStoragePath;
       integration.value.lastDownloadUrl = data.download_url || integration.value.lastDownloadUrl;
+      if (data.queue_mode) {
+        queueModes.push(String(data.queue_mode));
+      }
+
+      return data;
+    };
+
+    let seedRecordId = integration.value.recordId || null;
+    let startIndex = 0;
+
+    if (!seedRecordId) {
+      const firstUpload = await uploadPage(0, null);
+      seedRecordId = firstUpload?.scrutiny_record_id || integration.value.recordId || null;
+      startIndex = 1;
+    }
+
+    const remainingUploads = [];
+    for (let index = startIndex; index < docStore.capturedImages.length; index += 1) {
+      remainingUploads.push(uploadPage(index, seedRecordId));
+    }
+
+    if (remainingUploads.length > 0) {
+      await Promise.all(remainingUploads);
     }
 
     if (integration.value.pollingTableId) {
       localStorage.setItem('juryPollingTableId', String(integration.value.pollingTableId));
     }
 
-    submitSuccess.value = `Prueba completada: paquete de ${docStore.capturedImages.length} pagina(s) almacenado y registrado en backend.`;
+    if (integration.value.recordId) {
+      localStorage.setItem('juryLastScrutinyRecordId', String(integration.value.recordId));
+    }
+
+    const queueModeLabel = queueModes.includes('queued')
+      ? 'cola de trabajos'
+      : 'procesamiento post-respuesta';
+    submitSuccess.value = `Acta enviada: ${docStore.capturedImages.length} pagina(s) cargadas y en procesamiento en segundo plano (${queueModeLabel}).`;
     router.push('/jury/dashboard');
   } catch (error) {
     const backendMessage = error?.response?.data?.message || error?.response?.data?.error || error?.message;

@@ -20,6 +20,7 @@ use App\Http\Controllers\Api\Admin\UserManagementController;
 use App\Http\Controllers\Api\Admin\AuditManagementController;
 use App\Http\Controllers\Api\Admin\AuditLogController as SystemAuditLogController;
 use App\Http\Controllers\Api\Admin\NeighborhoodController;
+use App\Http\Controllers\Api\Admin\PersonController as ApiPersonController;
 
 // EL CONTROLADOR DE BARRIOS UNIFICADO
 use App\Http\Controllers\Api\Admin\rectoryController;
@@ -43,6 +44,7 @@ Route::get('/login', function () {
 // Endpoints para jurados autenticados con sesión web (SPA)
 Route::middleware(['auth', 'api.permission:records.upload'])->prefix('api/jury')->name('api.jury.')->group(function (): void {
     Route::get('/context', [JuryIngestController::class, 'context'])->name('context');
+    Route::get('/status/{scrutinyRecord}', [JuryIngestController::class, 'status'])->name('status');
     Route::post('/extract-preview', [JuryIngestController::class, 'previewExtraction'])->name('extract-preview');
     Route::post('/submit', [JuryIngestController::class, 'submit'])->name('submit');
     Route::get('/scrutiny-files/{scrutinyRecordFile}', [JuryIngestController::class, 'showFile'])->name('scrutiny-files.show');
@@ -88,8 +90,8 @@ Route::prefix('api')->name('api.')->group(function (): void {
             Route::get('/planchas/evidence/files/{candidateDraftFile}', [PlanchaDraftController::class, 'showEvidenceFile'])
                 ->name('secretary.planchas.evidence.show');
 
-            // Busca la sección de barrios y añade esta línea:
             Route::get('/neighborhoods/search', [App\Http\Controllers\Admin\NeighborhoodController::class, 'search']);
+            Route::get('/planchas/by-neighborhood', [PlanchaDraftController::class, 'neighborhoodsWithSlates']);
         });
 
         Route::prefix('admin')->group(function (): void {
@@ -103,16 +105,22 @@ Route::prefix('api')->name('api.')->group(function (): void {
             Route::get('/neighborhoods/list-for-forms', [NeighborhoodDirectoryController::class, 'listForForms'])
                 ->name('admin.neighborhoods.list-for-forms');
 
+            Route::get('/neighborhoods/communes', [NeighborhoodDirectoryController::class, 'communes'])
+                ->name('admin.neighborhoods.communes');
+
             Route::get('/neighborhoods/search-dropdown', [\App\Http\Controllers\Api\Admin\NeighborhoodDirectoryController::class, 'searchForDropdown'])
                 ->name('admin.neighborhoods.search-dropdown');
 
             Route::get('/neighborhoods/{id}', [NeighborhoodDirectoryController::class, 'show'])
+                ->whereNumber('id')
                 ->name('admin.neighborhoods.show');
 
             Route::post('/neighborhoods/{id}/elections', [NeighborhoodDirectoryController::class, 'createElection'])
+                ->whereNumber('id')
                 ->name('admin.neighborhoods.elections.store');
 
             Route::post('/neighborhoods/{id}/elections/close', [NeighborhoodDirectoryController::class, 'closeElection'])
+                ->whereNumber('id')
                 ->name('admin.neighborhoods.elections.close');
 
             Route::post('/neighborhoods/elections/create-all', [NeighborhoodDirectoryController::class, 'createAllElections'])
@@ -121,14 +129,44 @@ Route::prefix('api')->name('api.')->group(function (): void {
             Route::post('/neighborhoods/elections/close-all', [NeighborhoodDirectoryController::class, 'closeAllElections'])
                 ->name('admin.neighborhoods.elections.close-all');
             // =========================================================
+            // RUTAS DE PERSONAS
+            // =========================================================
+            Route::get('/persons/context', [ApiPersonController::class, 'context'])
+                ->name('admin.persons.context');
 
+            Route::get('/persons', [ApiPersonController::class, 'index'])
+                ->name('admin.persons.index');
+
+            Route::post('/persons', [ApiPersonController::class, 'store'])
+                ->middleware('api.permission:users.create')
+                ->name('admin.persons.store');
+
+            Route::get('/persons/without-user', [ApiPersonController::class, 'getPersonsWithoutUser'])
+                ->name('admin.persons.without-user');
+
+            Route::get('/persons/{person}', [ApiPersonController::class, 'show'])
+                ->name('admin.persons.show');
+
+            Route::put('/persons/{person}', [ApiPersonController::class, 'update'])
+                ->middleware('api.permission:users.update')
+                ->name('admin.persons.update');
+            // =========================================================
+
+            // Legacy route (web controller)
             Route::post('/people', [\App\Http\Controllers\Admin\PersonController::class, 'store'])
                 ->name('admin.people.store');
 
             Route::get('/people/without-users', [\App\Http\Controllers\Api\Admin\UserManagementController::class, 'getAvailablePersons'])
                 ->name('admin.people.without-users');
 
-            // 🔥 AQUÍ VA LA RUTA NUEVA DEL BUSCADOR DE PERSONAS
+            // =========================================================
+            // RUTAS DE USUARIOS
+            // =========================================================
+            Route::get('/users/context', [UserManagementController::class, 'creationContext'])
+                ->middleware('api.permission:users.view')
+                ->name('admin.users.context');
+
+            // 🔥 BUSCADOR DE PERSONAS PARA DROPDOWN
             Route::get('/users/search-persons', [UserManagementController::class, 'searchPersonsForDropdown'])
                 ->name('admin.users.search-persons');
 
@@ -151,7 +189,7 @@ Route::prefix('api')->name('api.')->group(function (): void {
             Route::put('/users/{user}/neighborhood', [UserManagementController::class, 'syncNeighborhood'])
                 ->middleware('api.permission:users.update')
                 ->name('admin.users.neighborhood.sync');
-            
+            // =========================================================
 
             Route::get('/roles', [RoleManagementController::class, 'index'])
                 ->middleware('api.permission:roles.view')
@@ -190,6 +228,7 @@ Route::prefix('api')->name('api.')->group(function (): void {
 });
 
 // Ruta catch-all para Vue SPA - DEBE ir al final!
+// Excluye rutas /api para que lleguen al controlador correcto
 Route::get('{any}', function () {
     return view('app');
-})->where('any', '.*')->name('spa');
+})->where('any', '^(?!api).*')->name('spa');

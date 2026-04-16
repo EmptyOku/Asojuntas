@@ -68,7 +68,7 @@ class AuthController extends Controller
             ], 401);
         }
 
-        $user = User::with(['roles.permissions'])->find(Auth::id());
+        $user = User::with(['roles.permissions', 'person.neighborhood.commune'])->find(Auth::id());
         $permissions = $user->roles
             ->flatMap(fn ($role) => $role->permissions->pluck('name'))
             ->unique()

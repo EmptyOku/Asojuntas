@@ -6,9 +6,11 @@ use App\Http\Controllers\Controller;
 use App\Models\Candidate;
 use App\Models\CandidateDraft;
 use App\Models\CandidateDraftFile;
+use App\Models\DocumentType;
 use App\Models\ElectionBlock;
 use App\Models\ElectionBlockPosition;
 use App\Models\Election;
+use App\Models\Neighborhood;
 use App\Models\Person;
 use App\Models\Position;
 use App\Models\Slate;
@@ -187,7 +189,7 @@ class PlanchaDraftController extends Controller
 
                 $nameParts = $this->splitPersonName($fullName);
                 $documentNumber = $this->normalizeDocumentNumber((string) ($cargo['identificacion'] ?? ''));
-                $documentTypeId = $validated['document_type_id'] ?? null;
+                $documentTypeId = $validated['document_type_id'] ?? $this->resolveDefaultDocumentTypeId();
 
                 $personId = null;
                 if ($documentNumber !== null) {
@@ -394,10 +396,35 @@ class PlanchaDraftController extends Controller
             'review_status' => 'nullable|string|in:pending,approved,rejected',
             'is_processed' => 'nullable|boolean',
             'search' => 'nullable|string|max:100',
-            'per_page' => 'nullable|integer|min:1|max:100',
+            'per_page' => 'nullable|integer|min:1|max:20',
         ]);
 
-        $query = CandidateDraft::query()->with(['election', 'person', 'documentType', 'slate', 'position']);
+        $isDetailedRequest = $request->filled('draft_id') || $request->filled('capture_batch_uuid');
+
+        $query = CandidateDraft::query();
+
+        if ($isDetailedRequest) {
+            $query->with(['election.neighborhood', 'person', 'documentType', 'slate', 'position']);
+        } else {
+            $query
+                ->leftJoin('elections', 'candidate_drafts.election_id', '=', 'elections.id')
+                ->leftJoin('neighborhoods', 'elections.neighborhood_id', '=', 'neighborhoods.id')
+                ->select([
+                    'candidate_drafts.id',
+                    'candidate_drafts.capture_batch_uuid',
+                    'candidate_drafts.election_id',
+                    'candidate_drafts.document_number',
+                    'candidate_drafts.first_name',
+                    'candidate_drafts.middle_name',
+                    'candidate_drafts.last_name',
+                    'candidate_drafts.second_last_name',
+                    'candidate_drafts.review_status',
+                    'candidate_drafts.is_processed',
+                    'candidate_drafts.notes',
+                    'candidate_drafts.created_at',
+                    'neighborhoods.name as neighborhood_name',
+                ]);
+        }
 
         if ($request->filled('draft_id')) {
             $query->where('id', (int) $request->input('draft_id'));
@@ -416,20 +443,27 @@ class PlanchaDraftController extends Controller
         }
 
         if ($request->has('is_processed')) {
-            $query->where('is_processed', filter_var($request->input('is_processed'), FILTER_VALIDATE_BOOLEAN));
+            $query->where('candidate_drafts.is_processed', filter_var($request->input('is_processed'), FILTER_VALIDATE_BOOLEAN));
+        } elseif (! $isDetailedRequest) {
+            // Para bandeja principal, por defecto solo pendientes de proceso para no cargar histórico masivo.
+            $query->where('candidate_drafts.is_processed', false);
         }
 
         if ($request->filled('search')) {
             $term = trim((string) $request->input('search'));
             $query->where(function ($q) use ($term): void {
-                $q->where('first_name', 'ilike', "%{$term}%")
-                    ->orWhere('last_name', 'ilike', "%{$term}%")
-                    ->orWhere('document_number', 'ilike', "%{$term}%");
+                $q->where('candidate_drafts.first_name', 'ilike', "%{$term}%")
+                    ->orWhere('candidate_drafts.last_name', 'ilike', "%{$term}%")
+                    ->orWhere('candidate_drafts.document_number', 'ilike', "%{$term}%");
+
+                if (! $isDetailedRequest) {
+                    $q->orWhere('neighborhoods.name', 'ilike', "%{$term}%");
+                }
             });
         }
 
-        $perPage = max(1, min(100, (int) $request->integer('per_page', 20)));
-        $drafts = $query->latest()->paginate($perPage);
+        $perPage = max(1, min(20, (int) $request->integer('per_page', 15)));
+        $drafts = $query->orderByDesc('candidate_drafts.id')->simplePaginate($perPage);
 
         return response()->json([
             'success' => true,
@@ -437,15 +471,139 @@ class PlanchaDraftController extends Controller
         ]);
     }
 
-    public function update(Request $request, CandidateDraft $candidateDraft): JsonResponse
+    public function neighborhoodsWithSlates(Request $request): JsonResponse
     {
-        if ($candidateDraft->is_processed) {
-            return response()->json([
-                'success' => false,
-                'message' => 'El borrador ya esta procesado y no se puede editar.',
-            ], 409);
+        $validated = $request->validate([
+            'search' => 'nullable|string|max:100',
+            'per_page' => 'nullable|integer|min:1|max:20',
+        ]);
+
+        $perPage = max(1, min(20, (int) ($validated['per_page'] ?? 12)));
+
+        $neighborhoodQuery = Neighborhood::query()
+            ->select(['id', 'name', 'code', 'commune_id'])
+            ->with(['commune:id,name'])
+            ->whereHas('elections', function ($electionQuery): void {
+                $electionQuery->active()->whereHas('candidates', function ($candidateQuery): void {
+                    $candidateQuery->where('is_active', true)
+                        ->whereNotNull('slate_block_id')
+                        ->whereNotNull('election_block_position_id');
+                });
+            });
+
+        if (! empty($validated['search'])) {
+            $term = trim((string) $validated['search']);
+            $neighborhoodQuery->where(function ($query) use ($term): void {
+                $query->where('name', 'ilike', "%{$term}%")
+                    ->orWhere('code', 'ilike', "%{$term}%");
+            });
         }
 
+        $neighborhoods = $neighborhoodQuery->orderBy('name')->paginate($perPage);
+        $neighborhoodIds = collect($neighborhoods->items())->pluck('id')->all();
+
+        $candidates = collect();
+        if (! empty($neighborhoodIds)) {
+            $candidates = Candidate::query()
+                ->select([
+                    'id',
+                    'election_id',
+                    'person_id',
+                    'slate_block_id',
+                    'election_block_position_id',
+                    'ballot_number',
+                    'is_active',
+                ])
+                ->with([
+                    'election:id,neighborhood_id,is_active',
+                    'person:id,first_name,middle_name,last_name,second_last_name,document_number',
+                    'slateBlock:id,election_id,slate_id,election_block_id',
+                    'slateBlock.slate:id,name,code',
+                    'electionBlockPosition:id,position_id',
+                    'electionBlockPosition.position:id,name,code',
+                ])
+                ->where('is_active', true)
+                ->whereNotNull('slate_block_id')
+                ->whereNotNull('election_block_position_id')
+                ->whereHas('election', function ($electionQuery) use ($neighborhoodIds): void {
+                    $electionQuery->active()->whereIn('neighborhood_id', $neighborhoodIds);
+                })
+                ->orderBy('id')
+                ->get();
+        }
+
+        $candidatesByNeighborhood = $candidates->groupBy(function (Candidate $candidate): string {
+            return (string) ($candidate->election?->neighborhood_id ?? '0');
+        });
+
+        $items = collect($neighborhoods->items())->map(function (Neighborhood $neighborhood) use ($candidatesByNeighborhood): array {
+            $neighborhoodCandidates = $candidatesByNeighborhood->get((string) $neighborhood->id, collect());
+
+            $slates = $neighborhoodCandidates
+                ->groupBy(function (Candidate $candidate): string {
+                    return (string) ($candidate->slateBlock?->slate_id ?? 0);
+                })
+                ->map(function ($slateCandidates): array {
+                    $firstCandidate = $slateCandidates->first();
+                    $slate = $firstCandidate?->slateBlock?->slate;
+
+                    $representatives = $slateCandidates->map(function (Candidate $candidate): array {
+                        $person = $candidate->person;
+                        $fullName = trim(implode(' ', array_filter([
+                            $person?->first_name,
+                            $person?->middle_name,
+                            $person?->last_name,
+                            $person?->second_last_name,
+                        ])));
+
+                        return [
+                            'id' => $candidate->id,
+                            'name' => $fullName !== '' ? $fullName : 'Sin nombre',
+                            'position' => $candidate->electionBlockPosition?->position?->name ?? 'Sin cargo',
+                            'ballot_number' => $candidate->ballot_number,
+                        ];
+                    })->values();
+
+                    return [
+                        'id' => $slate?->id,
+                        'code' => $slate?->code,
+                        'name' => $slate?->name,
+                        'label' => $slate?->code ? 'Plancha '.$slate->code : 'Plancha sin código',
+                        'representatives' => $representatives,
+                    ];
+                })
+                ->values();
+
+            return [
+                'id' => $neighborhood->id,
+                'name' => $neighborhood->name,
+                'code' => $neighborhood->code,
+                'commune' => $neighborhood->commune ? [
+                    'id' => $neighborhood->commune->id,
+                    'name' => $neighborhood->commune->name,
+                ] : null,
+                'slates' => $slates,
+            ];
+        })->filter(fn (array $neighborhood) => $neighborhood['slates']->isNotEmpty())->values();
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'items' => $items,
+                'pagination' => [
+                    'current_page' => $neighborhoods->currentPage(),
+                    'last_page' => $neighborhoods->lastPage(),
+                    'per_page' => $neighborhoods->perPage(),
+                    'total' => $neighborhoods->total(),
+                    'from' => $neighborhoods->firstItem() ?? 0,
+                    'to' => $neighborhoods->lastItem() ?? 0,
+                ],
+            ],
+        ]);
+    }
+
+    public function update(Request $request, CandidateDraft $candidateDraft): JsonResponse
+    {
         $validated = $request->validate([
             'document_type_id' => 'nullable|exists:document_types,id',
             'document_number' => 'nullable|string|max:30',
@@ -453,13 +611,13 @@ class PlanchaDraftController extends Controller
             'middle_name' => 'nullable|string|max:100',
             'last_name' => 'required|string|max:100',
             'second_last_name' => 'nullable|string|max:100',
-            'phone' => 'nullable|string|max:20',
-            'email' => 'nullable|email|max:150',
+            'phone' => 'nullable|string|max:30',
+            'email' => 'nullable|email|max:255',
             'notes' => 'nullable|string|max:2000',
         ]);
 
         $documentNumber = $this->normalizeDocumentNumber((string) ($validated['document_number'] ?? ''));
-        $documentTypeId = $validated['document_type_id'] ?? $candidateDraft->document_type_id;
+        $documentTypeId = $validated['document_type_id'] ?? $candidateDraft->document_type_id ?? $this->resolveDefaultDocumentTypeId();
         $personId = $documentNumber ? $this->resolvePersonId($documentNumber, $documentTypeId) : null;
 
         $candidateDraft->update([
@@ -643,29 +801,112 @@ class PlanchaDraftController extends Controller
             &$issues
         ): void {
             foreach ($drafts as $draft) {
-                if (! $draft->document_number || ! $draft->document_type_id) {
+                if (! $draft->document_number) {
                     $skipped++;
                     $issues[] = [
                         'draft_id' => $draft->id,
-                        'reason' => 'Sin documento o tipo de documento para deduplicar persona.',
+                        'reason' => 'Sin documento para deduplicar persona.',
                     ];
                     continue;
                 }
 
-                if (! $draft->slate_block_id || ! $draft->position_id) {
+                $documentTypeId = $draft->document_type_id ?? $this->resolveDefaultDocumentTypeId();
+
+                $positionId = $draft->position_id;
+                if (! $positionId) {
+                    $cargoLabel = $this->extractCargoLabelFromNotes((string) ($draft->notes ?? ''));
+                    if ($cargoLabel !== null) {
+                        $positionContext = $this->resolvePositionContextForCargo($draft->election_id, $cargoLabel, null);
+                        $positionId = $positionContext['position_id'];
+                    }
+                }
+
+                $positionBlockId = null;
+                $electionBlockId = null;
+                if ($positionId) {
+                    $mapping = $this->ensureElectionStructureForPosition($draft->election_id, (int) $positionId);
+                    $positionBlockId = $mapping['block_id'];
+                    $electionBlockId = $mapping['election_block_id'];
+                }
+
+                $slateBlockId = $draft->slate_block_id;
+                if (! $slateBlockId && $draft->slate_id) {
+                    $slateBlockId = SlateBlock::query()
+                        ->where('election_id', $draft->election_id)
+                        ->where('slate_id', $draft->slate_id)
+                        ->value('id');
+                }
+
+                if (! $slateBlockId && $draft->capture_batch_uuid) {
+                    $batchSlateBlockIds = CandidateDraft::query()
+                        ->where('capture_batch_uuid', $draft->capture_batch_uuid)
+                        ->where('election_id', $draft->election_id)
+                        ->whereNotNull('slate_block_id')
+                        ->distinct()
+                        ->pluck('slate_block_id');
+
+                    if ($batchSlateBlockIds->count() === 1) {
+                        $slateBlockId = (int) $batchSlateBlockIds->first();
+                    }
+                }
+
+                if (! $slateBlockId && $positionId && $electionBlockId) {
+                    $candidateSlateBlocks = SlateBlock::query()
+                        ->join('slates', 'slates.id', '=', 'slate_blocks.slate_id')
+                        ->where('slate_blocks.election_id', $draft->election_id)
+                        ->where('slate_blocks.election_block_id', $electionBlockId)
+                        ->where('slates.is_active', true)
+                        ->pluck('slate_blocks.id');
+
+                    if ($candidateSlateBlocks->count() === 1) {
+                        $slateBlockId = (int) $candidateSlateBlocks->first();
+                    } elseif ($candidateSlateBlocks->count() > 1) {
+                        $slateBlockId = $this->resolvePreferredSlateBlockId($draft->election_id, (int) $electionBlockId);
+                    }
+                }
+
+                if (! $positionId) {
                     $skipped++;
                     $issues[] = [
                         'draft_id' => $draft->id,
-                        'reason' => 'Sin mapeo de plancha/cargo. Corrige el borrador antes de promover.',
+                        'reason' => 'Sin mapeo de cargo OCR hacia una posicion oficial.',
+                    ];
+                    continue;
+                }
+
+                if (! $slateBlockId) {
+                    $skipped++;
+                    $issues[] = [
+                        'draft_id' => $draft->id,
+                        'reason' => 'Sin mapeo de plancha para el cargo. Verifica codigo de plancha o define una plancha activa unica.',
                     ];
                     continue;
                 }
 
                 $electionBlockPositionId = ElectionBlockPosition::query()
-                    ->join('slate_blocks', 'slate_blocks.election_block_id', '=', 'election_block_positions.election_block_id')
-                    ->where('slate_blocks.id', $draft->slate_block_id)
-                    ->where('election_block_positions.position_id', $draft->position_id)
-                    ->value('election_block_positions.id');
+                    ->where('election_block_id', $electionBlockId)
+                    ->where('position_id', $positionId)
+                    ->value('id');
+
+                if (! $electionBlockPositionId) {
+                    $positionBlockId = $positionBlockId ?: Position::query()->where('id', $positionId)->value('block_id');
+
+                    if ($electionBlockId && $positionBlockId) {
+                        $ebp = ElectionBlockPosition::query()->updateOrCreate(
+                            [
+                                'election_block_id' => $electionBlockId,
+                                'position_id' => $positionId,
+                            ],
+                            [
+                                'block_id' => $positionBlockId,
+                                'vacancies' => 1,
+                                'is_active' => true,
+                            ]
+                        );
+
+                        $electionBlockPositionId = $ebp->id;
+                    }
+                }
 
                 if (! $electionBlockPositionId) {
                     $skipped++;
@@ -678,7 +919,7 @@ class PlanchaDraftController extends Controller
 
                 $person = Person::query()->firstOrCreate(
                     [
-                        'document_type_id' => $draft->document_type_id,
+                        'document_type_id' => $documentTypeId,
                         'document_number' => (string) $draft->document_number,
                     ],
                     [
@@ -696,13 +937,13 @@ class PlanchaDraftController extends Controller
                     $personsCreated++;
                 }
 
-                $candidate = Candidate::query()->firstOrCreate(
+                $candidate = Candidate::query()->updateOrCreate(
                     [
                         'election_id' => $draft->election_id,
                         'person_id' => $person->id,
                     ],
                     [
-                        'slate_block_id' => $draft->slate_block_id,
+                        'slate_block_id' => $slateBlockId,
                         'election_block_position_id' => $electionBlockPositionId,
                         'ballot_number' => null,
                         'is_active' => true,
@@ -716,6 +957,9 @@ class PlanchaDraftController extends Controller
                 }
 
                 $draft->update([
+                    'document_type_id' => $documentTypeId,
+                    'position_id' => $positionId,
+                    'slate_block_id' => $slateBlockId,
                     'person_id' => $person->id,
                     'is_processed' => true,
                     'processed_at' => Carbon::now(),
@@ -862,7 +1106,7 @@ class PlanchaDraftController extends Controller
         $query = Person::query()->where('document_number', $documentNumber);
 
         if ($documentTypeId) {
-            $query->where('document_type_id', $documentTypeId);
+            $query->where('document_type_id', $documentTypeId ?? $this->resolveDefaultDocumentTypeId());
         }
 
         $found = $query->value('id');
@@ -870,19 +1114,45 @@ class PlanchaDraftController extends Controller
         return $found ? (int) $found : null;
     }
 
+    private function resolveDefaultDocumentTypeId(): ?int
+    {
+        return DocumentType::query()
+            ->where('code', 'CC')
+            ->value('id');
+    }
+
     private function resolvePositionContextForCargo(int $electionId, string $cargoLabel, ?string $slateCode): array
     {
-        $normalizedCargo = Str::upper(trim($cargoLabel));
+        $normalizedCargo = (string) Str::of($cargoLabel)
+            ->ascii()
+            ->upper()
+            ->replaceMatches('/[^A-Z0-9 ]+/', ' ')
+            ->squish();
         $positionCode = null;
         $blockCode = null;
 
         $map = [
             'PRESIDENTE' => ['DIR_PRES', 'DIR'],
+            'SUPLENTE DE PRESIDENTE' => ['DIR_PRES', 'DIR'],
             'VICEPRESIDENTE' => ['DIR_VICE', 'DIR'],
+            'SUPLENTE DE VICEPRESIDENTE' => ['DIR_VICE', 'DIR'],
             'TESORERO' => ['DIR_TESO', 'DIR'],
-            'DELEGADO ASOJUNTAS 1' => ['DEL_1', 'DEL'],
-            'DELEGADO ASOJUNTAS 2' => ['DEL_2', 'DEL'],
+            'SUPLENTE DE TESORERO' => ['DIR_TESO', 'DIR'],
+            'SECRETARIO' => ['DIR_SECR', 'DIR'],
+            'SUPLENTE DE SECRETARIO' => ['DIR_SECR', 'DIR'],
+            'DELEGADO ASOJUNTAS 1' => ['DEL_AJ_1', 'DEL'],
+            'SUPLENTE DELEGADO ASOJUNTAS 1' => ['DEL_AJ_1', 'DEL'],
+            'DELEGADO ASOJUNTAS 2' => ['DEL_AJ_2', 'DEL'],
+            'SUPLENTE DELEGADO ASOJUNTAS 2' => ['DEL_AJ_2', 'DEL'],
+            'DELEGADO ASOJUNTAS 3' => ['DEL_AJ_3', 'DEL'],
+            'SUPLENTE DELEGADO ASOJUNTAS 3' => ['DEL_AJ_3', 'DEL'],
             'FISCAL' => ['FIS_PRIN', 'FIS'],
+            'SUPLENTE FISCAL' => ['FIS_PRIN', 'FIS'],
+            'CONCILIADOR 1' => ['CYC_CONC_1', 'CYC'],
+            'CONCILIADOR 2' => ['CYC_CONC_2', 'CYC'],
+            'CONCILIADOR 3' => ['CYC_CONC_3', 'CYC'],
+            'COMISION EMPRESARIAL' => ['CYC_EMP_COORD', 'CYC'],
+            'COORDINADOR COMISION EMPRESARIAL' => ['CYC_EMP_COORD', 'CYC'],
         ];
 
         if (isset($map[$normalizedCargo])) {
@@ -901,9 +1171,21 @@ class PlanchaDraftController extends Controller
         }
 
         if ($slateCode !== null) {
+            $normalizedSlateCode = Str::upper(trim($slateCode));
+
             $slate = Slate::query()
                 ->where('election_id', $electionId)
-                ->whereRaw('UPPER(code) = ?', [$slateCode])
+                ->where(function ($query) use ($normalizedSlateCode): void {
+                    $query->whereRaw('UPPER(code) = ?', [$normalizedSlateCode])
+                        ->orWhereRaw('UPPER(name) = ?', [$normalizedSlateCode]);
+
+                    if (preg_match('/^P(\d+)$/', $normalizedSlateCode, $matches) === 1) {
+                        $number = (int) $matches[1];
+                        $query->orWhereRaw('UPPER(code) LIKE ?', ["%PL{$number}%"])
+                            ->orWhereRaw('UPPER(name) LIKE ?', ["%{$number}%"]);
+                    }
+                })
+                ->orderBy('id')
                 ->first();
 
             $slateId = $slate?->id;
@@ -930,6 +1212,117 @@ class PlanchaDraftController extends Controller
             'block_id' => $blockId,
             'slate_id' => $slateId,
             'slate_block_id' => $slateBlockId,
+        ];
+    }
+
+    private function extractCargoLabelFromNotes(string $notes): ?string
+    {
+        if ($notes === '') {
+            return null;
+        }
+
+        if (preg_match('/Cargo:\s*(.+)$/i', $notes, $matches) !== 1) {
+            return null;
+        }
+
+        $label = trim((string) ($matches[1] ?? ''));
+
+        return $label !== '' ? $label : null;
+    }
+
+    private function resolvePreferredSlateBlockId(int $electionId, int $electionBlockId): ?int
+    {
+        $slateBlocks = SlateBlock::query()
+            ->join('slates', 'slates.id', '=', 'slate_blocks.slate_id')
+            ->where('slate_blocks.election_id', $electionId)
+            ->where('slate_blocks.election_block_id', $electionBlockId)
+            ->where('slates.is_active', true)
+            ->orderBy('slate_blocks.id')
+            ->get([
+                'slate_blocks.id as slate_block_id',
+                'slates.code as slate_code',
+                'slates.name as slate_name',
+            ]);
+
+        if ($slateBlocks->isEmpty()) {
+            return null;
+        }
+
+        $preferred = $slateBlocks->first(function ($row): bool {
+            $code = Str::upper((string) ($row->slate_code ?? ''));
+            $name = Str::upper((string) ($row->slate_name ?? ''));
+
+            return str_contains($code, 'PL1') || str_contains($name, 'PLANCHA 1');
+        });
+
+        if ($preferred) {
+            return (int) $preferred->slate_block_id;
+        }
+
+        return (int) $slateBlocks->first()->slate_block_id;
+    }
+
+    private function ensureElectionStructureForPosition(int $electionId, int $positionId): array
+    {
+        $position = Position::query()->find($positionId);
+        $blockId = $position?->block_id;
+
+        if (! $blockId) {
+            return [
+                'block_id' => null,
+                'election_block_id' => null,
+            ];
+        }
+
+        $electionBlock = ElectionBlock::query()->updateOrCreate(
+            [
+                'election_id' => $electionId,
+                'block_id' => $blockId,
+            ],
+            [
+                'is_active' => true,
+            ]
+        );
+
+        $activeSlateIds = Slate::query()
+            ->where('election_id', $electionId)
+            ->where('is_active', true)
+            ->pluck('id');
+
+        if ($activeSlateIds->isEmpty()) {
+            $activeSlateIds = Slate::query()
+                ->where('election_id', $electionId)
+                ->pluck('id');
+        }
+
+        foreach ($activeSlateIds as $slateId) {
+            SlateBlock::query()->updateOrCreate(
+                [
+                    'election_id' => $electionId,
+                    'slate_id' => $slateId,
+                    'election_block_id' => $electionBlock->id,
+                ],
+                [
+                    'is_active' => true,
+                ]
+            );
+        }
+
+        ElectionBlockPosition::query()->updateOrCreate(
+            [
+                'election_block_id' => $electionBlock->id,
+                'position_id' => $positionId,
+            ],
+            [
+                'block_id' => $blockId,
+                'vacancies' => 1,
+                'is_active' => true,
+            ]
+        );
+
+        return [
+            'block_id' => $blockId,
+            'election_block_id' => $electionBlock->id,
         ];
     }
 

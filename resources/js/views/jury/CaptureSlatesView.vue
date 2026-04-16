@@ -118,6 +118,188 @@ const canSendPackage = computed(() => isPlancha.value || capturedImages.value.le
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+const normalizeBlockTitle = (title) => {
+  if (!title) return '';
+  const cleaned = String(title)
+    .replace(/BLOQUE\s*N[.°º]?\s*\d+\s*[-–]?\s*/i, '')
+    .replace(/^BLOQUE\s*[-–:]?\s*/i, '')
+    .trim();
+  return cleaned || String(title).trim();
+};
+
+const toVoteNumber = (value) => {
+  const digits = String(value ?? '').replace(/[^\d]/g, '');
+  return digits ? Number(digits) : 0;
+};
+
+const pickVote = (votes, patterns) => {
+  for (const [label, value] of Object.entries(votes || {})) {
+    const normalized = String(label || '').toLowerCase();
+    if (patterns.some((regex) => regex.test(normalized))) {
+      return toVoteNumber(value);
+    }
+  }
+  return 0;
+};
+
+const buildNormalizedPayload = (page, pageIndex) => {
+  const blockResults = [];
+  const blockVotes = [];
+
+  for (const bloque of page?.bloques || []) {
+    const blockName = normalizeBlockTitle(bloque.titulo);
+    const votes = bloque.votos || {};
+
+    blockVotes.push({
+      block_name: blockName,
+      total_votes: pickVote(votes, [/total\s*votos?/i, /^total$/i]),
+      plancha_1: pickVote(votes, [/plancha\s*1/i]),
+      plancha_2: pickVote(votes, [/plancha\s*2/i]),
+      plancha_3: pickVote(votes, [/plancha\s*3/i]),
+      blancos: pickVote(votes, [/blancos?/i]),
+      nulos: pickVote(votes, [/nulos?/i]),
+      no_marcados: pickVote(votes, [/no\s*marcados?/i]),
+      validos: pickVote(votes, [/v[aá]lidos?/i, /validos?/i]),
+    });
+
+    for (const [label, value] of Object.entries(votes)) {
+      const match = /Plancha\s*(\d+)/i.exec(String(label));
+      if (!match) continue;
+
+      blockResults.push({
+        block_name: blockName,
+        slate_code: `P${match[1]}`,
+        votes: toVoteNumber(value),
+        status: 'pending',
+        notes: `Dato validado por jurado en pagina ${pageIndex + 1}`,
+      });
+    }
+  }
+
+  return {
+    block_results: blockResults,
+    block_votes: blockVotes,
+    elected_people: [],
+  };
+};
+
+const resolveIntegrationContext = async () => {
+  let recordId = null;
+  let pollingTableId = null;
+
+  const localPollingTable = Number(localStorage.getItem('juryPollingTableId') || 0);
+  if (localPollingTable > 0) {
+    pollingTableId = localPollingTable;
+  }
+
+  const localRecordId = Number(localStorage.getItem('juryLastScrutinyRecordId') || 0);
+  if (localRecordId > 0) {
+    recordId = localRecordId;
+  }
+
+  try {
+    const { data } = await axios.get('/jury/context');
+    const ctx = data?.data || {};
+    const suggestedRecordId = Number(ctx.suggested_scrutiny_record_id || 0);
+    const suggestedPollingTableId = Number(ctx.suggested_polling_table_id || 0);
+
+    if (suggestedRecordId > 0) {
+      recordId = suggestedRecordId;
+    }
+
+    if (suggestedPollingTableId > 0) {
+      pollingTableId = suggestedPollingTableId;
+    }
+  } catch (error) {
+    // If backend context is unavailable, local fallback is still valid.
+  }
+
+  return { recordId, pollingTableId };
+};
+
+const submitScrutinyPackageInBackground = async (extractedPages) => {
+  const context = await resolveIntegrationContext();
+  let recordId = context.recordId;
+  const pollingTableId = context.pollingTableId;
+
+  if (!recordId && !pollingTableId) {
+    throw new Error('No se pudo resolver la mesa de votacion para enviar el acta.');
+  }
+
+  const uploadPage = async (index, forcedRecordId = null) => {
+    const image = capturedImages.value[index];
+    if (!image?.file) {
+      return null;
+    }
+
+    const pageData = extractedPages[index] || { bloques: [] };
+    const uploadForm = new FormData();
+
+    const effectiveRecordId = forcedRecordId || recordId;
+    if (effectiveRecordId) {
+      uploadForm.append('scrutiny_record_id', String(effectiveRecordId));
+    }
+
+    if (!effectiveRecordId && pollingTableId) {
+      uploadForm.append('polling_table_id', String(pollingTableId));
+    }
+
+    uploadForm.append('document_file', image.file);
+    uploadForm.append('page_number', String(index + 1));
+    uploadForm.append('is_primary', index === 0 ? '1' : '0');
+    uploadForm.append('notes', `Enviado directamente desde captura jurado (pagina ${index + 1})`);
+    uploadForm.append('source_type', 'ai');
+    uploadForm.append('engine_name', 'Jury-UI-Capture');
+    uploadForm.append('engine_version', 'dev-1');
+    uploadForm.append('confidence_score', '0.85');
+    uploadForm.append('status', 'pending_review');
+    uploadForm.append('raw_payload', JSON.stringify({
+      page: index + 1,
+      image_name: image.file.name,
+      review_data: pageData,
+    }));
+    uploadForm.append('normalized_payload', JSON.stringify(buildNormalizedPayload(pageData, index)));
+
+    const { data } = await axios.post('/jury/submit', uploadForm, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+
+    const responseData = data?.data || {};
+    if (responseData.scrutiny_record_id) {
+      recordId = Number(responseData.scrutiny_record_id);
+    }
+
+    return responseData;
+  };
+
+  let startIndex = 0;
+  if (!recordId) {
+    uploadStep.value = `Enviando pagina 1 de ${capturedImages.value.length}...`;
+    await uploadPage(0, null);
+    startIndex = 1;
+  }
+
+  const remainingUploads = [];
+  for (let index = startIndex; index < capturedImages.value.length; index += 1) {
+    uploadStep.value = `Encolando paginas ${index + 1} de ${capturedImages.value.length}...`;
+    remainingUploads.push(uploadPage(index, recordId));
+  }
+
+  if (remainingUploads.length > 0) {
+    await Promise.all(remainingUploads);
+  }
+
+  if (pollingTableId) {
+    localStorage.setItem('juryPollingTableId', String(pollingTableId));
+  }
+
+  if (recordId) {
+    localStorage.setItem('juryLastScrutinyRecordId', String(recordId));
+  }
+};
+
 const createManualVotesTemplate = () => ({
   'Votos totales': 0,
   'Plancha 1': 0,
@@ -250,6 +432,14 @@ const enviarActa = async () => {
     }
 
     uploadStep.value = 'Preparando validación...';
+
+    if (!isPlancha.value) {
+      uploadStep.value = 'Enviando acta en segundo plano...';
+      await submitScrutinyPackageInBackground(extractedPages);
+      docStore.clearStore();
+      router.push('/jury/dashboard');
+      return;
+    }
 
     // 3. Guardamos en Pinia y pasamos a la siguiente vista
     docStore.setImages(capturedImages.value, isPlancha.value ? 'plancha' : 'escrutinio');

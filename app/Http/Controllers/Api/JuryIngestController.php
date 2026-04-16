@@ -3,8 +3,10 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\ImportScrutinyExtractionJob;
 use App\Models\Election;
 use App\Models\PollingTable;
+use App\Models\ScrutinyExtraction;
 use App\Models\ScrutinyRecord;
 use App\Models\ScrutinyRecordFile;
 use App\Services\ScrutinyExtractionImporter;
@@ -27,23 +29,148 @@ class JuryIngestController extends Controller
         $suggestedPollingTableId = $this->resolveDefaultPollingTableId($request);
 
         $lastOpenRecord = ScrutinyRecord::query()
+            ->with([
+                'pollingTable.election.neighborhood.commune',
+            ])
             ->where('created_by_user_id', $user->id)
             ->whereIn('status', ['draft', 'pending'])
             ->latest()
             ->first();
 
+        $suggestedPollingTable = $lastOpenRecord?->pollingTable;
+        if (! $suggestedPollingTable && $suggestedPollingTableId) {
+            $suggestedPollingTable = PollingTable::query()
+                ->with(['election.neighborhood.commune'])
+                ->find($suggestedPollingTableId);
+        }
+
+        $suggestedNeighborhood = $suggestedPollingTable?->election?->neighborhood;
+
         return response()->json([
             'success' => true,
             'data' => [
                 'suggested_scrutiny_record_id' => $lastOpenRecord?->id,
-                'suggested_polling_table_id' => $lastOpenRecord?->polling_table_id ?? $suggestedPollingTableId,
+                'suggested_polling_table_id' => $suggestedPollingTable?->id ?? $lastOpenRecord?->polling_table_id ?? $suggestedPollingTableId,
                 'suggested_election_id' => $lastOpenRecord?->election_id,
+                'suggested_polling_table' => $suggestedPollingTable ? [
+                    'id' => $suggestedPollingTable->id,
+                    'name' => $suggestedPollingTable->name,
+                    'code' => $suggestedPollingTable->code,
+                    'location' => $suggestedPollingTable->location,
+                    'neighborhood' => $suggestedNeighborhood ? [
+                        'id' => $suggestedNeighborhood->id,
+                        'name' => $suggestedNeighborhood->name,
+                        'address' => $suggestedNeighborhood->address ?? null,
+                        'commune' => $suggestedNeighborhood->commune ? [
+                            'id' => $suggestedNeighborhood->commune->id,
+                            'name' => $suggestedNeighborhood->commune->name,
+                        ] : null,
+                    ] : null,
+                ] : null,
                 'storage_disk' => $storageDisk,
             ],
         ]);
     }
 
-    public function submit(Request $request, ScrutinyExtractionImporter $importer): JsonResponse
+    public function status(Request $request, ScrutinyRecord $scrutinyRecord): JsonResponse
+    {
+        $user = $request->user();
+        if (! $user || (int) $scrutinyRecord->created_by_user_id !== (int) $user->id) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No tienes permisos para consultar el estado de esta acta.',
+            ], 403);
+        }
+
+        $files = ScrutinyRecordFile::query()
+            ->where('scrutiny_record_id', $scrutinyRecord->id)
+            ->orderBy('page_number')
+            ->orderBy('id')
+            ->get();
+
+        $latestExtractionsByFile = ScrutinyExtraction::query()
+            ->where('scrutiny_record_id', $scrutinyRecord->id)
+            ->whereNotNull('scrutiny_record_file_id')
+            ->latest('id')
+            ->get()
+            ->unique('scrutiny_record_file_id')
+            ->keyBy('scrutiny_record_file_id');
+
+        $processingMeta = [];
+        if (is_array($scrutinyRecord->metadata)) {
+            $candidateMeta = $scrutinyRecord->metadata['ingest_processing'] ?? [];
+            if (is_array($candidateMeta)) {
+                $processingMeta = $candidateMeta;
+            }
+        }
+
+        $pages = [];
+        $summary = [
+            'total' => $files->count(),
+            'queued' => 0,
+            'processing' => 0,
+            'completed' => 0,
+            'failed' => 0,
+            'superseded' => 0,
+            'unknown' => 0,
+        ];
+
+        foreach ($files as $file) {
+            $pageKey = (string) ($file->page_number ?? $file->id);
+            $meta = $processingMeta[$pageKey] ?? null;
+            $latestExtraction = $latestExtractionsByFile->get($file->id);
+
+            $pageStatus = 'unknown';
+            $error = null;
+            if (is_array($meta) && ! empty($meta['status'])) {
+                $pageStatus = (string) $meta['status'];
+                $error = isset($meta['error']) ? (string) $meta['error'] : null;
+            } elseif ($latestExtraction) {
+                $pageStatus = 'completed';
+            } elseif ($scrutinyRecord->status === 'pending') {
+                $pageStatus = 'queued';
+            }
+
+            if (! array_key_exists($pageStatus, $summary)) {
+                $pageStatus = 'unknown';
+            }
+            $summary[$pageStatus]++;
+
+            $pages[] = [
+                'page_number' => (int) ($file->page_number ?? 0),
+                'scrutiny_record_file_id' => $file->id,
+                'status' => $pageStatus,
+                'extraction_id' => $latestExtraction?->id,
+                'extraction_status' => $latestExtraction?->status,
+                'updated_at' => is_array($meta) ? ($meta['updated_at'] ?? null) : null,
+                'error' => $error,
+            ];
+        }
+
+        $overallStatus = 'pending';
+        if ($summary['failed'] > 0) {
+            $overallStatus = 'failed';
+        } elseif ($summary['total'] > 0 && $summary['completed'] === $summary['total']) {
+            $overallStatus = 'completed';
+        } elseif ($summary['processing'] > 0) {
+            $overallStatus = 'processing';
+        } elseif ($summary['queued'] > 0) {
+            $overallStatus = 'queued';
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'scrutiny_record_id' => $scrutinyRecord->id,
+                'record_status' => $scrutinyRecord->status,
+                'overall_status' => $overallStatus,
+                'summary' => $summary,
+                'pages' => $pages,
+            ],
+        ]);
+    }
+
+    public function submit(Request $request): JsonResponse
     {
         $this->extendExecutionTimeout();
 
@@ -146,7 +273,7 @@ class JuryIngestController extends Controller
             ]);
         }
 
-        $importResult = $importer->import([
+        $payload = [
             'scrutiny_record_id' => $record->id,
             'scrutiny_record_file_id' => $recordFile->id,
             'source_type' => $validated['source_type'] ?? 'ai',
@@ -157,14 +284,42 @@ class JuryIngestController extends Controller
             'raw_payload' => $rawPayload,
             'normalized_payload' => $normalizedPayload,
             'notes' => $validated['notes'] ?? null,
-        ], $request->user()->id);
+        ];
 
-        if (in_array($record->status, ['draft', 'pending'], true)) {
-            $record->status = 'pending_review';
-            $record->save();
+        $this->seedInitialExtractionSnapshot(
+            $record,
+            $recordFile,
+            $payload,
+            (int) $request->user()->id,
+        );
+
+        $queueMode = 'queued';
+        $this->updateIngestProcessingMetadata($record, $recordFile, 'queued');
+
+        if ((string) config('queue.default') === 'sync') {
+            // Even in sync environments we defer heavy processing until after the HTTP response.
+            ImportScrutinyExtractionJob::dispatchAfterResponse(
+                $record->id,
+                $recordFile->id,
+                $request->user()->id,
+                $fileHash,
+                $payload
+            );
+            $queueMode = 'after_response';
+        } else {
+            ImportScrutinyExtractionJob::dispatch(
+                $record->id,
+                $recordFile->id,
+                $request->user()->id,
+                $fileHash,
+                $payload
+            )->onQueue('scrutiny-imports');
         }
 
-        $extraction = $importResult['extraction'];
+        if ($record->status === 'draft') {
+            $record->status = 'pending';
+            $record->save();
+        }
 
         $serverFilePath = null;
         try {
@@ -176,15 +331,15 @@ class JuryIngestController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Carga jurado procesada correctamente.',
+            'message' => 'Carga recibida y enviada a procesamiento en segundo plano.',
             'data' => [
                 'scrutiny_record_id' => $record->id,
                 'scrutiny_record_file_id' => $recordFile->id,
-                'extraction_id' => $extraction->id,
                 'storage_path' => $recordFile->storage_path,
                 'server_file_path' => $serverFilePath,
                 'download_url' => route('api.jury.scrutiny-files.show', $recordFile),
-                'summary' => $importResult['summary'],
+                'queued' => true,
+                'queue_mode' => $queueMode,
             ],
         ], 201);
     }
@@ -456,6 +611,31 @@ class JuryIngestController extends Controller
         return null;
     }
 
+    private function updateIngestProcessingMetadata(
+        ScrutinyRecord $record,
+        ScrutinyRecordFile $recordFile,
+        string $status,
+        ?string $error = null
+    ): void {
+        $metadata = is_array($record->metadata) ? $record->metadata : [];
+        $processing = is_array($metadata['ingest_processing'] ?? null) ? $metadata['ingest_processing'] : [];
+        $pageKey = (string) ($recordFile->page_number ?? $recordFile->id);
+
+        $processing[$pageKey] = [
+            'status' => $status,
+            'scrutiny_record_file_id' => $recordFile->id,
+            'updated_at' => now()->toIso8601String(),
+        ];
+
+        if ($error !== null && $error !== '') {
+            $processing[$pageKey]['error'] = $error;
+        }
+
+        $metadata['ingest_processing'] = $processing;
+        $record->metadata = $metadata;
+        $record->save();
+    }
+
     private function decodeJsonLikePayload(mixed $payload): mixed
     {
         if (is_array($payload) || $payload === null) {
@@ -468,6 +648,141 @@ class JuryIngestController extends Controller
         }
 
         return $payload;
+    }
+
+    private function seedInitialExtractionSnapshot(
+        ScrutinyRecord $record,
+        ScrutinyRecordFile $recordFile,
+        array $payload,
+        int $createdByUserId
+    ): void {
+        $alreadySeeded = ScrutinyExtraction::query()
+            ->where('scrutiny_record_id', $record->id)
+            ->where('scrutiny_record_file_id', $recordFile->id)
+            ->where('engine_name', 'Jury-UI-Init')
+            ->exists();
+
+        if ($alreadySeeded) {
+            return;
+        }
+
+        $normalizedPayload = is_array($payload['normalized_payload'] ?? null)
+            ? $payload['normalized_payload']
+            : [];
+
+        $initialPayload = [
+            'scrutiny_record_id' => $record->id,
+            'scrutiny_record_file_id' => $recordFile->id,
+            'source_type' => 'manual',
+            'engine_name' => 'Jury-UI-Init',
+            'engine_version' => 'bootstrap-1',
+            'confidence_score' => 0,
+            'status' => 'processing',
+            'raw_payload' => [
+                'bootstrap' => true,
+                'page_number' => (int) ($recordFile->page_number ?? 0),
+            ],
+            'normalized_payload' => $this->createInitialNormalizedPayload(
+                $normalizedPayload,
+                (int) ($recordFile->page_number ?? 0)
+            ),
+            'notes' => 'Snapshot inicial generado al cargar el acta.',
+        ];
+
+        try {
+            app(ScrutinyExtractionImporter::class)->import($initialPayload, $createdByUserId);
+        } catch (Throwable $exception) {
+            Log::warning('Unable to seed initial scrutiny extraction snapshot.', [
+                'scrutiny_record_id' => $record->id,
+                'scrutiny_record_file_id' => $recordFile->id,
+                'error' => $exception->getMessage(),
+            ]);
+        }
+    }
+
+    private function createInitialNormalizedPayload(array $normalizedPayload, int $pageNumber): array
+    {
+        $blockNames = $this->extractBlockNames($normalizedPayload);
+
+        if (empty($blockNames)) {
+            $fallbackBlock = $pageNumber > 0 ? 'BLOQUE '.$pageNumber : 'BLOQUE 1';
+            $blockNames = [$fallbackBlock];
+        }
+
+        $blockVotes = [];
+        $blockResults = [];
+
+        foreach ($blockNames as $name) {
+            $blockVotes[] = [
+                'block_name' => $name,
+                'total_votes' => 0,
+                'plancha_1' => 0,
+                'plancha_2' => 0,
+                'plancha_3' => 0,
+                'blancos' => 0,
+                'nulos' => 0,
+                'no_marcados' => 0,
+                'validos' => 0,
+            ];
+
+            foreach (['P1', 'P2', 'P3'] as $slateCode) {
+                $blockResults[] = [
+                    'block_name' => $name,
+                    'slate_code' => $slateCode,
+                    'votes' => 0,
+                    'status' => 'processing',
+                    'notes' => 'Dato inicial en carga.',
+                ];
+            }
+        }
+
+        return [
+            'block_votes' => $blockVotes,
+            'block_results' => $blockResults,
+            'elected_people' => [],
+        ];
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function extractBlockNames(array $normalizedPayload): array
+    {
+        $names = [];
+        $seen = [];
+
+        $addName = static function (mixed $value) use (&$names, &$seen): void {
+            $name = trim((string) $value);
+            if ($name === '') {
+                return;
+            }
+
+            $key = Str::lower($name);
+            if (isset($seen[$key])) {
+                return;
+            }
+
+            $seen[$key] = true;
+            $names[] = $name;
+        };
+
+        foreach ((array) ($normalizedPayload['block_votes'] ?? []) as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+
+            $addName($row['block_name'] ?? null);
+        }
+
+        foreach ((array) ($normalizedPayload['block_results'] ?? []) as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+
+            $addName($row['block_name'] ?? null);
+        }
+
+        return $names;
     }
 
     private function mapNormalizedToReviewPage(array $normalizedPayload, string $documentType): array

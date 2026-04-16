@@ -18,9 +18,6 @@
           placeholder="Buscar por nombre o código del barrio..."
           class="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-aso-primary/50 focus:border-aso-primary transition-shadow"
         >
-        <div v-if="loading && barrios.length > 0" class="absolute right-3 top-1/2 -translate-y-1/2">
-          <Loader2 class="w-4 h-4 text-aso-primary animate-spin" />
-        </div>
       </div>
 
       <div class="relative w-full sm:w-64">
@@ -36,6 +33,22 @@
         </select>
         <ChevronDown class="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
       </div>
+
+      <button
+        @click="fetchBarrios(1)"
+        :disabled="loading"
+        class="px-6 py-2 bg-aso-primary text-white font-semibold rounded-lg hover:bg-aso-primary-dark transition-colors disabled:opacity-60"
+      >
+        Buscar
+      </button>
+
+      <button
+        @click="resetFilters"
+        :disabled="loading"
+        class="px-6 py-2 bg-gray-100 text-gray-700 font-semibold rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-60"
+      >
+        Limpiar
+      </button>
     </div>
 
     <div v-if="loading && barrios.length === 0" class="flex flex-col justify-center items-center py-20 space-y-4">
@@ -194,7 +207,7 @@ const pagination = ref({
   total: 0
 });
 
-let debounceTimer = null;
+let communesCached = false; // Flag para cachear comunas una sola vez
 
 // --- MÉTODOS ---
 
@@ -219,9 +232,10 @@ const fetchBarrios = async (page = 1) => {
       barrios.value = response.data.data.neighborhoods;
       pagination.value = response.data.data.pagination;
 
-      // Cargamos las comunas solo la primera vez para llenar el select
-      if (availableCommunes.value.length === 0 && response.data.data.communes) {
+      // ✅ Cargamos las comunas solo la primera vez para llenar el select
+      if (!communesCached && response.data.data.communes) {
         availableCommunes.value = response.data.data.communes;
+        communesCached = true;
       }
     }
   } catch (err) {
@@ -261,14 +275,6 @@ const toggleCard = (id) => {
 };
 
 // --- WATCHERS (OBSERVADORES) ---
-
-// Al escribir en el buscador: Debounce de 400ms para no saturar la base de datos
-watch(searchQuery, () => {
-  clearTimeout(debounceTimer);
-  debounceTimer = setTimeout(() => {
-    fetchBarrios(1);
-  }, 400);
-});
 
 // Al cambiar la comuna: Petición inmediata
 watch(selectedCommune, () => {

@@ -142,7 +142,7 @@ const fetchDashboard = async () => {
   isLoading.value = true;
 
   try {
-    const { data } = await axios.get('/api/admin/audit-records', {
+    const { data } = await axios.get('/admin/audit-records', {
       params: {
         filter: 'review',
         per_page: 5,

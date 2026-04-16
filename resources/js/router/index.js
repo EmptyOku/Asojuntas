@@ -14,6 +14,7 @@ import SecretaryDashboardView from '@/views/secretary/SecretaryDashboardView.vue
 import SecretaryCaptureView from '@/views/secretary/SecretaryCaptureView.vue';
 import SecretaryPlanchasList from '@/views/secretary/SecretaryPlanchasList.vue';
 import SecretaryPlanchaDetailView from '@/views/secretary/SecretaryPlanchaDetailView.vue';
+import SecretaryNeighborhoodSlatesView from '@/views/secretary/SecretaryNeighborhoodSlatesView.vue';
 import CandidatesDirectoryView from '@/views/admin/CandidatesDirectoryView.vue';
 import NeighborhoodResultsView from '@/views/admin/NeighborhoodResultsView.vue';
 import RegistrationPlatesView from '@/views/admin/RegistrationPlatesView.vue';
@@ -57,6 +58,7 @@ const routes = [
     children: [
       { path: 'dashboard', name: 'secretary-dashboard', component: SecretaryDashboardView },
       { path: 'capture', name: 'secretary-capture', component: SecretaryCaptureView },
+      { path: 'planchas-por-barrio', name: 'secretary-neighborhood-slates', component: SecretaryNeighborhoodSlatesView },
       { path: 'planchas', name: 'secretary-planchas', component: SecretaryPlanchasList },
       { path: 'planchas/:id', name: 'secretary-plancha-detail', component: SecretaryPlanchaDetailView }
     ]

@@ -13,6 +13,7 @@
           </div>
           <input
             v-model="searchQuery"
+            @keyup.enter="loadDrafts(1)"
             type="text"
             placeholder="Buscar nombre o documento..."
             class="block w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 placeholder-gray-400 focus:outline-none focus:bg-white focus:ring-1 focus:ring-aso-primary focus:border-aso-primary transition-colors"
@@ -20,7 +21,7 @@
         </div>
 
         <button
-          @click="loadDrafts"
+          @click="loadDrafts(1)"
           class="px-3 py-2 rounded-lg border border-gray-200 text-sm font-semibold text-gray-700 hover:bg-gray-50"
         >
           Recargar
@@ -39,6 +40,19 @@
       <p v-if="(promotionSummary.skipped ?? 0) > 0" class="mt-2 text-xs text-red-700 font-semibold">
         Omitidos: {{ promotionSummary.skipped }}. Revisa conflictos antes de cerrar el lote.
       </p>
+      <div v-if="promotionIssues.length > 0" class="mt-3 rounded-lg border border-red-200 bg-white/70 p-3">
+        <h4 class="text-xs font-bold text-red-800 uppercase tracking-wide">Conflictos detectados</h4>
+        <ul class="mt-2 space-y-2 text-xs text-red-900">
+          <li
+            v-for="issue in promotionIssues"
+            :key="`${issue.draft_id}-${issue.reason}`"
+            class="rounded-md bg-red-50 px-3 py-2 border border-red-100"
+          >
+            <span class="font-semibold">Borrador #{{ issue.draft_id }}</span>
+            <span class="block mt-0.5">{{ issue.reason }}</span>
+          </li>
+        </ul>
+      </div>
     </div>
 
     <div v-if="loading" class="bg-white rounded-xl border border-gray-200 p-6 text-sm text-gray-500">
@@ -51,7 +65,7 @@
 
     <div v-else class="space-y-4">
       <div
-        v-for="batch in filteredBatches"
+        v-for="batch in batchRows"
         :key="batch.capture_batch_uuid"
         class="bg-white rounded-xl shadow-sm border border-gray-200"
       >
@@ -59,6 +73,9 @@
           <div>
             <p class="text-[11px] uppercase tracking-wide text-gray-500 font-bold">Lote</p>
             <p class="text-sm font-semibold text-gray-900">{{ batch.capture_batch_uuid }}</p>
+            <p class="text-xs text-gray-600 mt-1">
+              Barrio objetivo: <span class="font-semibold text-gray-800">{{ batch.neighborhood_name }}</span>
+            </p>
             <div class="mt-2 flex flex-wrap items-center gap-3 text-xs text-gray-600">
               <span>Total: {{ batch.total }}</span>
               <span class="text-amber-600">Pendientes: {{ batch.pending }}</span>
@@ -108,6 +125,7 @@
                 <tr class="text-left text-xs uppercase tracking-wide text-gray-500">
                   <th class="py-2 pr-3">Persona</th>
                   <th class="py-2 pr-3">Documento</th>
+                  <th class="py-2 pr-3">Barrio</th>
                   <th class="py-2 pr-3">Estado</th>
                   <th class="py-2 pr-3">Cargo OCR</th>
                   <th class="py-2 pr-3">Acciones</th>
@@ -117,6 +135,7 @@
                 <tr v-for="draft in batch.drafts" :key="draft.id" class="border-t border-gray-100">
                   <td class="py-2 pr-3 text-gray-800 font-medium">{{ formatPersonName(draft) }}</td>
                   <td class="py-2 pr-3 text-gray-700">{{ draft.document_number || '—' }}</td>
+                  <td class="py-2 pr-3 text-gray-700">{{ resolveNeighborhoodName(draft) }}</td>
                   <td class="py-2 pr-3">
                     <span :class="statusClass(draft)" class="px-2 py-1 rounded-full text-[11px] font-semibold">
                       {{ draft.review_status }}
@@ -157,6 +176,34 @@
       </div>
     </div>
 
+    <div v-if="!loading && (pagination.current_page > 1 || pagination.has_next)" class="bg-white rounded-xl border border-gray-200 p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+      <p class="text-xs text-gray-600">
+        Mostrando {{ pagination.from }} - {{ pagination.to }}
+      </p>
+
+      <div class="flex items-center gap-2">
+        <button
+          @click="goToPage(pagination.current_page - 1)"
+          :disabled="pagination.current_page <= 1"
+          class="px-3 py-1.5 rounded border border-gray-200 text-xs font-semibold text-gray-700 disabled:opacity-50"
+        >
+          Anterior
+        </button>
+
+        <span class="text-xs font-semibold text-gray-700">
+          Pagina {{ pagination.current_page }}
+        </span>
+
+        <button
+          @click="goToPage(pagination.current_page + 1)"
+          :disabled="!pagination.has_next"
+          class="px-3 py-1.5 rounded border border-gray-200 text-xs font-semibold text-gray-700 disabled:opacity-50"
+        >
+          Siguiente
+        </button>
+      </div>
+    </div>
+
     <div v-if="evidenceDialog.open" class="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
       <div class="bg-white rounded-xl w-full max-w-3xl max-h-[80vh] overflow-y-auto">
         <div class="p-4 border-b border-gray-100 flex items-center justify-between">
@@ -186,7 +233,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { Eye, Search } from 'lucide-vue-next';
 import axios from '@/services/axios';
@@ -200,13 +247,23 @@ const draftActionLoading = ref(null);
 const message = ref('');
 const errorMessage = ref('');
 const promotionSummary = ref(null);
+const promotionIssues = ref([]);
+const pagination = ref({
+  current_page: 1,
+  per_page: 15,
+  from: 0,
+  to: 0,
+  has_next: false,
+});
+
+let searchDebounce = null;
 
 const evidenceDialog = ref({
   open: false,
   files: [],
 });
 
-const loadDrafts = async () => {
+const loadDrafts = async (page = pagination.value.current_page) => {
   loading.value = true;
   errorMessage.value = '';
   message.value = '';
@@ -214,17 +271,47 @@ const loadDrafts = async () => {
   try {
     const { data } = await axios.get('/secretary/planchas/drafts', {
       params: {
-        per_page: 100,
+        per_page: pagination.value.per_page,
+        page,
+        search: searchQuery.value?.trim() || undefined,
       },
     });
 
-    drafts.value = data?.data?.data ?? [];
+    const payload = data?.data || {};
+    drafts.value = payload?.data ?? [];
+    pagination.value = {
+      current_page: Number(payload?.current_page || 1),
+      per_page: Number(payload?.per_page || pagination.value.per_page),
+      from: Number(payload?.from || 0),
+      to: Number(payload?.to || 0),
+      has_next: Boolean(payload?.next_page_url),
+    };
   } catch (error) {
     const backendMessage = error?.response?.data?.message || error?.message;
     errorMessage.value = `No se pudo cargar la bandeja: ${backendMessage}`;
+    drafts.value = [];
+    pagination.value = {
+      ...pagination.value,
+      current_page: 1,
+      from: 0,
+      to: 0,
+      has_next: false,
+    };
   } finally {
     loading.value = false;
   }
+};
+
+const goToPage = async (page) => {
+  const target = Number(page || 1);
+  if (target < 1) {
+    return;
+  }
+
+  if (target > pagination.value.current_page && !pagination.value.has_next) {
+    return;
+  }
+  await loadDrafts(target);
 };
 
 const batchRows = computed(() => {
@@ -237,6 +324,7 @@ const batchRows = computed(() => {
       groups[key] = {
         capture_batch_uuid: key,
         drafts: [],
+        neighborhood_name: resolveNeighborhoodName(draft),
         total: 0,
         pending: 0,
         approved: 0,
@@ -246,6 +334,9 @@ const batchRows = computed(() => {
     }
 
     groups[key].drafts.push(draft);
+    if (!groups[key].neighborhood_name || groups[key].neighborhood_name === 'Sin barrio') {
+      groups[key].neighborhood_name = resolveNeighborhoodName(draft);
+    }
     groups[key].total += 1;
 
     if (draft.review_status === 'pending' && !draft.is_processed) groups[key].pending += 1;
@@ -257,25 +348,11 @@ const batchRows = computed(() => {
   return Object.values(groups).sort((a, b) => b.total - a.total);
 });
 
-const filteredBatches = computed(() => {
-  const term = searchQuery.value.trim().toLowerCase();
-  if (!term) return batchRows.value;
-
-  return batchRows.value.filter((batch) => {
-    if (batch.capture_batch_uuid.toLowerCase().includes(term)) {
-      return true;
-    }
-
-    return batch.drafts.some((draft) => {
-      const fullName = `${draft.first_name || ''} ${draft.last_name || ''}`.toLowerCase();
-      return (
-        fullName.includes(term)
-        || String(draft.document_number || '').toLowerCase().includes(term)
-        || String(draft.notes || '').toLowerCase().includes(term)
-      );
-    });
-  });
-});
+const resolveNeighborhoodName = (draft) => {
+  return draft?.neighborhood_name
+    || draft?.election?.neighborhood?.name
+    || 'Sin barrio';
+};
 
 const statusClass = (draft) => {
   if (draft.review_status === 'approved') return 'bg-emerald-100 text-emerald-700';
@@ -298,7 +375,7 @@ const decideDraft = async (draftId, decision) => {
   try {
     await axios.post(`/secretary/planchas/drafts/${draftId}/decision`, { decision });
     message.value = `Borrador ${decision === 'approved' ? 'aprobado' : 'rechazado'} correctamente.`;
-    await loadDrafts();
+    await loadDrafts(pagination.value.current_page);
   } catch (error) {
     const backendMessage = error?.response?.data?.message || error?.message;
     errorMessage.value = `No se pudo decidir el borrador: ${backendMessage}`;
@@ -328,7 +405,7 @@ const decideBatch = async (captureBatchUuid, decision) => {
 
     const updated = data?.data?.updated ?? 0;
     message.value = `Lote ${decision === 'approved' ? 'aprobado' : 'rechazado'}: ${updated} borradores actualizados.`;
-    await loadDrafts();
+    await loadDrafts(pagination.value.current_page);
   } catch (error) {
     const backendMessage = error?.response?.data?.message || error?.message;
     errorMessage.value = `No se pudo decidir el lote: ${backendMessage}`;
@@ -349,12 +426,15 @@ const promoteBatch = async (captureBatchUuid) => {
   try {
     const { data } = await axios.post('/secretary/planchas/drafts/promote', {
       capture_batch_uuid: captureBatchUuid,
+    }, {
+      timeout: 180000,
     });
 
     const result = data?.data;
     promotionSummary.value = result || null;
+    promotionIssues.value = Array.isArray(result?.issues) ? result.issues : [];
     message.value = `Promocion realizada. Procesados: ${result?.processed ?? 0}, candidatos creados: ${result?.candidates_created ?? 0}.`;
-    await loadDrafts();
+    await loadDrafts(pagination.value.current_page);
   } catch (error) {
     const backendMessage = error?.response?.data?.message || error?.message;
     errorMessage.value = `No se pudo promover el lote: ${backendMessage}`;
@@ -395,6 +475,16 @@ const openDraftInDetail = (draft) => {
 };
 
 onMounted(async () => {
-  await loadDrafts();
+  await loadDrafts(1);
+});
+
+watch(searchQuery, () => {
+  if (searchDebounce) {
+    clearTimeout(searchDebounce);
+  }
+
+  searchDebounce = setTimeout(() => {
+    loadDrafts(1);
+  }, 350);
 });
 </script>

@@ -40,6 +40,11 @@
           <Files class="w-5 h-5" />
           <span>Auditoría de Planchas</span>
         </router-link>
+
+        <router-link to="/secretary/planchas-por-barrio" @click="isMobileMenuOpen = false" class="nav-item" active-class="active">
+          <MapPinned class="w-5 h-5" />
+          <span>Planchas por Barrio</span>
+        </router-link>
       </nav>
 
       <div class="p-4 border-t border-gray-100 shrink-0">
@@ -87,7 +92,7 @@
 import { ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useAuthStore } from '@/stores/auth';
-import { LayoutDashboard, Camera, Files, LogOut, Bell, Menu, X } from 'lucide-vue-next';
+import { LayoutDashboard, Camera, Files, MapPinned, LogOut, Bell, Menu, X } from 'lucide-vue-next';
 
 const router = useRouter();
 const authStore = useAuthStore();

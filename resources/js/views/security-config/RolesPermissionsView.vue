@@ -54,15 +54,30 @@
                 <label class="block text-sm text-gray-700 mb-1">Segundo Apellido</label>
                 <input v-model="formPerson.second_last_name" type="text" class="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm" placeholder="Opcional" />
               </div>
+
+              <div class="sm:col-span-2">
+                <label class="block text-sm text-gray-700 mb-1">Comuna</label>
+                <select
+                  v-model="selectedCommune"
+                  @change="handleCommuneChange"
+                  class="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm cursor-pointer focus:ring-2 focus:ring-aso-primary"
+                >
+                  <option value="">Seleccione una comuna...</option>
+                  <option v-for="item in communes" :key="item.id" :value="String(item.id)">
+                    {{ item.name }}
+                  </option>
+                </select>
+              </div>
               
               <div class="sm:col-span-2">
                 <label class="block text-sm text-gray-700 mb-1">Barrio de Residencia</label>
                 <select 
                   v-model="formPerson.neighborhood_id" 
                   required 
+                  :disabled="!selectedCommune || loadingNeighborhoods"
                   class="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm cursor-pointer focus:ring-2 focus:ring-aso-primary"
                 >
-                  <option value="" disabled>Seleccione un barrio...</option>
+                  <option value="">{{ selectedCommune ? 'Seleccione un barrio...' : 'Primero seleccione una comuna...' }}</option>
                   <option v-for="item in neighborhoodsList" :key="item.id" :value="item.id">
                     {{ item.name }}
                   </option>
@@ -160,6 +175,11 @@
             <div>
               <label class="block text-sm text-gray-700 mb-1">Contraseña</label>
               <input v-model="createForm.password" required type="password" class="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm" />
+            </div>
+
+            <div>
+              <label class="block text-sm text-gray-700 mb-1">Confirmar contraseña</label>
+              <input v-model="createForm.password_confirmation" required type="password" class="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm" />
             </div>
 
             <div>
@@ -269,11 +289,14 @@ import axios from '@/services/axios';
 import { Search, Loader2, X } from 'lucide-vue-next';
 
 const loading = ref(false);
+const loadingNeighborhoods = ref(false);
 const errorMessage = ref('');
 
 const users = ref([]);
 const roles = ref([]);
 const search = ref('');
+const communes = ref([]);
+const selectedCommune = ref('');
 const assignmentContext = ref([]);
 const neighborhoodsList = ref([]); // 🔥 VARIABLE LIGERA PARA EL SELECT 🔥
 
@@ -293,6 +316,7 @@ const createForm = ref({
   username: '',
   email: '',
   password: '',
+  password_confirmation: '',
   roles: [],
 });
 
@@ -322,14 +346,54 @@ const loadUsers = async () => {
   users.value = data.data?.data ?? data.data ?? [];
 };
 
+const loadCommunes = async () => {
+  const { data } = await axios.get('/admin/neighborhoods/communes');
+  communes.value = data.data ?? [];
+};
+
 const loadAssignmentContext = async () => {
-  const { data } = await axios.get('/admin/users/assignment-context');
+  if (!selectedCommune.value) {
+    assignmentContext.value = [];
+    return;
+  }
+
+  const { data } = await axios.get('/admin/users/assignment-context', {
+    params: { commune_id: selectedCommune.value },
+  });
   assignmentContext.value = Array.isArray(data.data) ? data.data : [];
 };
 
 const loadNeighborhoodsForForms = async () => {
-  const { data } = await axios.get('/admin/neighborhoods/list-for-forms');
-  neighborhoodsList.value = data.data ?? [];
+  if (!selectedCommune.value) {
+    neighborhoodsList.value = [];
+    return;
+  }
+
+  loadingNeighborhoods.value = true;
+  try {
+    const { data } = await axios.get('/admin/neighborhoods/list-for-forms', {
+      params: { commune_id: selectedCommune.value },
+    });
+    neighborhoodsList.value = data.data ?? [];
+  } catch (error) {
+    console.error('Error loading neighborhoods:', error);
+    throw error;
+  } finally {
+    loadingNeighborhoods.value = false;
+  }
+};
+
+const handleCommuneChange = async () => {
+  formPerson.value.neighborhood_id = '';
+
+  try {
+    await Promise.all([
+      loadNeighborhoodsForForms(),
+      loadAssignmentContext(),
+    ]);
+  } catch (error) {
+    errorMessage.value = 'No fue posible cargar los barrios de la comuna seleccionada.';
+  }
 };
 
 const loadAll = async () => {
@@ -338,12 +402,25 @@ const loadAll = async () => {
   try {
     // 🔥 CARGA TODO SIN CAUSAR TIMEOUT 🔥
     await Promise.all([
-      loadRoles(),
-      loadUsers(),
-      loadAssignmentContext(),
-      loadNeighborhoodsForForms()
+      loadCommunes(),
+      loadRoles().catch(e => { 
+        console.error('Error loading roles:', e?.response?.status, e?.message); 
+        throw e; 
+      }),
+      loadUsers().catch(e => { 
+        console.error('Error loading users:', e?.response?.status, e?.message); 
+        throw e; 
+      }),
     ]);
+
+    if (selectedCommune.value) {
+      await Promise.all([
+        loadAssignmentContext(),
+        loadNeighborhoodsForForms(),
+      ]);
+    }
   } catch (error) {
+    console.error('Full error:', error);
     errorMessage.value = 'No fue posible cargar la información inicial.';
   } finally {
     loading.value = false;
@@ -373,7 +450,7 @@ const submitPerson = async () => {
   }
   loading.value = true;
   try {
-    await axios.post('/admin/people', formPerson.value);
+    await axios.post('/admin/persons', formPerson.value);
     formPerson.value = {
       document_type_id: '', document_number: '', first_name: '', middle_name: '',
       last_name: '', second_last_name: '', neighborhood_id: '', is_active: true
@@ -403,7 +480,7 @@ const createUser = async () => {
 };
 
 const resetCreateForm = () => {
-  createForm.value = { person_id: '', username: '', email: '', password: '', roles: [] };
+  createForm.value = { person_id: '', username: '', email: '', password: '', password_confirmation: '', roles: [] };
   personSearchQuery.value = '';
   personSearchResults.value = [];
 };
