@@ -135,6 +135,7 @@ docStore.setCaptureBatchUuid(null);
 const searchQuery = ref('');
 const searchResults = ref([]);
 const selectedNeighborhood = ref(null);
+let searchDebounce = null;
 
 // Estados de Captura
 const capturedImages = ref([]);
@@ -144,22 +145,28 @@ const extractStep = ref('');
 
 // --- LÓGICA DE BÚSQUEDA ---
 const searchNeighborhoods = async () => {
+  if (searchDebounce) {
+    clearTimeout(searchDebounce);
+  }
+
   if (searchQuery.value.length < 3) {
     searchResults.value = [];
     return;
   }
 
-  try {
-    const { data } = await axios.get('/secretary/neighborhoods/search', {
-      params: { q: searchQuery.value }
-    });
-    
-    searchResults.value = data?.data || []; 
-    
-  } catch (error) {
-    console.error("Error buscando barrios", error);
-    searchResults.value = []; 
-  }
+  searchDebounce = setTimeout(async () => {
+    try {
+      const { data } = await axios.get('/secretary/neighborhoods/search', {
+        params: { q: searchQuery.value },
+        skipGlobalLoading: true,
+      });
+
+      searchResults.value = data?.data || [];
+    } catch (error) {
+      console.error("Error buscando barrios", error);
+      searchResults.value = [];
+    }
+  }, 300);
 };  
 
 const selectNeighborhood = (neighborhood) => {
@@ -192,9 +199,6 @@ const removeImage = (idToRemove) => {
 // --- LÓGICA DE EXTRACCIÓN (Vinculada al flujo Slates > Election > Neighborhood) ---
 const extractPlanchas = async () => {
   extractError.value = '';
-
-  // Start each extraction flow with a fresh batch to avoid mixing records across neighborhoods.
-  docStore.setCaptureBatchUuid(null);
 
   if (!selectedNeighborhood.value?.active_election?.id) {
     extractError.value = 'El barrio seleccionado no tiene una elección activa configurada.';

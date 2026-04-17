@@ -127,6 +127,7 @@ const fetchAuditRecords = async () => {
         search: search.value || undefined,
         filter: filter.value,
       },
+      skipGlobalLoading: true,
     });
 
     const payload = data?.data || {};

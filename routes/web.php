@@ -92,6 +92,8 @@ Route::prefix('api')->name('api.')->group(function (): void {
 
             Route::get('/neighborhoods/search', [App\Http\Controllers\Admin\NeighborhoodController::class, 'search']);
             Route::get('/planchas/by-neighborhood', [PlanchaDraftController::class, 'neighborhoodsWithSlates']);
+            Route::get('/planchas/drafts/grouped', [PlanchaDraftController::class, 'groupedInbox'])
+                ->name('secretary.planchas.drafts.grouped');
         });
 
         Route::prefix('admin')->group(function (): void {

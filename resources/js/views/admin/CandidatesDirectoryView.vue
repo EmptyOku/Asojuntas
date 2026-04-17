@@ -224,7 +224,8 @@ const fetchBarrios = async (page = 1) => {
         page: page,
         search: searchQuery.value,
         commune_id: selectedCommune.value
-      }
+      },
+      skipGlobalLoading: true,
     });
 
     if (response.data.success) {

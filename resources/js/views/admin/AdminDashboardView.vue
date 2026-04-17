@@ -147,6 +147,7 @@ const fetchDashboard = async () => {
         filter: 'review',
         per_page: 5,
       },
+      skipGlobalLoading: true,
     });
 
     const payload = data?.data || {};

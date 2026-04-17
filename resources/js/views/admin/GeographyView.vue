@@ -331,6 +331,7 @@ const fetchNeighborhoods = async () => {
   try {
     const { data } = await axios.get('/admin/neighborhoods', {
       params: buildParams(),
+      skipGlobalLoading: true,
     });
 
     const payload = data?.data || {};

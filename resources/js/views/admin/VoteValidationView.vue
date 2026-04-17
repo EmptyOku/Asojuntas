@@ -218,7 +218,9 @@ const fetchDetail = async ({ silent = false } = {}) => {
   loadError.value = '';
 
   try {
-    const { data } = await axios.get(`/admin/audit-records/${route.params.id}`);
+    const { data } = await axios.get(`/admin/audit-records/${route.params.id}`, {
+      skipGlobalLoading: true,
+    });
     detail.value = data?.data || detail.value;
     if (!isSubmitting.value) {
       editableBlocks.value = JSON.parse(JSON.stringify(detail.value.blocks || []));

@@ -602,6 +602,112 @@ class PlanchaDraftController extends Controller
         ]);
     }
 
+    /**
+     * Bandeja agrupada por Barrio/Eleccion -> Lotes -> Bloques.
+     * Endpoint consumido por la vista de acordeon de Secretaria.
+     */
+    public function groupedInbox(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'q' => 'nullable|string|max:100',
+        ]);
+
+        $query = Election::query()
+            ->where('is_active', true)
+            ->whereHas('candidateDrafts')
+            ->with([
+                'neighborhood.commune',
+                'candidateDrafts' => function ($q): void {
+                    $q->orderBy('capture_batch_uuid')->orderBy('id');
+                },
+            ]);
+
+        if (! empty($validated['q'])) {
+            $term = trim((string) $validated['q']);
+            $query->where(function ($q) use ($term): void {
+                $q->whereHas('neighborhood', function ($sub) use ($term): void {
+                    $sub->where('name', 'ilike', "%{$term}%");
+                })->orWhereHas('candidateDrafts', function ($sub) use ($term): void {
+                    $sub->where('first_name', 'ilike', "%{$term}%")
+                        ->orWhere('last_name', 'ilike', "%{$term}%")
+                        ->orWhere('document_number', 'ilike', "%{$term}%");
+                });
+            });
+        }
+
+        $elections = $query->paginate(10);
+
+        $data = $elections->through(function (Election $election): array {
+            $drafts = $election->candidateDrafts;
+
+            $batches = $drafts->groupBy('capture_batch_uuid')->map(function ($batchDrafts, $uuid): array {
+                $blocks = $batchDrafts->groupBy(function (CandidateDraft $draft): string {
+                    if (preg_match('/Bloque\s*-\s*([^|]+)/i', (string) $draft->notes, $matches) === 1) {
+                        return trim((string) ($matches[1] ?? 'Otros Cargos'));
+                    }
+
+                    return 'Otros Cargos';
+                })->map(function ($blockDrafts, $blockName): array {
+                    return [
+                        'block_name' => (string) $blockName,
+                        'candidates' => collect($blockDrafts)->map(function (CandidateDraft $c): array {
+                            $fullName = trim(implode(' ', array_filter([
+                                $c->first_name,
+                                $c->middle_name,
+                                $c->last_name,
+                                $c->second_last_name,
+                            ])));
+
+                            $cargo = 'Sin Cargo';
+                            if (preg_match('/Cargo:\s*(.+)$/i', (string) $c->notes, $m) === 1) {
+                                $cargo = trim((string) ($m[1] ?? 'Sin Cargo'));
+                            }
+
+                            return [
+                                'id' => $c->id,
+                                'full_name' => $fullName,
+                                'document_number' => $c->document_number,
+                                'review_status' => $c->review_status,
+                                'is_processed' => $c->is_processed,
+                                'cargo' => $cargo,
+                            ];
+                        })->values(),
+                    ];
+                })->values();
+
+                return [
+                    'capture_batch_uuid' => $uuid,
+                    'total' => $batchDrafts->count(),
+                    'pending' => $batchDrafts->where('review_status', 'pending')->where('is_processed', false)->count(),
+                    'approved' => $batchDrafts->where('review_status', 'approved')->count(),
+                    'rejected' => $batchDrafts->where('review_status', 'rejected')->count(),
+                    'promotable' => $batchDrafts->where('review_status', 'approved')->where('is_processed', false)->count(),
+                    'blocks' => $blocks,
+                ];
+            })->values();
+
+            return [
+                'election_id' => $election->id,
+                'neighborhood_name' => $election->neighborhood->name ?? 'Desconocido',
+                'commune_name' => $election->neighborhood?->commune?->name ?? 'Sin Comuna',
+                'total_drafts' => $drafts->count(),
+                'total_pending' => $drafts->where('review_status', 'pending')->where('is_processed', false)->count(),
+                'total_approved' => $drafts->where('review_status', 'approved')->count(),
+                'batches' => $batches,
+            ];
+        });
+
+        return response()->json([
+            'success' => true,
+            'data' => $data->items(),
+            'meta' => [
+                'current_page' => $elections->currentPage(),
+                'last_page' => $elections->lastPage(),
+                'total_neighborhoods' => $elections->total(),
+            ],
+        ]);
+    }
+
     public function update(Request $request, CandidateDraft $candidateDraft): JsonResponse
     {
         $validated = $request->validate([

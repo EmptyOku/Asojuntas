@@ -114,7 +114,10 @@ const fetchLogs = async () => {
   isLoading.value = true;
 
   try {
-    const { data } = await axios.get('/admin/audit-logs', { params: buildParams() });
+    const { data } = await axios.get('/admin/audit-logs', {
+      params: buildParams(),
+      skipGlobalLoading: true,
+    });
     const payload = data?.data || {};
     const page = payload.records || {};
 

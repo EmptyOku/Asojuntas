@@ -337,17 +337,17 @@ const filteredUsers = computed(() => {
 
 // --- LÓGICA DE CARGA DE DATOS ---
 const loadRoles = async () => {
-  const { data } = await axios.get('/admin/roles');
+  const { data } = await axios.get('/admin/roles', { skipGlobalLoading: true });
   roles.value = data.data ?? [];
 };
 
 const loadUsers = async () => {
-  const { data } = await axios.get('/admin/users');
+  const { data } = await axios.get('/admin/users', { skipGlobalLoading: true });
   users.value = data.data?.data ?? data.data ?? [];
 };
 
 const loadCommunes = async () => {
-  const { data } = await axios.get('/admin/neighborhoods/communes');
+  const { data } = await axios.get('/admin/neighborhoods/communes', { skipGlobalLoading: true });
   communes.value = data.data ?? [];
 };
 
@@ -359,6 +359,7 @@ const loadAssignmentContext = async () => {
 
   const { data } = await axios.get('/admin/users/assignment-context', {
     params: { commune_id: selectedCommune.value },
+    skipGlobalLoading: true,
   });
   assignmentContext.value = Array.isArray(data.data) ? data.data : [];
 };
@@ -373,6 +374,7 @@ const loadNeighborhoodsForForms = async () => {
   try {
     const { data } = await axios.get('/admin/neighborhoods/list-for-forms', {
       params: { commune_id: selectedCommune.value },
+      skipGlobalLoading: true,
     });
     neighborhoodsList.value = data.data ?? [];
   } catch (error) {
@@ -503,7 +505,10 @@ const handlePersonSearch = () => {
   clearTimeout(personSearchTimeout);
   personSearchTimeout = setTimeout(async () => {
     try {
-      const response = await axios.get('/admin/users/search-persons', { params: { q: personSearchQuery.value } });
+      const response = await axios.get('/admin/users/search-persons', {
+        params: { q: personSearchQuery.value },
+        skipGlobalLoading: true,
+      });
       if (response.data.success) personSearchResults.value = response.data.data;
     } catch (error) {
       console.error(error);

@@ -11,6 +11,11 @@ export const useAuthStore = defineStore('auth', {
   }),
   
   actions: {
+    isAuthError(error) {
+      const status = Number(error?.response?.status || 0);
+      return status === 401 || status === 419;
+    },
+
     async login(credentials) {
       this.loading = true;
       try {
@@ -21,7 +26,9 @@ export const useAuthStore = defineStore('auth', {
         this.isAuthenticated = true;
         return true;
       } catch (error) {
-        this.$reset();
+        if (this.isAuthError(error)) {
+          this.$reset();
+        }
         throw error;
       } finally {
         this.loading = false;
@@ -36,7 +43,10 @@ export const useAuthStore = defineStore('auth', {
         this.permissions = response.data.permissions ?? [];
         this.isAuthenticated = true;
       } catch (error) {
-        this.$reset();
+        if (this.isAuthError(error)) {
+          this.$reset();
+        }
+        throw error;
       }
     },
 

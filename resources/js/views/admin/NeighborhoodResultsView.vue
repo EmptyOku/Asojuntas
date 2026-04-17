@@ -276,7 +276,9 @@ const fetchResultados = async () => {
   loading.value  = true;
   error.value    = null;
   try {
-    const response = await axios.get(`/admin/neighborhoods/${barrioId}`);
+    const response = await axios.get(`/admin/neighborhoods/${barrioId}`, {
+      skipGlobalLoading: true,
+    });
     if (response.data?.success) {
       barrio.value = response.data.data;
     } else {
