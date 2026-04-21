@@ -34,14 +34,25 @@
 
           <div>
             <label for="password" class="block text-sm font-medium text-gray-700 mb-2 text-left">Contraseña</label>
-            <input
-              id="password"
-              v-model="credentials.password"
-              type="password"
-              required
-              class="w-full px-5 py-3.5 rounded-2xl border border-gray-100 bg-gray-50 text-gray-950 focus:bg-white focus:outline-none focus:ring-2 focus:ring-aso-primary focus:border-transparent transition-all duration-200"
-              placeholder="••••••••"
-            />
+            <div class="relative">
+              <input
+                id="password"
+                v-model="credentials.password"
+                :type="showPassword ? 'text' : 'password'"
+                required
+                class="w-full px-5 py-3.5 pr-12 rounded-2xl border border-gray-100 bg-gray-50 text-gray-950 focus:bg-white focus:outline-none focus:ring-2 focus:ring-aso-primary focus:border-transparent transition-all duration-200"
+                placeholder="••••••••"
+              />
+              <button
+                type="button"
+                @click="showPassword = !showPassword"
+                class="absolute inset-y-0 right-0 flex items-center pr-4 z-10 text-gray-600 hover:text-aso-primary focus:outline-none transition-colors"
+                tabindex="-1"
+              >
+                <EyeOff v-if="showPassword" class="w-5 h-5" />
+                <Eye v-else class="w-5 h-5" />
+              </button>
+            </div>
           </div>
 
           <div class="flex items-center justify-end mt-2">
@@ -99,6 +110,7 @@
 import { ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useAuthStore } from '@/stores/auth';
+import { Eye, EyeOff } from 'lucide-vue-next';
 
 const router = useRouter();
 const authStore = useAuthStore();
@@ -108,6 +120,7 @@ const credentials = ref({
   password: ''
 });
 const errorMessage = ref('');
+const showPassword = ref(false);
 
 const handleLogin = async () => {
   errorMessage.value = '';
