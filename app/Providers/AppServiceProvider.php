@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Models\AuditLog;
+use Illuminate\Support\Facades\URL;
 use App\Services\AuditTrailLogger;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Event;
@@ -32,6 +33,10 @@ class AppServiceProvider extends ServiceProvider
 
             $auditTrailLogger->recordModelEvent('created', $model);
         });
+
+        if (env('APP_ENV') !== 'local' || request()->server('HTTP_X_FORWARDED_PROTO') == 'https' || str_contains(env('APP_URL'), 'https')) {
+            URL::forceScheme('https');
+        }
 
         Event::listen('eloquent.updated: *', function (string $eventName, array $data) use ($auditTrailLogger): void {
             $model = $data[0] ?? null;
