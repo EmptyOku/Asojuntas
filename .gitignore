@@ -20,6 +20,7 @@ Thumbs.db
 /auth.json
 /node_modules
 /vendor
+/.vite
 
 npm-debug.log
 yarn-error.log
