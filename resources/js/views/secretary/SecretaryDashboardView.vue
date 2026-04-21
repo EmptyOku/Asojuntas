@@ -2,7 +2,7 @@
   <div class="space-y-6 flex-1 flex flex-col">
     
     <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-      <h2 class="text-xl font-bold text-gray-900">Hola, {{ authStore.user?.name || 'Secretaria' }}</h2>
+      <h2 class="text-xl font-bold text-gray-900">Hola, {{ authStore.user?.name || 'Administrador Electoral' }}</h2>
       <p class="text-sm text-gray-500 mt-1">Gestión y digitalización de planchas de candidatos.</p>
       
       <div class="mt-6 p-4 bg-orange-50 border border-orange-100 rounded-xl flex items-start gap-3">

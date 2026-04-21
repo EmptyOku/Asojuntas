@@ -69,13 +69,9 @@
         </div>
         
         <div class="flex items-center gap-4 md:gap-5">
-          <button class="text-gray-400 hover:text-gray-600 relative transition-colors">
-             <Bell class="w-5 h-5" />
-             <span class="absolute top-0 right-0 w-2 h-2 bg-red-500 border-2 border-white rounded-full"></span>
-          </button>
           
           <div class="w-8 h-8 bg-aso-primary text-white rounded-full flex items-center justify-center font-bold text-sm shadow-sm">
-            {{ authStore.user?.name?.charAt(0) || 'S' }}
+            {{ authStore.user?.name?.charAt(0) || 'AE' }}
           </div>
         </div>
       </header>
