@@ -152,27 +152,48 @@ class NeighborhoodDirectoryController extends Controller
 
     public function createAllElections(Request $request): JsonResponse
     {
-        $neighborhoods = $this->filteredNeighborhoodQuery($request)->get();
+        if (function_exists('set_time_limit')) {
+            @set_time_limit(0);
+        }
+
+        $neighborhoodIds = $this->filteredNeighborhoodQuery($request)->pluck('id');
+
+        if ($neighborhoodIds->isEmpty()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'No se encontraron barrios para procesar.',
+                'data' => [
+                    'created' => 0,
+                    'skipped' => 0,
+                    'total' => 0,
+                ],
+            ]);
+        }
+
+        $total = $neighborhoodIds->count();
+        $activeNeighborhoodIds = Election::query()
+            ->whereIn('neighborhood_id', $neighborhoodIds)
+            ->where('is_active', true)
+            ->pluck('neighborhood_id')
+            ->all();
+
+        $targets = Neighborhood::query()
+            ->whereIn('id', $neighborhoodIds)
+            ->whereNotIn('id', $activeNeighborhoodIds)
+            ->get();
+
+        $catalog = $this->getElectionScaffoldCatalog();
         $created = 0;
-        $skipped = 0;
 
-        foreach ($neighborhoods as $neighborhood) {
-            $alreadyActive = Election::query()
-                ->where('neighborhood_id', $neighborhood->id)
-                ->where('is_active', true)
-                ->exists();
-
-            if ($alreadyActive) {
-                $skipped++;
-                continue;
-            }
-
-            DB::transaction(function () use ($neighborhood): void {
-                $this->scaffoldElection($neighborhood);
+        foreach ($targets as $neighborhood) {
+            DB::transaction(function () use ($neighborhood, $catalog): void {
+                $this->scaffoldElection($neighborhood, $catalog);
             });
 
             $created++;
         }
+
+        $skipped = max($total - $created, 0);
 
         return response()->json([
             'success' => true,
@@ -180,33 +201,64 @@ class NeighborhoodDirectoryController extends Controller
             'data' => [
                 'created' => $created,
                 'skipped' => $skipped,
-                'total' => $neighborhoods->count(),
+                'total' => $total,
             ],
         ]);
     }
 
     public function closeAllElections(Request $request): JsonResponse
     {
-        $neighborhoods = $this->filteredNeighborhoodQuery($request)->get();
-        $closed = 0;
-        $skipped = 0;
+        $neighborhoodIds = $this->filteredNeighborhoodQuery($request)->pluck('id');
 
-        foreach ($neighborhoods as $neighborhood) {
-            $activeElection = Election::query()
-                ->where('neighborhood_id', $neighborhood->id)
-                ->where('is_active', true)
-                ->latest('election_date')
-                ->first();
-
-            if (! $activeElection) {
-                $skipped++;
-                continue;
-            }
-
-            $activeElection->is_active = false;
-            $activeElection->save();
-            $closed++;
+        if ($neighborhoodIds->isEmpty()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'No se encontraron barrios para procesar.',
+                'data' => [
+                    'closed' => 0,
+                    'skipped' => 0,
+                    'total' => 0,
+                ],
+            ]);
         }
+
+        $total = $neighborhoodIds->count();
+        $activeElectionIds = Election::query()
+            ->whereIn('neighborhood_id', $neighborhoodIds)
+            ->where('is_active', true)
+            ->pluck('id');
+
+        if ($activeElectionIds->isEmpty()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Proceso masivo de cierre finalizado.',
+                'data' => [
+                    'closed' => 0,
+                    'skipped' => $total,
+                    'total' => $total,
+                ],
+            ]);
+        }
+
+        $now = now();
+
+        // Cierre masivo sin eventos Eloquent para evitar timeouts en lotes grandes.
+        Election::query()
+            ->whereIn('id', $activeElectionIds)
+            ->update([
+                'is_active' => false,
+                'updated_at' => $now,
+            ]);
+
+        PollingTable::query()
+            ->whereIn('election_id', $activeElectionIds)
+            ->update([
+                'is_active' => false,
+                'updated_at' => $now,
+            ]);
+
+        $closed = $activeElectionIds->count();
+        $skipped = max($total - $closed, 0);
 
         return response()->json([
             'success' => true,
@@ -214,7 +266,7 @@ class NeighborhoodDirectoryController extends Controller
             'data' => [
                 'closed' => $closed,
                 'skipped' => $skipped,
-                'total' => $neighborhoods->count(),
+                'total' => $total,
             ],
         ]);
     }
@@ -239,8 +291,9 @@ class NeighborhoodDirectoryController extends Controller
         return $query;
     }
 
-    private function scaffoldElection(Neighborhood $neighborhood): Election
+    private function scaffoldElection(Neighborhood $neighborhood, ?array $catalog = null): Election
     {
+        $catalog = $catalog ?? $this->getElectionScaffoldCatalog();
         $timestamp = now()->format('YmdHis');
         $year = (int) now()->format('Y');
 
@@ -267,13 +320,9 @@ class NeighborhoodDirectoryController extends Controller
             ]
         );
 
-        $blockIds = DB::table('blocks')
-            ->whereIn('code', ['DIR', 'DEL', 'FIS'])
-            ->pluck('id', 'code');
-
-        $positions = Position::query()
-            ->whereIn('code', ['DIR_PRES', 'DIR_VICE', 'DIR_TESO', 'DEL_1', 'DEL_2', 'FIS_PRIN'])
-            ->get(['id', 'block_id', 'code']);
+        $blockIds = $catalog['block_ids'];
+        $positions = $catalog['positions'];
+        $blockCodeById = $catalog['block_code_by_id'];
 
         $electionBlockIds = [];
         foreach (['DIR', 'DEL', 'FIS'] as $blockCode) {
@@ -296,8 +345,8 @@ class NeighborhoodDirectoryController extends Controller
         }
 
         foreach ($positions as $position) {
-            $blockCode = array_search($position->block_id, $blockIds->all(), true);
-            $electionBlockId = $blockCode !== false ? ($electionBlockIds[$blockCode] ?? null) : null;
+            $blockCode = $blockCodeById[$position->block_id] ?? null;
+            $electionBlockId = $blockCode ? ($electionBlockIds[$blockCode] ?? null) : null;
 
             if (! $electionBlockId) {
                 continue;
@@ -349,6 +398,24 @@ class NeighborhoodDirectoryController extends Controller
         }
 
         return $election;
+    }
+
+    private function getElectionScaffoldCatalog(): array
+    {
+        $blockIds = DB::table('blocks')
+            ->whereIn('code', ['DIR', 'DEL', 'FIS'])
+            ->pluck('id', 'code')
+            ->toArray();
+
+        $positions = Position::query()
+            ->whereIn('code', ['DIR_PRES', 'DIR_VICE', 'DIR_TESO', 'DEL_1', 'DEL_2', 'FIS_PRIN'])
+            ->get(['id', 'block_id', 'code']);
+
+        return [
+            'block_ids' => $blockIds,
+            'block_code_by_id' => array_flip($blockIds),
+            'positions' => $positions,
+        ];
     }
 
     private function toNeighborhoodRow($neighborhood): array

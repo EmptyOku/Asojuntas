@@ -54,6 +54,7 @@ class NeighborhoodSeeder extends Seeder
     {
         return [
             'COM-01' => [
+                ['source_name' => 'BARRIO PRUEBA', 'name' => 'Prueba', 'type' => 'barrio', 'code' => 'COM01-PRUEBA'],
                 ['source_name' => 'BARRIO BLANCO', 'name' => 'Blanco', 'type' => 'barrio', 'code' => 'COM01-BLANCO'],
                 ['source_name' => 'BARRIO CENTRO', 'name' => 'Centro', 'type' => 'barrio', 'code' => 'COM01-CENTRO'],
                 ['source_name' => 'BARRIO GRANADA', 'name' => 'Granada', 'type' => 'barrio', 'code' => 'COM01-GRANADA'],

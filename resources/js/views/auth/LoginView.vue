@@ -55,11 +55,11 @@
             </div>
           </div>
 
-          <div class="flex items-center justify-end mt-2">
+          <!-- <div class="flex items-center justify-end mt-2">
             <router-link to="/recovery" class="text-sm font-semibold text-aso-primary hover:text-aso-primary-dark transition-colors">
               ¿Olvidaste tu contraseña?
             </router-link>
-          </div>
+          </div> -->
 
           <button
             type="submit"

@@ -501,7 +501,15 @@ class JuryIngestController extends Controller
     private function resolveScrutinyRecord(Request $request, array $validated): ScrutinyRecord
     {
         if (! empty($validated['scrutiny_record_id'])) {
-            return ScrutinyRecord::findOrFail((int) $validated['scrutiny_record_id']);
+            $record = ScrutinyRecord::findOrFail((int) $validated['scrutiny_record_id']);
+
+            if ((int) $record->created_by_user_id !== (int) $request->user()->id) {
+                throw ValidationException::withMessages([
+                    'scrutiny_record_id' => 'No puedes usar un acta creada por otro usuario.',
+                ]);
+            }
+
+            return $record;
         }
 
         $pollingTableId = ! empty($validated['polling_table_id'])
@@ -510,6 +518,7 @@ class JuryIngestController extends Controller
 
         if ($pollingTableId > 0) {
             $pollingTable = PollingTable::findOrFail($pollingTableId);
+            $this->assertPollingTableAccess($request, $pollingTable);
 
             $existing = ScrutinyRecord::query()
                 ->where('polling_table_id', $pollingTable->id)
@@ -549,6 +558,24 @@ class JuryIngestController extends Controller
         throw ValidationException::withMessages([
             'polling_table_id' => 'No hay acta previa para este usuario. Debes enviar polling_table_id al menos una vez.',
         ]);
+    }
+
+    private function assertPollingTableAccess(Request $request, PollingTable $pollingTable): void
+    {
+        $userNeighborhoodId = (int) ($request->user()?->person?->neighborhood_id ?? 0);
+        if ($userNeighborhoodId <= 0) {
+            return;
+        }
+
+        $tableNeighborhoodId = (int) Election::query()
+            ->where('id', $pollingTable->election_id)
+            ->value('neighborhood_id');
+
+        if ($tableNeighborhoodId !== $userNeighborhoodId) {
+            throw ValidationException::withMessages([
+                'polling_table_id' => 'Solo puedes cargar actas en la mesa asignada a tu barrio.',
+            ]);
+        }
     }
 
     private function resolveDefaultPollingTableId(Request $request): ?int

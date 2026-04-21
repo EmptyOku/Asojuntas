@@ -12,7 +12,7 @@ class UserSeeder extends Seeder
     {
         $now = now();
 
-        // Usuarios iniciales para pruebas de acceso por rol.
+        // Usuarios base para producción.
         $seedUsers = [
             [
                 'username' => 'superadmin',
@@ -27,13 +27,7 @@ class UserSeeder extends Seeder
                 'roles' => ['admin_electoral'],
             ],
             [
-                'username' => 'reviewer1',
-                'email' => 'reviewer1@jac.local',
-                'password' => 'Admin123*',
-                'roles' => ['reviewer'],
-            ],
-            [
-                'username' => 'digitizer1',
+                'username' => 'jurado',
                 'email' => 'digitizer1@jac.local',
                 'password' => 'Admin123*',
                 'roles' => ['digitizer'],
@@ -108,5 +102,13 @@ class UserSeeder extends Seeder
                 ['assigned_at', 'assigned_by', 'updated_at']
             );
         }
+
+        // El usuario reviewer de semilla queda deshabilitado en este flujo.
+        DB::table('users')
+            ->where('email', 'reviewer1@jac.local')
+            ->update([
+                'is_active' => false,
+                'updated_at' => $now,
+            ]);
     }
 }

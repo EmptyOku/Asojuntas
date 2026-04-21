@@ -21,6 +21,7 @@ class DatabaseSeeder extends Seeder
             CitySeeder::class,
             CommuneSeeder::class,
             NeighborhoodSeeder::class,
+            NeighborhoodElectionCoverageSeeder::class,
             ElectoralCatalogSeeder::class,
         ]);
 

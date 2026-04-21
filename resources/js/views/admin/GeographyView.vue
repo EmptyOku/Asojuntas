@@ -461,7 +461,10 @@ const runConfirmedAction = async () => {
         ? '/admin/neighborhoods/elections/create-all'
         : '/admin/neighborhoods/elections/close-all';
 
-      await axios.post(endpoint, buildParams());
+      await axios.post(endpoint, buildParams(), {
+        // Bulk operations can take longer than the default Axios timeout.
+        timeout: 0,
+      });
     } else if (confirmState.target?.id) {
       const endpoint = confirmState.action === 'create'
         ? `/admin/neighborhoods/${confirmState.target.id}/elections`

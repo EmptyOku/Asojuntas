@@ -302,8 +302,12 @@ const loadNeighborhoods = async (page = pagination.value.current_page) => {
     const payload = data?.data || {};
     cards.value = payload?.items || [];
 
-    if (cards.value.length > 0 && !openNeighborhoodId.value) {
-      openNeighborhoodId.value = cards.value[0].id;
+    // Preserve the currently open neighborhood only if it still exists in the fetched page.
+    if (openNeighborhoodId.value !== null) {
+      const stillExists = cards.value.some((card) => card.id === openNeighborhoodId.value);
+      if (!stillExists) {
+        openNeighborhoodId.value = null;
+      }
     }
 
     const pageData = payload?.pagination || {};

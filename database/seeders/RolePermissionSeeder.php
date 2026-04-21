@@ -29,11 +29,6 @@ class RolePermissionSeeder extends Seeder
                 'records.upload', 'records.review', 'records.approve',
                 'reports.view', 'audit.view',
             ],
-            'reviewer' => [
-                'elections.view',
-                'records.review', 'records.approve',
-                'reports.view', 'audit.view',
-            ],
             'digitizer' => [
                 'elections.view',
                 'records.upload',
@@ -67,6 +62,12 @@ class RolePermissionSeeder extends Seeder
                     'updated_at' => $now,
                 ];
             }
+        }
+
+        // Limpiar permisos heredados del rol reviewer (fuera del flujo actual).
+        $reviewerRoleId = $roles['reviewer'] ?? null;
+        if ($reviewerRoleId) {
+            DB::table('role_permissions')->where('role_id', $reviewerRoleId)->delete();
         }
 
         if (! empty($rows)) {
