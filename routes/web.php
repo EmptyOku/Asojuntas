@@ -130,6 +130,8 @@ Route::prefix('api')->name('api.')->group(function (): void {
 
             Route::post('/neighborhoods/elections/close-all', [NeighborhoodDirectoryController::class, 'closeAllElections'])
                 ->name('admin.neighborhoods.elections.close-all');
+            
+            Route::get('/planchas/by-neighborhood', [PlanchaDraftController::class, 'neighborhoodsWithSlates']);
             // =========================================================
             // RUTAS DE PERSONAS
             // =========================================================
