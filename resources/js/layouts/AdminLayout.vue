@@ -39,8 +39,8 @@
           Directorio JAC
         </router-link>
 
-        <router-link to="/admin/audit" @click="isMobileMenuOpen = false" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200" active-class="bg-aso-primary text-white shadow-md shadow-aso-primary/20" :class="[$route.path.includes('/audit') ? 'bg-aso-primary text-white shadow-md shadow-aso-primary/20' : 'text-gray-700 hover:bg-gray-100']">
-          <FileCheck class="w-5 h-5" :class="[$route.path.includes('/audit') ? 'text-white' : 'text-gray-400']" />
+        <router-link to="/admin/audit" @click="isMobileMenuOpen = false" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200" active-class="bg-aso-primary text-white shadow-md shadow-aso-primary/20" :class="[($route.path === '/admin/audit' || $route.path.startsWith('/admin/audit/')) ? 'bg-aso-primary text-white shadow-md shadow-aso-primary/20' : 'text-gray-700 hover:bg-gray-100']">
+          <FileCheck class="w-5 h-5" :class="[($route.path === '/admin/audit' || $route.path.startsWith('/admin/audit/')) ? 'text-white' : 'text-gray-400']" />
           Auditoría de Actas
         </router-link>
 
@@ -51,7 +51,7 @@
 
         <router-link to="/admin/registration" @click="isMobileMenuOpen = false" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200" active-class="bg-aso-primary text-white shadow-md shadow-aso-primary/20" :class="[$route.path.includes('/registration') ? 'bg-aso-primary text-white shadow-md shadow-aso-primary/20' : 'text-gray-700 hover:bg-gray-100']">
           <ShieldAlert class="w-5 h-5" :class="[$route.path.includes('/registration') ? 'text-white' : 'text-gray-400']" />
-          Inscripción de candidatos
+          Revisión de planchas
         </router-link>
       </nav>
 
@@ -98,10 +98,10 @@
                 <p class="text-xs text-gray-500 capitalize">{{ authStore.user?.role || 'Sin Rol' }}</p>
               </div>
               <div class="py-1">
-                <a href="#" class="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                <!-- <a href="#" class="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
                   <Settings class="w-4 h-4 text-gray-400" />
                   Configuración
-                </a>
+                </a> -->
               </div>
               <div class="border-t border-gray-50 py-1">
                 <button @click="handleLogout" class="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50 text-left">
