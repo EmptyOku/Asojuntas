@@ -34,7 +34,10 @@ class AppServiceProvider extends ServiceProvider
             $auditTrailLogger->recordModelEvent('created', $model);
         });
 
-        if (env('APP_ENV') !== 'local' || request()->server('HTTP_X_FORWARDED_PROTO') == 'https' || str_contains(env('APP_URL'), 'https')) {
+        if (
+            request()->server('HTTP_X_FORWARDED_PROTO') === 'https'
+            || str_starts_with((string) config('app.url'), 'https://')
+        ) {
             URL::forceScheme('https');
         }
 
