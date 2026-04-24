@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Candidate;
 use App\Models\CandidateDraft;
 use App\Models\CandidateDraftFile;
+use App\Models\Block;
 use App\Models\DocumentType;
 use App\Models\ElectionBlock;
 use App\Models\ElectionBlockPosition;
@@ -775,6 +776,10 @@ class PlanchaDraftController extends Controller
 
         $candidateDraft->update($updates);
 
+        if ($target === CandidateDraftWorkflow::STATUS_APPROVED) {
+            $this->ensureSlateContextForApprovedDraft($candidateDraft);
+        }
+
         return response()->json([
             'success' => true,
             'message' => 'Decision aplicada correctamente.',
@@ -831,6 +836,11 @@ class PlanchaDraftController extends Controller
                 }
 
                 $draft->update($payload);
+
+                if ($target === CandidateDraftWorkflow::STATUS_APPROVED) {
+                    $this->ensureSlateContextForApprovedDraft($draft);
+                }
+
                 $updated++;
             }
         });
@@ -972,19 +982,50 @@ class PlanchaDraftController extends Controller
                 }
 
                 if (! $positionId) {
+                    $cargoLabel = $this->extractCargoLabelFromNotes((string) ($draft->notes ?? ''));
                     $skipped++;
                     $issues[] = [
                         'draft_id' => $draft->id,
-                        'reason' => 'Sin mapeo de cargo OCR hacia una posicion oficial.',
+                        'reason' => 'Sin mapeo de cargo OCR hacia una posicion oficial.'.($cargoLabel ? " Cargo detectado: {$cargoLabel}." : ''),
                     ];
                     continue;
                 }
 
                 if (! $slateBlockId) {
+                    $activeSlates = Slate::query()
+                        ->where('election_id', $draft->election_id)
+                        ->where('is_active', true)
+                        ->count();
+
+                    $totalSlates = Slate::query()
+                        ->where('election_id', $draft->election_id)
+                        ->count();
+
+                    $availableSlateBlocks = 0;
+                    if ($electionBlockId) {
+                        $availableSlateBlocks = SlateBlock::query()
+                            ->join('slates', 'slates.id', '=', 'slate_blocks.slate_id')
+                            ->where('slate_blocks.election_id', $draft->election_id)
+                            ->where('slate_blocks.election_block_id', $electionBlockId)
+                            ->where('slates.is_active', true)
+                            ->count();
+                    }
+
+                    $reason = 'Sin mapeo de plancha para el cargo.';
+                    if ($totalSlates === 0) {
+                        $reason .= ' La eleccion no tiene planchas registradas (tabla slates vacia).';
+                    } elseif ($activeSlates === 0) {
+                        $reason .= ' La eleccion tiene planchas, pero ninguna esta activa.';
+                    } elseif ($availableSlateBlocks === 0) {
+                        $reason .= ' No existe relacion slate_blocks para este bloque electoral.';
+                    } else {
+                        $reason .= ' Verifica el codigo de plancha (slate_code) y el mapeo del lote.';
+                    }
+
                     $skipped++;
                     $issues[] = [
                         'draft_id' => $draft->id,
-                        'reason' => 'Sin mapeo de plancha para el cargo. Verifica codigo de plancha o define una plancha activa unica.',
+                        'reason' => $reason,
                     ];
                     continue;
                 }
@@ -1234,36 +1275,7 @@ class PlanchaDraftController extends Controller
             ->upper()
             ->replaceMatches('/[^A-Z0-9 ]+/', ' ')
             ->squish();
-        $positionCode = null;
-        $blockCode = null;
-
-        $map = [
-            'PRESIDENTE' => ['DIR_PRES', 'DIR'],
-            'SUPLENTE DE PRESIDENTE' => ['DIR_PRES', 'DIR'],
-            'VICEPRESIDENTE' => ['DIR_VICE', 'DIR'],
-            'SUPLENTE DE VICEPRESIDENTE' => ['DIR_VICE', 'DIR'],
-            'TESORERO' => ['DIR_TESO', 'DIR'],
-            'SUPLENTE DE TESORERO' => ['DIR_TESO', 'DIR'],
-            'SECRETARIO' => ['DIR_SECR', 'DIR'],
-            'SUPLENTE DE SECRETARIO' => ['DIR_SECR', 'DIR'],
-            'DELEGADO ASOJUNTAS 1' => ['DEL_AJ_1', 'DEL'],
-            'SUPLENTE DELEGADO ASOJUNTAS 1' => ['DEL_AJ_1', 'DEL'],
-            'DELEGADO ASOJUNTAS 2' => ['DEL_AJ_2', 'DEL'],
-            'SUPLENTE DELEGADO ASOJUNTAS 2' => ['DEL_AJ_2', 'DEL'],
-            'DELEGADO ASOJUNTAS 3' => ['DEL_AJ_3', 'DEL'],
-            'SUPLENTE DELEGADO ASOJUNTAS 3' => ['DEL_AJ_3', 'DEL'],
-            'FISCAL' => ['FIS_PRIN', 'FIS'],
-            'SUPLENTE FISCAL' => ['FIS_PRIN', 'FIS'],
-            'CONCILIADOR 1' => ['CYC_CONC_1', 'CYC'],
-            'CONCILIADOR 2' => ['CYC_CONC_2', 'CYC'],
-            'CONCILIADOR 3' => ['CYC_CONC_3', 'CYC'],
-            'COMISION EMPRESARIAL' => ['CYC_EMP_COORD', 'CYC'],
-            'COORDINADOR COMISION EMPRESARIAL' => ['CYC_EMP_COORD', 'CYC'],
-        ];
-
-        if (isset($map[$normalizedCargo])) {
-            [$positionCode, $blockCode] = $map[$normalizedCargo];
-        }
+        [$positionCode, $blockCode] = $this->resolvePositionAndBlockCodeForCargo($normalizedCargo);
 
         $positionId = null;
         $blockId = null;
@@ -1271,9 +1283,7 @@ class PlanchaDraftController extends Controller
         $slateBlockId = null;
 
         if ($positionCode !== null) {
-            $position = Position::query()->where('code', $positionCode)->first();
-            $positionId = $position?->id;
-            $blockId = $position?->block_id;
+            [$positionId, $blockId] = $this->ensurePositionCatalogForCode($positionCode, $blockCode);
         }
 
         if ($slateCode !== null) {
@@ -1319,6 +1329,135 @@ class PlanchaDraftController extends Controller
             'slate_id' => $slateId,
             'slate_block_id' => $slateBlockId,
         ];
+    }
+
+    private function resolvePositionAndBlockCodeForCargo(string $normalizedCargo): array
+    {
+        $map = [
+            'PRESIDENTE' => ['DIR_PRES', 'DIR'],
+            'SUPLENTE DE PRESIDENTE' => ['DIR_PRES', 'DIR'],
+            'SUPLENTE PRESIDENTE' => ['DIR_PRES', 'DIR'],
+            'VICEPRESIDENTE' => ['DIR_VICE', 'DIR'],
+            'VICE PRESIDENTE' => ['DIR_VICE', 'DIR'],
+            'SUPLENTE DE VICEPRESIDENTE' => ['DIR_VICE', 'DIR'],
+            'SUPLENTE VICEPRESIDENTE' => ['DIR_VICE', 'DIR'],
+            'TESORERO' => ['DIR_TESO', 'DIR'],
+            'SUPLENTE DE TESORERO' => ['DIR_TESO', 'DIR'],
+            'SECRETARIO' => ['DIR_SECR', 'DIR'],
+            'SECRETARIA' => ['DIR_SECR', 'DIR'],
+            'SUPLENTE DE SECRETARIO' => ['DIR_SECR', 'DIR'],
+            'DELEGADO ASOJUNTAS 1' => ['DEL_AJ_1', 'DEL'],
+            'SUPLENTE DELEGADO ASOJUNTAS 1' => ['DEL_AJ_1', 'DEL'],
+            'SUPLENTE DE DELEGADO ASOJUNTAS 1' => ['DEL_AJ_1', 'DEL'],
+            'DELEGADO ASOJUNTAS 2' => ['DEL_AJ_2', 'DEL'],
+            'SUPLENTE DELEGADO ASOJUNTAS 2' => ['DEL_AJ_2', 'DEL'],
+            'SUPLENTE DE DELEGADO ASOJUNTAS 2' => ['DEL_AJ_2', 'DEL'],
+            'DELEGADO ASOJUNTAS 3' => ['DEL_AJ_3', 'DEL'],
+            'SUPLENTE DELEGADO ASOJUNTAS 3' => ['DEL_AJ_3', 'DEL'],
+            'SUPLENTE DE DELEGADO ASOJUNTAS 3' => ['DEL_AJ_3', 'DEL'],
+            'FISCAL' => ['FIS_PRIN', 'FIS'],
+            'SUPLENTE FISCAL' => ['FIS_PRIN', 'FIS'],
+            'SUPLENTE DE FISCAL' => ['FIS_PRIN', 'FIS'],
+            'CONCILIADOR 1' => ['CYC_CONC_1', 'CYC'],
+            'CONCILIADOR 2' => ['CYC_CONC_2', 'CYC'],
+            'CONCILIADOR 3' => ['CYC_CONC_3', 'CYC'],
+            'COMISION EMPRESARIAL' => ['CYC_EMP_COORD', 'CYC'],
+            'COMISION DE EMPRESARIAL' => ['CYC_EMP_COORD', 'CYC'],
+            'COORDINADOR COMISION EMPRESARIAL' => ['CYC_EMP_COORD', 'CYC'],
+            'COORDINADOR DE COMISION EMPRESARIAL' => ['CYC_EMP_COORD', 'CYC'],
+        ];
+
+        if (isset($map[$normalizedCargo])) {
+            return $map[$normalizedCargo];
+        }
+
+        if (preg_match('/^DELEGADO ASOJUNTAS\s*([123])$/', $normalizedCargo, $matches) === 1) {
+            return ['DEL_AJ_'.(int) $matches[1], 'DEL'];
+        }
+
+        if (preg_match('/^SUPLENTE\s+(?:DE\s+)?DELEGADO ASOJUNTAS\s*([123])$/', $normalizedCargo, $matches) === 1) {
+            return ['DEL_AJ_'.(int) $matches[1], 'DEL'];
+        }
+
+        if (preg_match('/^CONCILIADOR\s*([123])$/', $normalizedCargo, $matches) === 1) {
+            return ['CYC_CONC_'.(int) $matches[1], 'CYC'];
+        }
+
+        return [null, null];
+    }
+
+    private function ensurePositionCatalogForCode(string $positionCode, ?string $blockCode): array
+    {
+        $blockCode = $blockCode ?: $this->defaultBlockCodeForPosition($positionCode);
+        if (! $blockCode) {
+            return [null, null];
+        }
+
+        $blockNames = [
+            'DIR' => 'Directiva',
+            'DEL' => 'Delegados Asojuntas',
+            'FIS' => 'Fiscal',
+            'CYC' => 'Comision de convivencia y conciliacion',
+        ];
+
+        $positionNames = [
+            'DIR_PRES' => 'Presidente',
+            'DIR_VICE' => 'Vicepresidente',
+            'DIR_TESO' => 'Tesorero',
+            'DIR_SECR' => 'Secretario',
+            'DEL_AJ_1' => 'Delegado Asojuntas 1',
+            'DEL_AJ_2' => 'Delegado Asojuntas 2',
+            'DEL_AJ_3' => 'Delegado Asojuntas 3',
+            'FIS_PRIN' => 'Fiscal',
+            'CYC_CONC_1' => 'Conciliador 1',
+            'CYC_CONC_2' => 'Conciliador 2',
+            'CYC_CONC_3' => 'Conciliador 3',
+            'CYC_EMP_COORD' => 'Comision empresarial',
+        ];
+
+        $block = Block::query()->firstOrCreate(
+            ['code' => $blockCode],
+            [
+                'name' => $blockNames[$blockCode] ?? $blockCode,
+                'description' => 'Creado automaticamente por mapeo de planchas OCR.',
+                'is_active' => true,
+            ]
+        );
+
+        if (! $block->is_active) {
+            $block->update(['is_active' => true]);
+        }
+
+        $position = Position::query()
+            ->where('code', $positionCode)
+            ->where('block_id', $block->id)
+            ->first();
+
+        if (! $position) {
+            $position = Position::query()->create([
+                'block_id' => $block->id,
+                'name' => $positionNames[$positionCode] ?? $positionCode,
+                'code' => $positionCode,
+                'order_number' => null,
+                'description' => 'Creado automaticamente por mapeo de planchas OCR.',
+                'is_active' => true,
+            ]);
+        } elseif (! $position->is_active) {
+            $position->update(['is_active' => true]);
+        }
+
+        return [(int) $position->id, (int) $block->id];
+    }
+
+    private function defaultBlockCodeForPosition(string $positionCode): ?string
+    {
+        return match ($positionCode) {
+            'DIR_PRES', 'DIR_VICE', 'DIR_TESO', 'DIR_SECR' => 'DIR',
+            'DEL_AJ_1', 'DEL_AJ_2', 'DEL_AJ_3' => 'DEL',
+            'FIS_PRIN' => 'FIS',
+            'CYC_CONC_1', 'CYC_CONC_2', 'CYC_CONC_3', 'CYC_EMP_COORD' => 'CYC',
+            default => null,
+        };
     }
 
     private function extractCargoLabelFromNotes(string $notes): ?string
@@ -1430,6 +1569,152 @@ class PlanchaDraftController extends Controller
             'block_id' => $blockId,
             'election_block_id' => $electionBlock->id,
         ];
+    }
+
+    private function ensureSlateContextForApprovedDraft(CandidateDraft $draft): void
+    {
+        $electionId = (int) ($draft->election_id ?? 0);
+        if ($electionId <= 0) {
+            return;
+        }
+
+        $positionId = $draft->position_id;
+        if (! $positionId) {
+            $cargoLabel = $this->extractCargoLabelFromNotes((string) ($draft->notes ?? ''));
+            if ($cargoLabel !== null) {
+                $positionContext = $this->resolvePositionContextForCargo($electionId, $cargoLabel, null);
+                $positionId = $positionContext['position_id'];
+            }
+        }
+
+        $electionBlockId = null;
+        if ($positionId) {
+            $mapping = $this->ensureElectionStructureForPosition($electionId, (int) $positionId);
+            $electionBlockId = $mapping['election_block_id'];
+        }
+
+        $slateId = $draft->slate_id;
+        if (! $slateId && $draft->slate_block_id) {
+            $slateId = SlateBlock::query()
+                ->where('id', $draft->slate_block_id)
+                ->value('slate_id');
+        }
+
+        if (! $slateId && $draft->capture_batch_uuid) {
+            $batchSlateIds = CandidateDraft::query()
+                ->where('capture_batch_uuid', $draft->capture_batch_uuid)
+                ->where('election_id', $electionId)
+                ->whereNotNull('slate_id')
+                ->distinct()
+                ->pluck('slate_id');
+
+            if ($batchSlateIds->count() === 1) {
+                $slateId = (int) $batchSlateIds->first();
+            }
+        }
+
+        if (! $slateId) {
+            $slateId = $this->ensureAutoSlateForElection($electionId);
+        }
+
+        $slateBlockId = $draft->slate_block_id;
+        if (! $slateBlockId && $slateId && $electionBlockId) {
+            $slateBlock = SlateBlock::query()->updateOrCreate(
+                [
+                    'election_id' => $electionId,
+                    'slate_id' => $slateId,
+                    'election_block_id' => $electionBlockId,
+                ],
+                [
+                    'is_active' => true,
+                ]
+            );
+
+            $slateBlockId = $slateBlock->id;
+        }
+
+        $updates = [];
+
+        if ($positionId && (int) ($draft->position_id ?? 0) !== (int) $positionId) {
+            $updates['position_id'] = (int) $positionId;
+        }
+
+        if ($slateId && (int) ($draft->slate_id ?? 0) !== (int) $slateId) {
+            $updates['slate_id'] = (int) $slateId;
+        }
+
+        if ($slateBlockId && (int) ($draft->slate_block_id ?? 0) !== (int) $slateBlockId) {
+            $updates['slate_block_id'] = (int) $slateBlockId;
+        }
+
+        if (! empty($updates)) {
+            $draft->update($updates);
+        }
+    }
+
+    private function ensureAutoSlateForElection(int $electionId): int
+    {
+        $existingActive = Slate::query()
+            ->where('election_id', $electionId)
+            ->where('is_active', true)
+            ->orderBy('id')
+            ->first();
+
+        if ($existingActive) {
+            return (int) $existingActive->id;
+        }
+
+        $existingAny = Slate::query()
+            ->where('election_id', $electionId)
+            ->orderBy('id')
+            ->first();
+
+        if ($existingAny) {
+            if (! $existingAny->is_active) {
+                $existingAny->update(['is_active' => true]);
+            }
+
+            return (int) $existingAny->id;
+        }
+
+        $nextNumber = $this->nextSlateNumberForElection($electionId);
+        while (Slate::query()->where('election_id', $electionId)->where('code', 'P'.$nextNumber)->exists()) {
+            $nextNumber++;
+        }
+
+        $slate = Slate::query()->create([
+            'election_id' => $electionId,
+            'code' => 'P'.$nextNumber,
+            'name' => 'Plancha '.$nextNumber,
+            'description' => 'Generada automaticamente desde aprobacion OCR.',
+            'is_active' => true,
+        ]);
+
+        return (int) $slate->id;
+    }
+
+    private function nextSlateNumberForElection(int $electionId): int
+    {
+        $maxNumber = 0;
+
+        $slates = Slate::query()
+            ->where('election_id', $electionId)
+            ->get(['code', 'name']);
+
+        foreach ($slates as $slate) {
+            $code = Str::upper((string) ($slate->code ?? ''));
+            $name = Str::upper((string) ($slate->name ?? ''));
+
+            if (preg_match('/P(\d+)/', $code, $codeMatch) === 1) {
+                $maxNumber = max($maxNumber, (int) $codeMatch[1]);
+            }
+
+            if (preg_match('/(\d+)/', $name, $nameMatch) === 1) {
+                $maxNumber = max($maxNumber, (int) $nameMatch[1]);
+            }
+        }
+
+        return max(1, $maxNumber + 1);
     }
 
     private function buildDraftNote(string $blockTitle, string $cargoLabel): string

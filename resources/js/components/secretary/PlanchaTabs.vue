@@ -125,6 +125,9 @@ const handleBatchAction = async (decision) => {
     await axios.post('/secretary/planchas/drafts/decision/batch', {
       capture_batch_uuid: currentBatch.value.capture_batch_uuid,
       decision
+    }, {
+      timeout: 240000,
+      skipGlobalLoading: true,
     });
     emit('draft-updated');
   } catch (error) {

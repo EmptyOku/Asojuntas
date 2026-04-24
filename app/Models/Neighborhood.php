@@ -7,10 +7,12 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Casts\Attribute; // IMPORTANTE PARA LOS ACCESSORS
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Neighborhood extends Model
 {
     use HasFactory;
+    use SoftDeletes;
 
     protected $fillable = [
         'commune_id',

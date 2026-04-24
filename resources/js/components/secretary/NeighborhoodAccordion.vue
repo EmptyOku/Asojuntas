@@ -95,7 +95,9 @@ const promoteOfficial = async () => {
   }
 
   isPromoting.value = true;
-  let successfulPromotions = 0;
+  let processedTotal = 0;
+  let skippedTotal = 0;
+  const promotionIssues = [];
   let errors = [];
 
   // Iteramos sobre las planchas del barrio que tienen algo para promover
@@ -103,10 +105,23 @@ const promoteOfficial = async () => {
 
   for (const batch of batchesToPromote) {
     try {
-      await axios.post('/secretary/planchas/drafts/promote', { 
+      const { data } = await axios.post('/secretary/planchas/drafts/promote', { 
         capture_batch_uuid: batch.capture_batch_uuid 
+      }, {
+        timeout: 240000,
+        skipGlobalLoading: true,
       });
-      successfulPromotions++;
+
+      const summary = data?.data || {};
+      processedTotal += Number(summary.processed || 0);
+      skippedTotal += Number(summary.skipped || 0);
+
+      if (Array.isArray(summary.issues) && summary.issues.length > 0) {
+        summary.issues.forEach((issue) => {
+          const detail = issue?.reason || 'Sin detalle';
+          promotionIssues.push(`Lote ${batch.capture_batch_uuid}: ${detail}`);
+        });
+      }
     } catch (error) {
       errors.push(`Error en lote ${batch.capture_batch_uuid}: ${error?.response?.data?.message || error.message}`);
     }
@@ -116,8 +131,20 @@ const promoteOfficial = async () => {
 
   if (errors.length > 0) {
     window.alert(`Promoción finalizada con errores:\n\n${errors.join('\n')}`);
-  } else if (successfulPromotions > 0) {
+  } else if (processedTotal > 0 && skippedTotal === 0) {
     window.alert('¡Promoción oficial completada con éxito para todo el barrio!');
+  } else if (processedTotal > 0 && skippedTotal > 0) {
+    window.alert(
+      `Promoción parcial completada.\n\nPromovidos: ${processedTotal}\nOmitidos: ${skippedTotal}`
+      + (promotionIssues.length ? `\n\nDetalle:\n${promotionIssues.slice(0, 12).join('\n')}` : '')
+    );
+  } else if (skippedTotal > 0) {
+    window.alert(
+      `No se promovieron candidatos para este barrio.\n\nOmitidos: ${skippedTotal}`
+      + (promotionIssues.length ? `\n\nDetalle:\n${promotionIssues.slice(0, 12).join('\n')}` : '')
+    );
+  } else {
+    window.alert('No hubo cambios para promover en este barrio.');
   }
 
   // Le decimos al padre que recargue los datos para actualizar los contadores
