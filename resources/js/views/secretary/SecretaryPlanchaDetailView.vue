@@ -624,7 +624,10 @@ const promoteApprovedBatch = async () => {
   }
   isPromoting.value = true;
   try {
-    await axios.post('/secretary/planchas/drafts/promote', { capture_batch_uuid: currentBatchUuid.value });
+    await axios.post('/secretary/planchas/drafts/promote', { capture_batch_uuid: currentBatchUuid.value }, {
+      timeout: 240000,
+      skipGlobalLoading: true,
+    });
     await loadPromotableCount(currentBatchUuid.value);
     window.alert('Promoción finalizada con éxito.');
   } catch (error) {

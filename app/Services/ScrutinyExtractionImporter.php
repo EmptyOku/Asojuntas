@@ -39,7 +39,7 @@ class ScrutinyExtractionImporter
             ]);
 
             $normalized = (array) ($data['normalized_payload'] ?? []);
-            $blockRows = $this->resolveBlockResultRows($normalized);
+            $blockRows = $this->collectBlockResultRowsForRecord($record);
 
             $blockSummary = $this->syncBlockResults($record, $extraction, $blockRows);
             $peopleSummary = $this->syncElectedPeople($record, $extraction, (array) ($normalized['elected_people'] ?? []));
@@ -54,7 +54,40 @@ class ScrutinyExtractionImporter
         });
     }
 
-    private function resolveBlockResultRows(array $normalizedPayload): array
+    private function collectBlockResultRowsForRecord(ScrutinyRecord $record): array
+    {
+        $extractions = ScrutinyExtraction::query()
+            ->with('scrutinyRecordFile')
+            ->where('scrutiny_record_id', $record->id)
+            ->whereNotNull('scrutiny_record_file_id')
+            ->orderByDesc('id')
+            ->get();
+
+        $latestByPage = [];
+        foreach ($extractions as $extraction) {
+            $pageNumber = (int) ($extraction->scrutinyRecordFile?->page_number ?? 0);
+            $pageKey = $pageNumber > 0 ? $pageNumber : $extraction->id;
+
+            if (! isset($latestByPage[$pageKey])) {
+                $latestByPage[$pageKey] = $extraction;
+            }
+        }
+
+        $rows = [];
+        foreach ($latestByPage as $pageKey => $extraction) {
+            $normalizedPayload = (array) ($extraction->normalized_payload ?? []);
+            $pageNumber = (int) ($extraction->scrutinyRecordFile?->page_number ?? 0);
+
+            foreach ($this->resolveBlockResultRows($normalizedPayload, $pageNumber) as $row) {
+                $row['source_page_key'] = $pageKey;
+                $rows[] = $row;
+            }
+        }
+
+        return $rows;
+    }
+
+    private function resolveBlockResultRows(array $normalizedPayload, int $pageNumber = 0): array
     {
         $blockResults = array_values(array_filter(
             (array) ($normalizedPayload['block_results'] ?? []),
@@ -62,7 +95,13 @@ class ScrutinyExtractionImporter
         ));
 
         if (! empty($blockResults)) {
-            return $blockResults;
+            return array_map(
+                static function (array $row) use ($pageNumber): array {
+                    $row['page_number'] = max(0, (int) ($row['page_number'] ?? $pageNumber));
+                    return $row;
+                },
+                $blockResults
+            );
         }
 
         $derivedRows = [];
@@ -83,6 +122,7 @@ class ScrutinyExtractionImporter
                     'status' => 'pending',
                     'notes' => 'Derivado de normalized_payload.block_votes',
                     'block_name' => $blockName,
+                    'page_number' => $pageNumber,
                     'slate_code' => 'P'.$slateNumber,
                     'slate_name' => 'PLANCHA '.$slateNumber,
                 ];
@@ -97,6 +137,7 @@ class ScrutinyExtractionImporter
         $created = 0;
         $updated = 0;
         $skipped = 0;
+        $aggregatedRows = [];
 
         foreach ($rows as $index => $row) {
             if (! is_array($row)) {
@@ -118,11 +159,47 @@ class ScrutinyExtractionImporter
             }
 
             $slateBlockId = $this->resolveSlateBlockId($record, $electionBlockId, $row);
+            $bucketKey = $record->id.'|'.$electionBlockId.'|'.($slateBlockId ?? 'null');
 
+            if (! isset($aggregatedRows[$bucketKey])) {
+                $aggregatedRows[$bucketKey] = [
+                    'scrutiny_record_id' => $record->id,
+                    'election_block_id' => $electionBlockId,
+                    'slate_block_id' => $slateBlockId,
+                    'votes' => 0,
+                    'source_type' => $extraction->source_type,
+                    'status' => $row['status'] ?? 'pending',
+                    'confidence_score' => $row['confidence_score'] ?? $extraction->confidence_score,
+                    'notes' => [],
+                ];
+            }
+
+            $aggregatedRows[$bucketKey]['votes'] += (int) $votes;
+
+            $note = trim((string) ($row['notes'] ?? ''));
+            if ($note !== '') {
+                $aggregatedRows[$bucketKey]['notes'][] = $note;
+            }
+
+            $pageNumber = max(0, (int) ($row['page_number'] ?? 0));
+            if ($pageNumber > 0) {
+                $aggregatedRows[$bucketKey]['notes'][] = 'Pagina '.$pageNumber;
+            }
+
+            if (! empty($row['status'])) {
+                $aggregatedRows[$bucketKey]['status'] = (string) $row['status'];
+            }
+
+            if (isset($row['confidence_score'])) {
+                $aggregatedRows[$bucketKey]['confidence_score'] = $row['confidence_score'];
+            }
+        }
+
+        foreach ($aggregatedRows as $row) {
             $result = ScrutinyBlockResult::firstOrNew([
-                'scrutiny_record_id' => $record->id,
-                'election_block_id' => $electionBlockId,
-                'slate_block_id' => $slateBlockId,
+                'scrutiny_record_id' => $row['scrutiny_record_id'],
+                'election_block_id' => $row['election_block_id'],
+                'slate_block_id' => $row['slate_block_id'],
             ]);
 
             $alreadyExists = $result->exists;
@@ -130,11 +207,11 @@ class ScrutinyExtractionImporter
             $result->fill([
                 'election_id' => $record->election_id,
                 'scrutiny_extraction_id' => $extraction->id,
-                'votes' => (int) $votes,
-                'source_type' => $extraction->source_type,
-                'status' => $row['status'] ?? 'pending',
-                'confidence_score' => $row['confidence_score'] ?? $extraction->confidence_score,
-                'notes' => $row['notes'] ?? null,
+                'votes' => (int) $row['votes'],
+                'source_type' => $row['source_type'],
+                'status' => $row['status'],
+                'confidence_score' => $row['confidence_score'],
+                'notes' => ! empty($row['notes']) ? implode(' | ', array_values(array_unique($row['notes']))) : null,
             ]);
 
             $result->save();

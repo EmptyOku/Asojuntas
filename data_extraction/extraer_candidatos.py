@@ -2,30 +2,33 @@ import os
 import sys
 import json
 import base64
+import mimetypes
 import re
 import argparse
 import unicodedata
 import hashlib
+import time
 from pathlib import Path
 
 # ==========================================
 # GESTIÓN DE ENTORNO Y DEPENDENCIAS
 # ==========================================
 try:
-    import boto3
     from dotenv import load_dotenv
 except ImportError:
-    import subprocess
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "boto3", "python-dotenv"])
-    import boto3
-    from dotenv import load_dotenv
+    def load_dotenv(*_args, **_kwargs):
+        return False
 
-def initialize_environment():
+def load_project_env() -> Path:
+    """
+    Busca el archivo .env de forma flexible. Primero en el directorio actual de ejecución,
+    luego subiendo niveles desde la ubicación del script.
+    """
     current_working_dir = Path.cwd()
     env_path_cwd = current_working_dir / ".env"
     if env_path_cwd.exists():
         load_dotenv(env_path_cwd)
-        return
+        return current_working_dir
 
     script_dir = Path(__file__).resolve().parent
     current_dir = script_dir
@@ -33,30 +36,13 @@ def initialize_environment():
         env_path = current_dir / ".env"
         if env_path.exists():
             load_dotenv(env_path)
-            return
+            return current_dir
         current_dir = current_dir.parent
     load_dotenv()
+    return script_dir.parent
 
-initialize_environment()
 
-# ==========================================
-# CONFIGURACIÓN DE INFRAESTRUCTURA AWS
-# ==========================================
-AWS_ACCESS_KEY  = os.getenv("AWS_ACCESS_KEY_ID")
-AWS_SECRET_KEY  = os.getenv("AWS_SECRET_ACCESS_KEY")
-AWS_REGION      = os.getenv("AWS_DEFAULT_REGION", "us-east-1")
-BEDROCK_MODEL_ID = os.getenv("BEDROCK_MODEL_ID", "anthropic.claude-3-haiku-20240307-v1:0")
-
-if not AWS_ACCESS_KEY or not AWS_SECRET_KEY:
-    sys.stderr.write("[CRITICAL] Variables de entorno AWS_ACCESS_KEY_ID o AWS_SECRET_ACCESS_KEY no definidas.\n")
-    sys.exit(1)
-
-aws_client = boto3.client(
-    "bedrock-runtime",
-    aws_access_key_id=AWS_ACCESS_KEY,
-    aws_secret_access_key=AWS_SECRET_KEY,
-    region_name=AWS_REGION
-)
+load_project_env()
 
 # ==========================================
 # DEFINICIÓN DE ESQUEMA JSON (TOOL USE SCHEMA)
@@ -134,10 +120,139 @@ def normalize_text_string(text_input: str) -> str:
     return t
 
 def infer_media_type(image_path: Path) -> str:
-    ext = image_path.suffix.lower()
-    if ext == ".png":  return "image/png"
-    if ext == ".webp": return "image/webp"
+    guessed, _ = mimetypes.guess_type(str(image_path))
+    if guessed:
+        return guessed
     return "image/jpeg"
+
+
+def build_bedrock_error_message(exc: Exception, region: str, model_id: str) -> str:
+    error_text = str(exc).strip()
+
+    if exc.__class__.__name__ == "EndpointConnectionError" or "Could not connect to the endpoint URL" in error_text:
+        return (
+            "No se pudo conectar a AWS Bedrock en la region "
+            f"{region} usando el modelo {model_id}. Verifica que haya salida a Internet, "
+            "que la region sea correcta y que el equipo tenga acceso de red al endpoint de AWS."
+        )
+
+    if exc.__class__.__name__ == "ClientError":
+        response = getattr(exc, "response", {}) or {}
+        error_data = response.get("Error", {}) if isinstance(response, dict) else {}
+        code = str(error_data.get("Code", "")).strip()
+        message = str(error_data.get("Message", error_text)).strip()
+
+        if code in {"AccessDeniedException", "UnrecognizedClientException"}:
+            return (
+                "Las credenciales AWS no tienen permiso para invocar Bedrock o son invalidas. "
+                "Verifica que la key pertenezca a la misma cuenta que tiene acceso al modelo y que "
+                "tenga permisos bedrock:InvokeModel."
+            )
+
+        if code == "ValidationException":
+            return (
+                "Bedrock rechazo la solicitud por validacion. "
+                f"Modelo: {model_id}. Region: {region}. Detalle: {message}"
+            )
+
+        if code == "ResourceNotFoundException":
+            return (
+                "No se encontro el modelo o el recurso en la region indicada. "
+                f"Modelo: {model_id}. Region: {region}. Detalle: {message}"
+            )
+
+        if code == "ModelNotReadyException":
+            return (
+                "El modelo de Bedrock aun no esta listo o no tiene acceso habilitado en esta cuenta. "
+                f"Modelo: {model_id}. Region: {region}. Detalle: {message}"
+            )
+
+        return f"Bedrock rechazo la solicitud ({code or 'ClientError'}): {message}"
+
+    if exc.__class__.__name__ in {"NoCredentialsError", "PartialCredentialsError"}:
+        return (
+            "Faltan credenciales AWS validas para consultar Bedrock. "
+            "Revisa AWS_ACCESS_KEY_ID y AWS_SECRET_ACCESS_KEY en el .env."
+        )
+
+    return error_text
+
+
+def is_retryable_bedrock_error(exc: Exception) -> bool:
+    if exc.__class__.__name__ in {"EndpointConnectionError", "ConnectTimeoutError", "ReadTimeoutError"}:
+        return True
+
+    if exc.__class__.__name__ == "ClientError":
+        response = getattr(exc, "response", {}) or {}
+        error_data = response.get("Error", {}) if isinstance(response, dict) else {}
+        code = str(error_data.get("Code", "")).strip()
+
+        return code in {
+            "InternalServerException",
+            "ModelTimeoutException",
+            "ServiceUnavailableException",
+            "ThrottlingException",
+            "TooManyRequestsException",
+        }
+
+    return False
+
+
+def invoke_model_with_retry(client, model_id: str, payload: dict):
+    max_attempts = max(1, int(os.getenv("BEDROCK_MAX_RETRIES", "3")))
+    base_delay = max(0.2, float(os.getenv("BEDROCK_RETRY_BASE_SECONDS", "1.2")))
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            return client.invoke_model(modelId=model_id, body=json.dumps(payload))
+        except Exception as exc:
+            if attempt >= max_attempts or not is_retryable_bedrock_error(exc):
+                raise
+
+            time.sleep(base_delay * attempt)
+
+
+def create_bedrock_client():
+    try:
+        import boto3
+        from botocore.config import Config
+    except ImportError as exc:
+        raise RuntimeError("Falta dependencia boto3. Instala requirements con: pip install -r data_extraction/requirements.txt") from exc
+
+    aws_access_key = os.getenv("AWS_ACCESS_KEY_ID", "").strip()
+    aws_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY", "").strip()
+    aws_session_token = os.getenv("AWS_SESSION_TOKEN", "").strip()
+
+    if not aws_access_key or not aws_secret_key:
+        raise RuntimeError("Faltan credenciales AWS (AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY) en .env")
+
+    if aws_access_key.upper().startswith("TU_") or aws_secret_key.upper().startswith("TU_"):
+        raise RuntimeError("Credenciales AWS de ejemplo detectadas en .env. Configura claves reales con acceso a Bedrock")
+
+    region = os.getenv("AWS_REGION", os.getenv("AWS_DEFAULT_REGION", "us-east-1"))
+    model_id = os.getenv("BEDROCK_MODEL_ID", "anthropic.claude-3-haiku-20240307-v1:0")
+
+    session = boto3.Session(
+        aws_access_key_id=aws_access_key,
+        aws_secret_access_key=aws_secret_key,
+        aws_session_token=aws_session_token or None,
+        region_name=region,
+    )
+
+    client = session.client(
+        service_name="bedrock-runtime",
+        region_name=region,
+        config=Config(
+            connect_timeout=int(os.getenv("BEDROCK_CONNECT_TIMEOUT_SECONDS", "10")),
+            read_timeout=int(os.getenv("BEDROCK_READ_TIMEOUT_SECONDS", "180")),
+            retries={
+                "max_attempts": max(1, int(os.getenv("BEDROCK_MAX_RETRIES", "3"))),
+                "mode": "standard",
+            },
+        ),
+    )
+
+    return client, region, model_id
 
 # ==========================================
 # MOTOR DE CLASIFICACIÓN
@@ -284,6 +399,13 @@ def normalize_plancha_payload(structured_blocks: list) -> dict:
 def invoke_bedrock_parsing(image_path: Path):
     sys.stderr.write(f"[INFO] Initializing parsing routine for: {image_path.name}\n")
 
+    try:
+        aws_client, region, bedrock_model_id = create_bedrock_client()
+    except RuntimeError as exc:
+        message = str(exc)
+        sys.stderr.write(f"[ERROR] {message}\n")
+        return [], {"status": "EXCEPTION", "confidence_score": 0, "anomaly_flag": message}
+
     with image_path.open("rb") as f:
         encoded_image = base64.b64encode(f.read()).decode("utf-8")
 
@@ -322,7 +444,7 @@ def invoke_bedrock_parsing(image_path: Path):
     }
 
     try:
-        response      = aws_client.invoke_model(modelId=BEDROCK_MODEL_ID, body=json.dumps(payload))
+        response = invoke_model_with_retry(aws_client, bedrock_model_id, payload)
         response_body = json.loads(response["body"].read())
 
         for content in response_body.get("content", []):
@@ -342,8 +464,9 @@ def invoke_bedrock_parsing(image_path: Path):
         return [], {"status": "SCHEMA_BINDING_FAILURE", "confidence_score": 0, "anomaly_flag": "Schema missing"}
 
     except Exception as e:
-        sys.stderr.write(f"[ERROR] Exception on {image_path.name}: {str(e)}\n")
-        return [], {"status": "EXCEPTION", "confidence_score": 0, "anomaly_flag": str(e)}
+        message = build_bedrock_error_message(e, region, bedrock_model_id)
+        sys.stderr.write(f"[ERROR] Exception on {image_path.name}: {message}\n")
+        return [], {"status": "EXCEPTION", "confidence_score": 0, "anomaly_flag": message}
 
 # ==========================================
 # FLUJO PRINCIPAL BATCH
