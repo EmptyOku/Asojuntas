@@ -19,10 +19,14 @@
 
         <div>
           <h3 class="text-lg font-bold text-gray-900">
-            Fotografía {{ isPlancha ? 'las Planchas de Candidatos' : 'el Formato de Escrutinio' }}
+            Fotografía {{ isPlancha ?
+            'las Planchas de Candidatos' : 'el Formato de Escrutinio' }}
           </h3>
           <p class="text-sm text-gray-500 mt-2 max-w-xs mx-auto">
-            {{ isPlancha ? 'Son alrededor de 6 páginas. Asegúrate de que los nombres y números sean legibles.' : 'Debes subir el paquete completo de 3 páginas juntas. Enfoca claramente las tablas con los totales numéricos.' }}
+            {{ isPlancha ?
+            'Son alrededor de 6 páginas. Asegúrate de que los nombres y números sean legibles.'
+            : 'Debes subir la hoja completa del escrutinio. Enfoca claramente los 4 bloques con los totales numéricos.'
+            }}
           </p>
         </div>
 
@@ -59,8 +63,9 @@
             </button>
           </div>
 
-          <button @click="showOptions = true" 
-                  class="flex flex-col items-center justify-center gap-3 aspect-[3/4] border-2 border-dashed border-gray-300 rounded-xl bg-gray-50 hover:bg-gray-100 hover:border-gray-400 cursor-pointer transition-all active:scale-[0.98] p-3 group">
+          <button v-if="(isPlancha && capturedImages.length < MAX_PLANCHA_PAGES) || (!isPlancha && capturedImages.length < REQUIRED_SCRUTINY_PAGES)"
+            @click="showOptions = true" 
+            class="flex flex-col items-center justify-center gap-3 aspect-[3/4] border-2 border-dashed border-gray-300 rounded-xl bg-gray-50 hover:bg-gray-100 hover:border-gray-400 cursor-pointer transition-all active:scale-[0.98] p-3 group">
              
              <div class="bg-gray-200 text-gray-500 p-3.5 rounded-full group-hover:bg-gray-300 group-hover:text-gray-700 transition-colors">
                 <Plus class="w-6 h-6" />
@@ -145,18 +150,31 @@ const dynamicCapture = ref(null);
 //Control de la camara
 
 const triggerInput = async (mode) => {
+  // 1. SEGURIDAD: Definir el límite exacto según el tipo de documento
+  const limit = isPlancha.value ? MAX_PLANCHA_PAGES : REQUIRED_SCRUTINY_PAGES;
+  
+  // 2. Bloquear si ya se alcanzó o superó el límite (aplica para ambos casos)
+  if (capturedImages.value.length >= limit) {
+    showOptions.value = false;
+    return;
+  }
+
+  // 3. Configurar el modo (cámara o galería)
   if (mode === 'camera') {
-    dynamicCapture.value = 'environment'; // Fuerza cámara trasera
+    dynamicCapture.value = 'environment';
   } else {
-    dynamicCapture.value = null; // Abre galería/archivos
+    dynamicCapture.value = null;
   }
   
-  showOptions.value = false; // Cierra el modal
+  // 4. Cerrar el modal para limpiar la interfaz
+  showOptions.value = false;
   
-  await nextTick(); // Espera a que Vue actualice el DOM
+  // 5. CRÍTICO: Esperar que Vue actualice el DOM
+  await nextTick();
   
+  // 6. Disparar el click programático UNA SOLA VEZ
   if (fileInputRef.value) {
-    fileInputRef.value.click(); // Dispara el click programático
+    fileInputRef.value.click();
   }
 };
 
@@ -165,11 +183,12 @@ const capturedImages = ref([]);
 const isUploading = ref(false);
 const uploadError = ref('');
 const uploadStep = ref('');
-const REQUIRED_SCRUTINY_PAGES = 3;
+const REQUIRED_SCRUTINY_PAGES = 1; // Cambiado de 3 a 1 página
 const PREVIEW_MAX_ATTEMPTS = 3;
+const MAX_PLANCHA_PAGES = 6;
 const PREVIEW_BASE_BACKOFF_MS = 1200;
 const PREVIEW_TIMEOUT_MS = 240000;
-const DEFAULT_SCRUTINY_BLOCKS = 3;
+const DEFAULT_SCRUTINY_BLOCKS = 4; // Ajustado a 4 bloques según el nuevo formato visual
 const docStore = useDocumentStore();
 
 const isPlancha = computed(() => route.query.doc === 'plancha');
@@ -463,7 +482,13 @@ const handleImageUpload = (event) => {
   const files = event.target.files;
   if (!files) return;
 
+  const limit = isPlancha.value ? MAX_PLANCHA_PAGES : REQUIRED_SCRUTINY_PAGES;
+
   for (let i = 0; i < files.length; i++) {
+    if (capturedImages.value.length >= limit) {
+        console.warn("Límite de páginas alcanzado");
+        break; 
+    }
     capturedImages.value.push({
       id: Date.now() + i, // ID único para manejo seguro
       file: files[i],
