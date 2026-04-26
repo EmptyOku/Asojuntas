@@ -50,6 +50,21 @@
       </div>
     </div>
 
+    <div v-if="isPollingOcr" class="bg-blue-50 border-l-4 border-blue-500 p-4 rounded-r-xl shadow-sm animate-in fade-in slide-in-from-top-4 mb-4">
+      <div class="flex items-start">
+        <div class="flex-shrink-0 mt-0.5">
+          <svg class="h-5 w-5 text-blue-500" viewBox="0 0 20 20" fill="currentColor">
+            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 102 0V6zm-1 8a1.25 1.25 0 100-2.5 1.25 1.25 0 000 2.5z" clip-rule="evenodd" />
+          </svg>
+        </div>
+        <div class="ml-3 w-full">
+          <h3 class="text-sm font-bold text-blue-800">Procesando OCR del lote</h3>
+          <p class="text-sm text-blue-700 mt-1">{{ ocrPollMessage || 'Esperando respuesta del OCR...' }}</p>
+          <p class="text-xs text-blue-600 mt-2 font-medium">Puedes seguir navegando mientras termina el procesamiento.</p>
+        </div>
+      </div>
+    </div>
+
     <div v-if="dataLoadError" class="bg-orange-50 border-l-4 border-orange-500 p-4 rounded-r-xl shadow-sm animate-in fade-in slide-in-from-top-4 mb-4">
       <div class="flex items-start">
         <div class="flex-shrink-0 mt-0.5">
@@ -58,9 +73,19 @@
           </svg>
         </div>
         <div class="ml-3 w-full">
-          <h3 class="text-sm font-bold text-orange-800">⚠️ Modo Plan B Activado</h3>
+          <h3 class="text-sm font-bold text-orange-800">Modo Plan B Activado</h3>
           <p class="text-sm text-orange-700 mt-1">{{ dataLoadError }}</p>
-          <p class="text-xs text-orange-600 mt-2 font-medium">💡 Completa el formulario manualmente y/o sube las imágenes para continuar.</p>
+          <p class="text-xs text-orange-600 mt-2 font-medium">Completa el formulario manualmente y/o sube las imagenes para continuar.</p>
+          <div class="mt-3">
+            <button
+              v-if="currentBatchUuid"
+              @click="retryOcrHydration"
+              :disabled="isPollingOcr"
+              class="px-3 py-1.5 text-xs font-bold rounded-lg border border-orange-300 text-orange-700 hover:bg-orange-100 disabled:opacity-50"
+            >
+              Reintentar OCR
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -239,7 +264,11 @@ const promotableDraftCount = ref(0);
 const localEvidenceImages = ref([]);
 const dataLoadError = ref(null);
 const isFormManual = ref(false);
+const isPollingOcr = ref(false);
+const ocrPollMessage = ref('');
 const MAX_FILE_SIZE = 5 * 1024 * 1024; 
+const OCR_POLL_INTERVAL_MS = 4000;
+const OCR_MAX_WAIT_MS = 120000;
 
 // --- VALIDACIONES DE FORMULARIO ---
 const validationErrors = ref([]);
@@ -259,6 +288,7 @@ const currentImage = computed(() => allEvidenceImages.value[currentPage.value] |
 
 const prevPage = () => { if (currentPage.value > 0) currentPage.value--; };
 const nextPage = () => { if (currentPage.value < totalPages.value - 1) currentPage.value++; };
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // --- ESTRUCTURA: AHORA SÍ CON CELULAR Y CORREO EN TODOS ---
 const createCargo = () => ({ nombre: '', identificacion: '', celular: '', correo: '' });
@@ -315,6 +345,19 @@ const fillFromLookup = (target, source = {}) => {
   target.correo = source.correo || target.correo || '';
 };
 
+const extractDraftArray = (resData) => {
+  if (Array.isArray(resData?.data?.data)) return resData.data.data;
+  if (Array.isArray(resData?.data)) return resData.data;
+  if (Array.isArray(resData)) return resData;
+  return [];
+};
+
+const isRetryableDraftsError = (error, hasBatchUuid) => {
+  if (!hasBatchUuid) return false;
+  const status = Number(error?.response?.status ?? 0);
+  return status === 422 || status === 404 || status === 409 || status === 429 || status >= 500 || status === 0;
+};
+
 const composeDraftFullName = (draft) => {
   const rawName = [draft?.first_name, draft?.middle_name, draft?.last_name, draft?.second_last_name]
     .filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
@@ -359,59 +402,94 @@ const applyDraftToPlancha = (draft) => {
 const hydratePlanchaFromDrafts = async () => {
   const params = { per_page: 100 };
   if (currentBatchUuid.value) params.capture_batch_uuid = currentBatchUuid.value;
+  const hasBatchUuid = Boolean(params.capture_batch_uuid);
 
-  try {
-    const response = await axios.get('/secretary/planchas/drafts', { params });
-    const resData = response.data;
+  const startedAt = Date.now();
+  let attempt = 0;
+  let lastContextMessage = '';
 
-    // Extracción blindada del Array (No importa cómo pagine Laravel)
-    let apiDrafts = [];
-    if (Array.isArray(resData?.data?.data)) {
-      apiDrafts = resData.data.data;
-    } else if (Array.isArray(resData?.data)) {
-      apiDrafts = resData.data;
-    } else if (Array.isArray(resData)) {
-      apiDrafts = resData;
+  isPollingOcr.value = hasBatchUuid;
+  ocrPollMessage.value = hasBatchUuid ? 'Esperando resultado de OCR...' : '';
+  dataLoadError.value = null;
+
+  while (Date.now() - startedAt <= OCR_MAX_WAIT_MS) {
+    attempt += 1;
+    if (hasBatchUuid) {
+      ocrPollMessage.value = `Procesando OCR del lote... intento ${attempt}`;
     }
 
-    if (apiDrafts.length === 0) {
-      console.warn("Auditoría: El backend retornó un arreglo vacío para este UUID.");
-      dataLoadError.value = null;
-      isFormManual.value = true;
-      return;
+    try {
+      const response = await axios.get('/secretary/planchas/drafts', {
+        params,
+        timeout: 30000,
+        skipGlobalLoading: true,
+      });
+      const apiDrafts = extractDraftArray(response.data);
+
+      if (apiDrafts.length > 0) {
+        const first = apiDrafts[0];
+
+        if (!route.query.neighborhood_name) {
+          planchaData.nombreBarrio = first?.neighborhood_name || first?.election?.neighborhood?.name || 'JAC Sin Identificar';
+        }
+
+        if (!currentBatchUuid.value && first?.capture_batch_uuid) {
+          currentBatchUuid.value = first.capture_batch_uuid;
+          docStore.setCaptureBatchUuid(first.capture_batch_uuid);
+        }
+
+        apiDrafts.forEach((draft) => applyDraftToPlancha(draft));
+        dataLoadError.value = null;
+        isFormManual.value = false;
+        isPollingOcr.value = false;
+        ocrPollMessage.value = '';
+        return true;
+      }
+
+      lastContextMessage = hasBatchUuid
+        ? 'Aun no hay registros OCR disponibles para este lote.'
+        : 'No hay borradores disponibles para precargar.';
+    } catch (error) {
+      console.error('Auditoria - Error al cargar datos:', error);
+
+      if (!isRetryableDraftsError(error, hasBatchUuid)) {
+        const detail = error?.response?.data?.message || error?.message || 'Error desconocido';
+        dataLoadError.value = `Error al cargar datos: ${detail}`;
+        isFormManual.value = true;
+        isPollingOcr.value = false;
+        ocrPollMessage.value = '';
+        return false;
+      }
+
+      if (Number(error?.response?.status) === 422) {
+        lastContextMessage = 'El OCR sigue procesando el lote en servidor.';
+      } else {
+        lastContextMessage = 'Esperando respuesta del servidor de OCR.';
+      }
     }
 
-    const first = apiDrafts[0];
-    
-    if (!route.query.neighborhood_name) {
-      planchaData.nombreBarrio = first?.neighborhood_name || first?.election?.neighborhood?.name || 'JAC Sin Identificar';
-    }
-
-    if (!currentBatchUuid.value && first?.capture_batch_uuid) {
-      currentBatchUuid.value = first.capture_batch_uuid;
-      docStore.setCaptureBatchUuid(first.capture_batch_uuid);
-    }
-    
-    // Llenamos el formulario reactivo
-    apiDrafts.forEach((draft) => applyDraftToPlancha(draft));
-    dataLoadError.value = null;
-    isFormManual.value = false;
-    
-  } catch (error) {
-    console.error("Auditoría - Error al cargar datos:", error);
-    // PLAN B: Permitir llenar el formulario manualmente si la extracción falla
-    const errorMsg = error?.response?.status === 422 
-      ? 'Hubo un error al procesar los datos extraídos (Error 422). Puedes completar el formulario manualmente.'
-      : `Error al cargar datos: ${error?.response?.data?.message || error?.message}`;
-    dataLoadError.value = errorMsg;
-    isFormManual.value = true;
-    console.warn("PLAN B activado: Modo formulario manual");
+    if (!hasBatchUuid) break;
+    if ((Date.now() - startedAt) + OCR_POLL_INTERVAL_MS > OCR_MAX_WAIT_MS) break;
+    await sleep(OCR_POLL_INTERVAL_MS);
   }
+
+  isPollingOcr.value = false;
+  ocrPollMessage.value = '';
+  isFormManual.value = true;
+
+  if (hasBatchUuid) {
+    const seconds = Math.round(OCR_MAX_WAIT_MS / 1000);
+    dataLoadError.value = `El OCR aun no finaliza para este lote tras ${seconds}s de espera. Puedes continuar manualmente o reintentar OCR.${lastContextMessage ? ` ${lastContextMessage}` : ''}`;
+  } else {
+    dataLoadError.value = 'No se encontro un lote de captura para consultar OCR. Puedes continuar manualmente.';
+  }
+
+  return false;
 };
 
 const hydratePlanchaFromExtraction = () => {
   const lookup = buildCandidateLookup();
-  if (Object.keys(lookup).length === 0) return;
+  if (Object.keys(lookup).length === 0) return false;
 
   fillFromLookup(planchaData.bloque1.presidente, lookup.PRESIDENTE);
   fillFromLookup(planchaData.bloque1.vicepresidente, lookup.VICEPRESIDENTE);
@@ -433,6 +511,8 @@ const hydratePlanchaFromExtraction = () => {
   fillFromLookup(planchaData.bloque4.conciliador2, lookup['CONCILIADOR 2']);
   fillFromLookup(planchaData.bloque4.conciliador3, lookup['CONCILIADOR 3']);
   fillFromLookup(planchaData.bloque4.empresarial, lookup['COMISION EMPRESARIAL']);
+
+  return true;
 };
 
 onMounted(async () => {
@@ -450,7 +530,10 @@ onMounted(async () => {
   }
 
   if (route.query.preview === '1' || route.params.id === 'preview') {
-    hydratePlanchaFromExtraction();
+    const hydratedFromStore = hydratePlanchaFromExtraction();
+    if (!hydratedFromStore) {
+      await hydratePlanchaFromDrafts();
+    }
     return;
   }
 
@@ -460,6 +543,14 @@ onMounted(async () => {
     await loadPromotableCount(currentBatchUuid.value);
   }
 });
+
+const retryOcrHydration = async () => {
+  if (isPollingOcr.value || isSaving.value) return;
+  await hydratePlanchaFromDrafts();
+  if (currentBatchUuid.value) {
+    await loadPromotableCount(currentBatchUuid.value);
+  }
+};
 
 const cancelEdit = () => { 
   isEditing.value = false; 
