@@ -50,6 +50,21 @@
       </div>
     </div>
 
+    <div v-if="dataLoadError" class="bg-orange-50 border-l-4 border-orange-500 p-4 rounded-r-xl shadow-sm animate-in fade-in slide-in-from-top-4 mb-4">
+      <div class="flex items-start">
+        <div class="flex-shrink-0 mt-0.5">
+          <svg class="h-5 w-5 text-orange-500" viewBox="0 0 20 20" fill="currentColor">
+            <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+          </svg>
+        </div>
+        <div class="ml-3 w-full">
+          <h3 class="text-sm font-bold text-orange-800">⚠️ Modo Plan B Activado</h3>
+          <p class="text-sm text-orange-700 mt-1">{{ dataLoadError }}</p>
+          <p class="text-xs text-orange-600 mt-2 font-medium">💡 Completa el formulario manualmente y/o sube las imágenes para continuar.</p>
+        </div>
+      </div>
+    </div>
+
     <div v-if="validationErrors.length > 0" class="bg-red-50 border-l-4 border-red-500 p-4 rounded-r-xl shadow-sm animate-in fade-in slide-in-from-top-4">
       <div class="flex items-start">
         <div class="flex-shrink-0 mt-0.5">
@@ -221,7 +236,10 @@ const evidenceFiles = ref([]);
 const isPromoting = ref(false);
 const currentBatchUuid = ref((route.query.batch ?? docStore.captureBatchUuid ?? null));
 const promotableDraftCount = ref(0);
-const localEvidenceImages = ref([]); 
+const localEvidenceImages = ref([]);
+const dataLoadError = ref(null);
+const isFormManual = ref(false);
+const MAX_FILE_SIZE = 5 * 1024 * 1024; 
 
 // --- VALIDACIONES DE FORMULARIO ---
 const validationErrors = ref([]);
@@ -358,6 +376,8 @@ const hydratePlanchaFromDrafts = async () => {
 
     if (apiDrafts.length === 0) {
       console.warn("Auditoría: El backend retornó un arreglo vacío para este UUID.");
+      dataLoadError.value = null;
+      isFormManual.value = true;
       return;
     }
 
@@ -374,9 +394,18 @@ const hydratePlanchaFromDrafts = async () => {
     
     // Llenamos el formulario reactivo
     apiDrafts.forEach((draft) => applyDraftToPlancha(draft));
+    dataLoadError.value = null;
+    isFormManual.value = false;
     
   } catch (error) {
     console.error("Auditoría - Error al cargar datos:", error);
+    // PLAN B: Permitir llenar el formulario manualmente si la extracción falla
+    const errorMsg = error?.response?.status === 422 
+      ? 'Hubo un error al procesar los datos extraídos (Error 422). Puedes completar el formulario manualmente.'
+      : `Error al cargar datos: ${error?.response?.data?.message || error?.message}`;
+    dataLoadError.value = errorMsg;
+    isFormManual.value = true;
+    console.warn("PLAN B activado: Modo formulario manual");
   }
 };
 
@@ -526,6 +555,8 @@ const saveChanges = () => {
 
   isSaving.value = true;
 
+  // PASO 1: Intentar guardar los datos
+  let dataSaveSuccess = false;
   axios.post('/secretary/planchas/drafts', {
     source_type: 'ocr',
     capture_batch_uuid: captureBatchUuid,
@@ -538,7 +569,17 @@ const saveChanges = () => {
     skipGlobalLoading: true,
   })
     .then(async () => {
+      dataSaveSuccess = true;
+      console.log('✅ Datos guardados exitosamente');
+    })
+    .catch((error) => {
+      console.error('❌ Error al guardar datos:', error);
+      dataSaveSuccess = false;
+    })
+    .finally(async () => {
+      // PASO 2: SIEMPRE intentar guardar las imágenes, independientemente de si los datos se guardaron
       let evidenceWarning = '';
+      let evidenceSaveSuccess = false;
 
       if (localEvidenceImages.value.length > 0) {
         try {
@@ -547,6 +588,10 @@ const saveChanges = () => {
 
           localEvidenceImages.value.forEach((img, index) => {
             if (img.file instanceof File) {
+              // Validar tamaño máximo de 5MB
+              if (img.file.size > MAX_FILE_SIZE) {
+                throw new Error(`El archivo "${img.file.name}" excede 5MB. Tamaño: ${(img.file.size / 1024 / 1024).toFixed(2)}MB`);
+              }
               form.append('document_files[]', img.file);
               form.append('page_numbers[]', String(index + 1));
             }
@@ -557,33 +602,39 @@ const saveChanges = () => {
             timeout: 240000,
             skipGlobalLoading: true,
           });
+          evidenceSaveSuccess = true;
+          console.log('✅ Evidencia guardada exitosamente');
         } catch (error) {
           evidenceWarning = ` La evidencia no se guardó: ${error?.response?.data?.message || error?.message}`;
+          console.error('❌ Error al guardar evidencia:', error);
         }
       }
 
-      await loadEvidence(captureBatchUuid);
-      await loadPromotableCount(captureBatchUuid);
-      isEditing.value = false;
+      // PASO 3: Recargar y redirigir
+      if (dataSaveSuccess || evidenceSaveSuccess) {
+        await loadEvidence(captureBatchUuid);
+        await loadPromotableCount(captureBatchUuid);
+        isEditing.value = false;
 
-      router.replace({
-        name: 'secretary-plancha-detail',
-        params: { id: route.params.id || 'preview' },
-        query: { batch: captureBatchUuid },
-      });
+        router.replace({
+          name: 'secretary-plancha-detail',
+          params: { id: route.params.id || 'preview' },
+          query: { batch: captureBatchUuid },
+        });
 
-      // El guardado exitoso puede seguir usando alert, o puedes crear un banner verde igual.
-      window.alert(`Plancha guardada en borradores.${evidenceWarning}`);
-    })
-    .catch((error) => {
-      if (error?.code === 'ECONNABORTED' || String(error?.message || '').toLowerCase().includes('timeout')) {
-        window.alert('No se pudo guardar la plancha porque el servidor tardó demasiado en responder. Intenta de nuevo; si persiste, revisamos optimización del endpoint.');
-        return;
+        let message = '';
+        if (dataSaveSuccess && evidenceSaveSuccess) {
+          message = 'Plancha e imágenes guardadas en borradores.';
+        } else if (dataSaveSuccess) {
+          message = `Plancha guardada en borradores.${evidenceWarning}`;
+        } else if (evidenceSaveSuccess) {
+          message = 'Imágenes guardadas en borradores (datos no se procesaron).';
+        }
+        window.alert(message);
+      } else {
+        window.alert(`No se pudo guardar la plancha ni las imágenes.${evidenceWarning}`);
       }
-
-      window.alert(`No se pudo guardar la plancha: ${error?.response?.data?.message || error?.message}`);
-    })
-    .finally(() => {
+      
       isSaving.value = false;
     });
 };
