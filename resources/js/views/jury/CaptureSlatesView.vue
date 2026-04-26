@@ -484,6 +484,25 @@ const handleImageUpload = (event) => {
 
   const limit = isPlancha.value ? MAX_PLANCHA_PAGES : REQUIRED_SCRUTINY_PAGES;
 
+  // Para escrutinio solo se conserva una imagen (la ultima seleccionada).
+  if (!isPlancha.value) {
+    const file = files[files.length - 1];
+    if (!file) {
+      event.target.value = '';
+      return;
+    }
+
+    capturedImages.value.forEach((img) => URL.revokeObjectURL(img.url));
+    capturedImages.value = [{
+      id: Date.now(),
+      file,
+      url: URL.createObjectURL(file),
+    }];
+
+    event.target.value = '';
+    return;
+  }
+
   for (let i = 0; i < files.length; i++) {
     if (capturedImages.value.length >= limit) {
         console.warn("Límite de páginas alcanzado");

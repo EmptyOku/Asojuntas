@@ -171,7 +171,7 @@ const integration = ref({
   lastStoragePath: '',
   lastDownloadUrl: '',
 });
-const REQUIRED_SCRUTINY_PAGES = 3;
+const REQUIRED_SCRUTINY_PAGES = 1;
 const isPlancha = computed(() => docStore.documentType === 'plancha');
 const currentImage = computed(() => docStore.capturedImages[currentPage.value]);
 
