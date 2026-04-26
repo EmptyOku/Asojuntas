@@ -394,12 +394,32 @@ const createManualScrutinyPageTemplate = () => ({
 const shouldFallbackToManualReview = (error) => {
   const status = error?.response?.status;
   const code = error?.response?.data?.error_code;
+  const message = String(error?.response?.data?.message || error?.response?.data?.error || error?.message || '').toLowerCase();
+
+  if (
+    error?.code === 'ECONNABORTED'
+    || error?.code === 'ERR_NETWORK'
+    || message.includes('timeout')
+    || message.includes('timed out')
+    || message.includes('network error')
+  ) {
+    return true;
+  }
 
   if (status === 503) {
     return true;
   }
 
-  return code === 'bedrock_connectivity_error' || code === 'bedrock_credentials_error';
+  if ([500, 502, 504].includes(status)) {
+    return true;
+  }
+
+  return [
+    'bedrock_connectivity_error',
+    'bedrock_credentials_error',
+    'extractor_process_failed',
+    'extractor_invalid_json',
+  ].includes(code);
 };
 
 const isRetryablePreviewError = (error) => {
