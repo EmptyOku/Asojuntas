@@ -2,6 +2,11 @@
 
 return [
 
+    'audit_log_connection' => env('AUDIT_LOG_CONNECTION'),
+    'audit_log_queue' => env('AUDIT_LOG_QUEUE', 'default'),
+    'scrutiny_import_connection' => env('SCRUTINY_IMPORT_CONNECTION', env('QUEUE_CONNECTION', 'database')),
+    'scrutiny_import_queue' => env('SCRUTINY_IMPORT_QUEUE', 'scrutiny-imports'),
+
     /*
     |--------------------------------------------------------------------------
     | Default Queue Connection Name

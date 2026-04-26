@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Jobs\WriteAuditLogJob;
 use App\Models\AuditLog;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Arr;
@@ -122,9 +123,29 @@ class AuditTrailLogger
     private function write(array $payload): void
     {
         try {
-            AuditLog::create($payload);
+            if (app()->runningUnitTests()) {
+                AuditLog::create($payload);
+                return;
+            }
+
+            $dispatch = (string) config('queue.default') === 'sync'
+                ? WriteAuditLogJob::dispatchAfterResponse($payload)
+                : WriteAuditLogJob::dispatch($payload);
+
+            $connection = config('queue.audit_log_connection');
+            if (is_string($connection) && $connection !== '') {
+                $dispatch->onConnection($connection);
+            }
+
+            $dispatch->onQueue((string) config('queue.audit_log_queue', 'default'));
         } catch (Throwable $exception) {
             report($exception);
+
+            try {
+                AuditLog::create($payload);
+            } catch (Throwable $fallbackException) {
+                report($fallbackException);
+            }
         }
     }
 }

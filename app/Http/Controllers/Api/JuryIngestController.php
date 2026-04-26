@@ -9,7 +9,6 @@ use App\Models\PollingTable;
 use App\Models\ScrutinyExtraction;
 use App\Models\ScrutinyRecord;
 use App\Models\ScrutinyRecordFile;
-use App\Services\ScrutinyExtractionImporter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -286,17 +285,13 @@ class JuryIngestController extends Controller
             'notes' => $validated['notes'] ?? null,
         ];
 
-        $this->seedInitialExtractionSnapshot(
-            $record,
-            $recordFile,
-            $payload,
-            (int) $request->user()->id,
-        );
-
         $queueMode = 'queued';
         $this->updateIngestProcessingMetadata($record, $recordFile, 'queued');
 
-        if ((string) config('queue.default') === 'sync') {
+        $importConnection = (string) config('queue.scrutiny_import_connection', config('queue.default'));
+        $importQueue = (string) config('queue.scrutiny_import_queue', 'scrutiny-imports');
+
+        if ($importConnection === 'sync') {
             // Even in sync environments we defer heavy processing until after the HTTP response.
             ImportScrutinyExtractionJob::dispatchAfterResponse(
                 $record->id,
@@ -313,7 +308,9 @@ class JuryIngestController extends Controller
                 $request->user()->id,
                 $fileHash,
                 $payload
-            )->onQueue('scrutiny-imports');
+            )
+                ->onConnection($importConnection)
+                ->onQueue($importQueue);
         }
 
         if ($record->status === 'draft') {
@@ -675,141 +672,6 @@ class JuryIngestController extends Controller
         }
 
         return $payload;
-    }
-
-    private function seedInitialExtractionSnapshot(
-        ScrutinyRecord $record,
-        ScrutinyRecordFile $recordFile,
-        array $payload,
-        int $createdByUserId
-    ): void {
-        $alreadySeeded = ScrutinyExtraction::query()
-            ->where('scrutiny_record_id', $record->id)
-            ->where('scrutiny_record_file_id', $recordFile->id)
-            ->where('engine_name', 'Jury-UI-Init')
-            ->exists();
-
-        if ($alreadySeeded) {
-            return;
-        }
-
-        $normalizedPayload = is_array($payload['normalized_payload'] ?? null)
-            ? $payload['normalized_payload']
-            : [];
-
-        $initialPayload = [
-            'scrutiny_record_id' => $record->id,
-            'scrutiny_record_file_id' => $recordFile->id,
-            'source_type' => 'manual',
-            'engine_name' => 'Jury-UI-Init',
-            'engine_version' => 'bootstrap-1',
-            'confidence_score' => 0,
-            'status' => 'processing',
-            'raw_payload' => [
-                'bootstrap' => true,
-                'page_number' => (int) ($recordFile->page_number ?? 0),
-            ],
-            'normalized_payload' => $this->createInitialNormalizedPayload(
-                $normalizedPayload,
-                (int) ($recordFile->page_number ?? 0)
-            ),
-            'notes' => 'Snapshot inicial generado al cargar el acta.',
-        ];
-
-        try {
-            app(ScrutinyExtractionImporter::class)->import($initialPayload, $createdByUserId);
-        } catch (Throwable $exception) {
-            Log::warning('Unable to seed initial scrutiny extraction snapshot.', [
-                'scrutiny_record_id' => $record->id,
-                'scrutiny_record_file_id' => $recordFile->id,
-                'error' => $exception->getMessage(),
-            ]);
-        }
-    }
-
-    private function createInitialNormalizedPayload(array $normalizedPayload, int $pageNumber): array
-    {
-        $blockNames = $this->extractBlockNames($normalizedPayload);
-
-        if (empty($blockNames)) {
-            $fallbackBlock = $pageNumber > 0 ? 'BLOQUE '.$pageNumber : 'BLOQUE 1';
-            $blockNames = [$fallbackBlock];
-        }
-
-        $blockVotes = [];
-        $blockResults = [];
-
-        foreach ($blockNames as $name) {
-            $blockVotes[] = [
-                'block_name' => $name,
-                'total_votes' => 0,
-                'plancha_1' => 0,
-                'plancha_2' => 0,
-                'plancha_3' => 0,
-                'blancos' => 0,
-                'nulos' => 0,
-                'no_marcados' => 0,
-                'validos' => 0,
-            ];
-
-            foreach (['P1', 'P2', 'P3'] as $slateCode) {
-                $blockResults[] = [
-                    'block_name' => $name,
-                    'slate_code' => $slateCode,
-                    'votes' => 0,
-                    'status' => 'processing',
-                    'notes' => 'Dato inicial en carga.',
-                ];
-            }
-        }
-
-        return [
-            'block_votes' => $blockVotes,
-            'block_results' => $blockResults,
-            'elected_people' => [],
-        ];
-    }
-
-    /**
-     * @return array<int, string>
-     */
-    private function extractBlockNames(array $normalizedPayload): array
-    {
-        $names = [];
-        $seen = [];
-
-        $addName = static function (mixed $value) use (&$names, &$seen): void {
-            $name = trim((string) $value);
-            if ($name === '') {
-                return;
-            }
-
-            $key = Str::lower($name);
-            if (isset($seen[$key])) {
-                return;
-            }
-
-            $seen[$key] = true;
-            $names[] = $name;
-        };
-
-        foreach ((array) ($normalizedPayload['block_votes'] ?? []) as $row) {
-            if (! is_array($row)) {
-                continue;
-            }
-
-            $addName($row['block_name'] ?? null);
-        }
-
-        foreach ((array) ($normalizedPayload['block_results'] ?? []) as $row) {
-            if (! is_array($row)) {
-                continue;
-            }
-
-            $addName($row['block_name'] ?? null);
-        }
-
-        return $names;
     }
 
     private function mapNormalizedToReviewPage(array $normalizedPayload, string $documentType): array
