@@ -97,7 +97,7 @@
               <X class="w-4 h-4" />
             </button>
           </div>
-          <label for="secretaryCameraInput" class="aspect-[3/4] flex flex-col items-center justify-center gap-2 border-2 border-dashed border-gray-300 rounded-xl bg-gray-50 hover:bg-gray-100 cursor-pointer">
+          <label v-if="capturedImages.length < MAX_PLANCHA_PAGES" for="secretaryCameraInput" class="aspect-[3/4] flex flex-col items-center justify-center gap-2 border-2 border-dashed border-gray-300 rounded-xl bg-gray-50 hover:bg-gray-100 cursor-pointer">
             <Plus class="w-8 h-8 text-gray-400" />
             <span class="text-xs font-bold text-gray-500">Añadir página</span>
           </label>
@@ -142,6 +142,7 @@ const capturedImages = ref([]);
 const isExtracting = ref(false);
 const extractError = ref('');
 const extractStep = ref('');
+const MAX_PLANCHA_PAGES = 6;
 
 // --- LÓGICA DE BÚSQUEDA ---
 const searchNeighborhoods = async () => {
@@ -176,11 +177,18 @@ const selectNeighborhood = (neighborhood) => {
 };
 
 // --- LÓGICA DE CAPTURA ORIGINAL ---
+// --- LÓGICA DE CAPTURA ORIGINAL ---
 const handleImageUpload = (event) => {
   const files = event.target.files;
   if (!files) return;
 
   for (let i = 0; i < files.length; i += 1) {
+    // Validamos el límite antes de insertar
+    if (capturedImages.value.length >= MAX_PLANCHA_PAGES) {
+      console.warn("Límite máximo de páginas de plancha alcanzado");
+      break; 
+    }
+
     capturedImages.value.push({
       id: Date.now() + i,
       file: files[i],
