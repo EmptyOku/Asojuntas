@@ -12,6 +12,7 @@ use App\Models\PollingTable;
 use App\Models\Position;
 use App\Models\Slate;
 use App\Models\ScrutinyBlockResult;
+use App\Models\ScrutinyRecord;
 use App\Models\Candidate;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -543,6 +544,9 @@ class NeighborhoodDirectoryController extends Controller
         $electionBlocks = ElectionBlock::with(['block'])
             ->where('election_id', $election->id)
             ->get();
+|        $electionBlocksBySequence = $electionBlocks->values()->mapWithKeys(function ($block, $index) {
+            return [($index + 1) => $block];
+        });
 
         $resultadosFormateados = [];
         $overallSlateVotes = [];
@@ -748,6 +752,14 @@ class NeighborhoodDirectoryController extends Controller
                 continue;
             }
 
+            $resolvedElectionBlock = null;
+            if (preg_match('/bloque\D*(\d+)/i', (string) ($ocrBlock['name'] ?? ''), $matches) === 1) {
+                $blockSequence = (int) ($matches[1] ?? 0);
+                if ($blockSequence > 0) {
+                    $resolvedElectionBlock = $electionBlocksBySequence->get($blockSequence);
+                }
+            }
+
             $votosPlanchas = [
                 [
                     'plancha' => 'Plancha 1',
@@ -767,6 +779,18 @@ class NeighborhoodDirectoryController extends Controller
             ];
 
             $cargosAProveer = 0;
+            $nombreBloque = $ocrBlock['name'];
+            $codigoBloque = null;
+
+            if ($resolvedElectionBlock) {
+                $cargosAProveer = (int) ElectionBlockPosition::query()
+                    ->where('election_block_id', $resolvedElectionBlock->id)
+                    ->sum('vacancies');
+
+                $nombreBloque = $resolvedElectionBlock->block->name ?? $nombreBloque;
+                $codigoBloque = $resolvedElectionBlock->block->code ?? null;
+            }
+
             $allocation = $this->allocateSeatsByQuota($votosPlanchas, $cargosAProveer, (int) ($ocrBlock['votes']['blancos'] ?? 0));
 
             foreach ($allocation['planchas'] as $voteRow) {
@@ -774,8 +798,8 @@ class NeighborhoodDirectoryController extends Controller
             }
 
             $resultadosFormateados[] = [
-                'nombre_bloque' => $ocrBlock['name'],
-                'codigo_bloque' => null,
+                'nombre_bloque' => $nombreBloque,
+                'codigo_bloque' => $codigoBloque,
                 'cargos_a_proveer' => $cargosAProveer,
                 'votos_validos' => $allocation['votos_validos'],
                 'cuociente_electoral' => $allocation['cuociente_electoral'],
@@ -807,6 +831,249 @@ class NeighborhoodDirectoryController extends Controller
                 'name'       => $neighborhood->name,
                 'resultados' => $resultadosFormateados,
                 'plancha_ganadora' => $planchaGanadoraGlobal,
+            ],
+        ]);
+    }
+
+    /**
+     * Reporte consolidado para directorio de candidatos.
+     * Incluye por barrio:
+     * - estado de registro de planchas (con candidatos activos)
+     * - cuocientes electorales por bloque (solo si existe escrutinio)
+     * - avisos cuando no hay planchas registradas o no hay escrutinio
+     */
+    public function report(Request $request): JsonResponse
+    {
+        ini_set('max_execution_time', 180);
+
+        $neighborhoods = $this->filteredNeighborhoodQuery($request)
+            ->with('commune:id,name')
+            ->orderBy('name')
+            ->get(['id', 'name', 'commune_id']);
+
+        $neighborhoodIds = $neighborhoods->pluck('id')->all();
+
+        $activeElectionsByNeighborhood = Election::query()
+            ->whereIn('neighborhood_id', $neighborhoodIds)
+            ->where('is_active', true)
+            ->orderByDesc('election_date')
+            ->orderByDesc('id')
+            ->get(['id', 'neighborhood_id', 'name', 'code', 'election_date'])
+            ->unique('neighborhood_id')
+            ->keyBy('neighborhood_id');
+
+        $electionIds = $activeElectionsByNeighborhood
+            ->pluck('id')
+            ->filter()
+            ->values()
+            ->all();
+
+        $slatesByElection = Slate::query()
+            ->whereIn('election_id', $electionIds)
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->get(['id', 'election_id', 'name', 'code'])
+            ->groupBy('election_id');
+
+        $candidateCountByElectionAndSlate = Candidate::query()
+            ->join('slate_blocks', 'slate_blocks.id', '=', 'candidates.slate_block_id')
+            ->whereIn('candidates.election_id', $electionIds)
+            ->where('candidates.is_active', true)
+            ->select([
+                'candidates.election_id',
+                'slate_blocks.slate_id',
+                DB::raw('COUNT(candidates.id) AS total_candidates'),
+            ])
+            ->groupBy('candidates.election_id', 'slate_blocks.slate_id')
+            ->get()
+            ->groupBy('election_id')
+            ->map(function ($rows) {
+                return $rows->keyBy('slate_id');
+            });
+
+        $scrutinyElectionIds = ScrutinyRecord::query()
+            ->whereIn('election_id', $electionIds)
+            ->whereIn('status', ['draft', 'pending', 'pending_review', 'reviewed', 'approved', 'consolidated'])
+            ->distinct()
+            ->pluck('election_id')
+            ->all();
+        $scrutinyElectionIdSet = array_flip($scrutinyElectionIds);
+
+        $electionBlocks = ElectionBlock::query()
+            ->with('block:id,name,code')
+            ->whereIn('election_id', $electionIds)
+            ->get(['id', 'election_id', 'block_id']);
+        $electionBlocksByElection = $electionBlocks->groupBy('election_id');
+        $electionBlockIds = $electionBlocks->pluck('id')->all();
+
+        $vacanciesByElectionBlock = ElectionBlockPosition::query()
+            ->whereIn('election_block_id', $electionBlockIds)
+            ->select('election_block_id', DB::raw('COALESCE(SUM(vacancies), 0) AS total_vacancies'))
+            ->groupBy('election_block_id')
+            ->pluck('total_vacancies', 'election_block_id');
+
+        $aggregatedResults = ScrutinyBlockResult::query()
+            ->join('slate_blocks', 'slate_blocks.id', '=', 'scrutiny_block_results.slate_block_id')
+            ->join('slates', 'slates.id', '=', 'slate_blocks.slate_id')
+            ->whereIn('scrutiny_block_results.election_id', $electionIds)
+            ->whereIn('scrutiny_block_results.status', ['approved', 'reviewed'])
+            ->select([
+                'scrutiny_block_results.election_id',
+                'scrutiny_block_results.election_block_id',
+                'scrutiny_block_results.slate_block_id',
+                'slates.name AS slate_name',
+                DB::raw('SUM(scrutiny_block_results.votes) AS total_votes'),
+            ])
+            ->groupBy(
+                'scrutiny_block_results.election_id',
+                'scrutiny_block_results.election_block_id',
+                'scrutiny_block_results.slate_block_id',
+                'slates.name'
+            )
+            ->get();
+
+        $resultsByElectionAndBlock = [];
+        foreach ($aggregatedResults as $resultRow) {
+            $key = (int) $resultRow->election_id.'|'.(int) $resultRow->election_block_id;
+            if (! isset($resultsByElectionAndBlock[$key])) {
+                $resultsByElectionAndBlock[$key] = [];
+            }
+
+            $resultsByElectionAndBlock[$key][] = [
+                'plancha' => (string) $resultRow->slate_name,
+                'votos' => (int) $resultRow->total_votes,
+                'slate_block_id' => (int) $resultRow->slate_block_id,
+            ];
+        }
+
+        $reportRows = [];
+        $withRegisteredSlates = 0;
+        $withoutRegisteredSlates = 0;
+        $withScrutiny = 0;
+        $withoutScrutiny = 0;
+
+        foreach ($neighborhoods as $neighborhood) {
+            $election = $activeElectionsByNeighborhood->get($neighborhood->id);
+
+            if (! $election) {
+                $withoutRegisteredSlates++;
+                $withoutScrutiny++;
+
+                $reportRows[] = [
+                    'neighborhood_id' => $neighborhood->id,
+                    'neighborhood_name' => $neighborhood->name,
+                    'commune_name' => $neighborhood->commune?->name,
+                    'has_active_election' => false,
+                    'has_registered_slate' => false,
+                    'has_scrutiny' => false,
+                    'slates' => [],
+                    'cuocientes' => [],
+                    'warnings' => [
+                        'Este barrio no tiene elección activa.',
+                        'No se realiza cálculo de cuociente porque no tiene escrutinio hecho.',
+                    ],
+                ];
+
+                continue;
+            }
+
+            $slates = collect($slatesByElection->get($election->id, collect()));
+            $candidateCountBySlate = collect($candidateCountByElectionAndSlate->get($election->id, collect()));
+
+            $slateRows = $slates->map(function ($slate) use ($candidateCountBySlate): array {
+                $totalCandidates = (int) data_get($candidateCountBySlate->get($slate->id), 'total_candidates', 0);
+                $isRegistered = $totalCandidates > 0;
+
+                return [
+                    'id' => $slate->id,
+                    'name' => $slate->name,
+                    'code' => $slate->code,
+                    'registered' => $isRegistered,
+                    'total_candidates' => $totalCandidates,
+                    'message' => $isRegistered
+                        ? 'Plancha registrada.'
+                        : 'Esta plancha no se ha registrado.',
+                ];
+            })->values()->toArray();
+
+            $hasRegisteredSlate = collect($slateRows)->contains(function (array $row): bool {
+                return (bool) ($row['registered'] ?? false);
+            });
+
+            if ($hasRegisteredSlate) {
+                $withRegisteredSlates++;
+            } else {
+                $withoutRegisteredSlates++;
+            }
+
+            $hasScrutiny = isset($scrutinyElectionIdSet[$election->id]);
+
+            if ($hasScrutiny) {
+                $withScrutiny++;
+            } else {
+                $withoutScrutiny++;
+            }
+
+            $warnings = [];
+            if (! $hasRegisteredSlate) {
+                $warnings[] = 'Esta plancha no se ha registrado.';
+            }
+            if (! $hasScrutiny) {
+                $warnings[] = 'No se realiza cálculo de cuociente porque no tiene escrutinio hecho.';
+            }
+
+            $quotaRows = [];
+            if ($hasScrutiny) {
+                $electionBlocksForElection = collect($electionBlocksByElection->get($election->id, collect()));
+
+                foreach ($electionBlocksForElection as $electionBlock) {
+                    $resultKey = (int) $election->id.'|'.(int) $electionBlock->id;
+                    $slateVotes = $resultsByElectionAndBlock[$resultKey] ?? [];
+
+                    if (empty($slateVotes)) {
+                        continue;
+                    }
+
+                    $cargosAProveer = (int) ($vacanciesByElectionBlock[$electionBlock->id] ?? 0);
+
+                    $allocation = $this->allocateSeatsByQuota($slateVotes, $cargosAProveer, 0);
+
+                    $quotaRows[] = [
+                        'block_name' => $electionBlock->block->name ?? 'Bloque',
+                        'block_code' => $electionBlock->block->code ?? null,
+                        'cargos_a_proveer' => $cargosAProveer,
+                        'votos_validos' => $allocation['votos_validos'],
+                        'cuociente_electoral' => $allocation['cuociente_electoral'],
+                        'planchas' => $allocation['planchas'],
+                    ];
+                }
+            }
+
+            $reportRows[] = [
+                'neighborhood_id' => $neighborhood->id,
+                'neighborhood_name' => $neighborhood->name,
+                'commune_name' => $neighborhood->commune?->name,
+                'has_active_election' => true,
+                'has_registered_slate' => $hasRegisteredSlate,
+                'has_scrutiny' => $hasScrutiny,
+                'slates' => $slateRows,
+                'cuocientes' => $quotaRows,
+                'warnings' => $warnings,
+            ];
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'generated_at' => now()->toDateTimeString(),
+                'summary' => [
+                    'total_neighborhoods' => count($reportRows),
+                    'with_registered_slates' => $withRegisteredSlates,
+                    'without_registered_slates' => $withoutRegisteredSlates,
+                    'with_scrutiny' => $withScrutiny,
+                    'without_scrutiny' => $withoutScrutiny,
+                ],
+                'rows' => $reportRows,
             ],
         ]);
     }

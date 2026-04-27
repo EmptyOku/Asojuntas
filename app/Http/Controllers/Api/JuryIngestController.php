@@ -188,11 +188,19 @@ class JuryIngestController extends Controller
             'confidence_score' => 'nullable|numeric|min:0|max:1',
             'status' => 'nullable|string|max:20',
             'raw_payload' => 'nullable',
-            'normalized_payload' => 'required',
+            'normalized_payload' => 'nullable',
         ]);
 
         $record = $this->resolveScrutinyRecord($request, $validated);
         $storageDisk = $this->storageDisk();
+
+        // En el flujo actual de jurado (cola OCR sin payload manual) solo se admite pagina 1.
+        $isDirectQueueFlow = ! array_key_exists('normalized_payload', $validated) || $validated['normalized_payload'] === null;
+        if ($isDirectQueueFlow && (int) $validated['page_number'] !== 1) {
+            throw ValidationException::withMessages([
+                'page_number' => 'Para escrutinio jurado solo se admite una imagen y debe enviarse como pagina 1.',
+            ]);
+        }
 
         $file = $request->file('document_file');
         $fileHash = hash_file('sha256', $file->getRealPath());
@@ -264,11 +272,11 @@ class JuryIngestController extends Controller
         }
 
         $rawPayload = $this->decodeJsonLikePayload($validated['raw_payload'] ?? null);
-        $normalizedPayload = $this->decodeJsonLikePayload($validated['normalized_payload']);
+        $normalizedPayload = $this->decodeJsonLikePayload($validated['normalized_payload'] ?? null);
 
-        if (! is_array($normalizedPayload)) {
+        if ($normalizedPayload !== null && ! is_array($normalizedPayload)) {
             throw ValidationException::withMessages([
-                'normalized_payload' => 'normalized_payload debe ser un objeto JSON válido.',
+                'normalized_payload' => 'normalized_payload debe ser un objeto JSON valido.',
             ]);
         }
 
@@ -281,7 +289,7 @@ class JuryIngestController extends Controller
             'confidence_score' => $validated['confidence_score'] ?? 0.85,
             'status' => $validated['status'] ?? 'pending_review',
             'raw_payload' => $rawPayload,
-            'normalized_payload' => $normalizedPayload,
+            'normalized_payload' => is_array($normalizedPayload) ? $normalizedPayload : null,
             'notes' => $validated['notes'] ?? null,
         ];
 

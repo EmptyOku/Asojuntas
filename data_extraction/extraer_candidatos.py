@@ -95,7 +95,7 @@ EXTRACTION_SCHEMA = {
 # ==========================================
 CONTEXT_POLICIES = [
     "Block 1 valid cargo labels: 'PRESIDENTE', 'VICEPRESIDENTE', 'TESORERO', 'SECRETARIO'.",
-    "Block 2 valid cargo labels: 'SUPLENTE PRESIDENTE', 'DELEGADO ASOJUNTAS 1', 'SUPLENTE DELEGADO ASOJUNTAS 1', 'DELEGADO ASOJUNTAS 2', 'SUPLENTE DELEGADO ASOJUNTAS 2', 'DELEGADO ASOJUNTAS 3', 'SUPLENTE DELEGADO ASOJUNTAS 3'.",
+    "Block 2 valid cargo labels: 'SUPLENTE DE PRESIDENTE', 'SUPLENTE PRESIDENTE', 'DELEGADO ASOJUNTAS 1', 'SUPLENTE DELEGADO ASOJUNTAS 1', 'DELEGADO ASOJUNTAS 2', 'SUPLENTE DELEGADO ASOJUNTAS 2', 'DELEGADO ASOJUNTAS 3', 'SUPLENTE DELEGADO ASOJUNTAS 3'.",
     "Block 3 valid cargo labels ONLY: 'FISCAL' and 'SUPLENTE FISCAL'. IMPORTANT: 'SUPLENTE FISCAL' is a different role from 'FISCAL'. Never merge them.",
     "Block 4 valid cargo labels ONLY: 'CONCILIADOR 1', 'CONCILIADOR 2', 'CONCILIADOR 3', 'COMISION EMPRESARIAL'. Convert Roman numerals to Arabic (I -> 1, II -> 2).",
     "Apply Arabic numeral normalization (Convert I, II, III to 1, 2, 3).",
@@ -262,7 +262,8 @@ ROUTING_TABLE = {
     "VICEPRESIDENTE":          (0, 1, "Vicepresidente"),
     "TESORERO":                (0, 2, "Tesorero"),
     "SECRETARIO":              (0, 3, "Secretario"),
-    "SUPLENTE PRESIDENTE":              (1, 0, "Suplente Presidente"),
+    "SUPLENTE DE PRESIDENTE":           (1, 0, "Suplente de Presidente"),
+    "SUPLENTE PRESIDENTE":              (1, 0, "Suplente de Presidente"),
     "SUPLENTE DELEGADO ASOJUNTAS 1":    (1, 2, "Suplente Delegado Asojuntas 1"),
     "SUPLENTE DELEGADO ASOJUNTAS 2":    (1, 4, "Suplente Delegado Asojuntas 2"),
     "SUPLENTE DELEGADO ASOJUNTAS 3":    (1, 6, "Suplente Delegado Asojuntas 3"),

@@ -49,6 +49,165 @@
       >
         Limpiar
       </button>
+
+      <button
+        @click="generateReport"
+        :disabled="loading || reportLoading"
+        class="px-6 py-2 bg-emerald-600 text-white font-semibold rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-60"
+      >
+        {{ reportLoading ? 'Generando...' : 'Generar reporte' }}
+      </button>
+    </div>
+
+    <div v-if="reportError" class="bg-red-50 border border-red-200 text-red-700 p-4 rounded-xl flex items-center gap-3">
+      <AlertCircle class="w-5 h-5" />
+      <p>{{ reportError }}</p>
+    </div>
+
+    <div v-if="reportData" class="bg-white border border-gray-200 rounded-xl p-5 space-y-4">
+      <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+        <div>
+          <h2 class="text-lg font-bold text-gray-900">Reporte de planchas y cuocientes por barrio</h2>
+          <p class="text-sm text-gray-500">
+            Generado: {{ reportData.generated_at || 'Sin fecha' }}
+          </p>
+        </div>
+        <div class="text-sm text-gray-600">
+          <span class="font-semibold text-gray-900">{{ reportData.summary?.total_neighborhoods || 0 }}</span> barrios
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+        <div class="bg-gray-50 rounded-lg border border-gray-100 p-3">
+          <p class="text-xs text-gray-500 uppercase tracking-wide">Con planchas registradas</p>
+          <p class="text-xl font-bold text-gray-900">{{ reportData.summary?.with_registered_slates || 0 }}</p>
+        </div>
+        <div class="bg-gray-50 rounded-lg border border-gray-100 p-3">
+          <p class="text-xs text-gray-500 uppercase tracking-wide">Sin planchas registradas</p>
+          <p class="text-xl font-bold text-gray-900">{{ reportData.summary?.without_registered_slates || 0 }}</p>
+        </div>
+        <div class="bg-gray-50 rounded-lg border border-gray-100 p-3">
+          <p class="text-xs text-gray-500 uppercase tracking-wide">Con escrutinio</p>
+          <p class="text-xl font-bold text-gray-900">{{ reportData.summary?.with_scrutiny || 0 }}</p>
+        </div>
+        <div class="bg-gray-50 rounded-lg border border-gray-100 p-3">
+          <p class="text-xs text-gray-500 uppercase tracking-wide">Sin escrutinio</p>
+          <p class="text-xl font-bold text-gray-900">{{ reportData.summary?.without_scrutiny || 0 }}</p>
+        </div>
+      </div>
+
+      <div class="space-y-4">
+        <div
+          v-for="row in reportData.rows || []"
+          :key="row.neighborhood_id"
+          class="border border-gray-200 rounded-lg overflow-hidden"
+        >
+          <div class="px-4 py-3 bg-gray-50 border-b border-gray-200">
+            <p class="font-semibold text-gray-900">{{ row.neighborhood_name }}</p>
+            <p class="text-xs text-gray-500">{{ row.commune_name || 'Sin comuna' }}</p>
+          </div>
+
+          <div class="p-4 space-y-3">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+              <div class="p-3 rounded-lg border" :class="row.has_active_election ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'">
+                <p class="font-semibold">Elección activa</p>
+                <p>{{ row.has_active_election ? 'Sí' : 'No' }}</p>
+              </div>
+              <div class="p-3 rounded-lg border" :class="row.has_registered_slate ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'">
+                <p class="font-semibold">Planchas registradas</p>
+                <p>{{ row.has_registered_slate ? 'Sí' : 'No' }}</p>
+              </div>
+              <div class="p-3 rounded-lg border" :class="row.has_scrutiny ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'">
+                <p class="font-semibold">Escrutinio hecho</p>
+                <p>{{ row.has_scrutiny ? 'Sí' : 'No' }}</p>
+              </div>
+            </div>
+
+            <div v-if="(row.warnings || []).length > 0" class="space-y-2">
+              <p
+                v-for="(warning, index) in row.warnings"
+                :key="`${row.neighborhood_id}-warning-${index}`"
+                class="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-3 py-2"
+              >
+                {{ warning }}
+              </p>
+            </div>
+
+            <div>
+              <p class="text-sm font-semibold text-gray-900 mb-2">Planchas</p>
+              <div class="overflow-x-auto">
+                <table class="min-w-full text-sm border border-gray-200 rounded-lg overflow-hidden">
+                  <thead class="bg-gray-50 text-gray-600">
+                    <tr>
+                      <th class="text-left px-3 py-2 border-b border-gray-200">Plancha</th>
+                      <th class="text-left px-3 py-2 border-b border-gray-200">Registrada</th>
+                      <th class="text-left px-3 py-2 border-b border-gray-200">Candidatos</th>
+                      <th class="text-left px-3 py-2 border-b border-gray-200">Mensaje</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="slate in row.slates || []" :key="slate.id" class="border-b border-gray-100 last:border-b-0">
+                      <td class="px-3 py-2">{{ slate.name }}</td>
+                      <td class="px-3 py-2">{{ slate.registered ? 'Sí' : 'No' }}</td>
+                      <td class="px-3 py-2">{{ slate.total_candidates }}</td>
+                      <td class="px-3 py-2">{{ slate.message }}</td>
+                    </tr>
+                    <tr v-if="(row.slates || []).length === 0">
+                      <td colspan="4" class="px-3 py-2 text-gray-500">Sin planchas disponibles.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div>
+              <p class="text-sm font-semibold text-gray-900 mb-2">Cuocientes por bloque</p>
+              <div v-if="(row.cuocientes || []).length === 0" class="text-sm text-gray-500 bg-gray-50 border border-gray-200 rounded-md px-3 py-2">
+                No se realizó cálculo de cuocientes para este barrio.
+              </div>
+
+              <div v-else class="space-y-3">
+                <div
+                  v-for="(bloque, blockIndex) in row.cuocientes"
+                  :key="`${row.neighborhood_id}-block-${blockIndex}`"
+                  class="border border-gray-200 rounded-md"
+                >
+                  <div class="px-3 py-2 bg-gray-50 border-b border-gray-200">
+                    <p class="font-semibold text-gray-900">{{ bloque.block_name }}</p>
+                    <p class="text-xs text-gray-500">
+                      Válidos: {{ bloque.votos_validos }} | Cuociente: {{ formatQuota(bloque.cuociente_electoral) }}
+                    </p>
+                  </div>
+                  <div class="overflow-x-auto">
+                    <table class="min-w-full text-sm">
+                      <thead class="bg-white text-gray-600">
+                        <tr>
+                          <th class="text-left px-3 py-2 border-b border-gray-200">Plancha</th>
+                          <th class="text-left px-3 py-2 border-b border-gray-200">Votos</th>
+                          <th class="text-left px-3 py-2 border-b border-gray-200">Curules</th>
+                          <th class="text-left px-3 py-2 border-b border-gray-200">Residuo</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr
+                          v-for="(plancha, slateIndex) in bloque.planchas || []"
+                          :key="`${row.neighborhood_id}-block-${blockIndex}-slate-${slateIndex}`"
+                          class="border-b border-gray-100 last:border-b-0"
+                        >
+                          <td class="px-3 py-2">{{ plancha.plancha }}</td>
+                          <td class="px-3 py-2">{{ plancha.votos }}</td>
+                          <td class="px-3 py-2">{{ plancha.curules }}</td>
+                          <td class="px-3 py-2">{{ formatQuota(plancha.residuo) }}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div v-if="loading && barrios.length === 0" class="flex flex-col justify-center items-center py-20 space-y-4">
@@ -196,6 +355,9 @@ const availableCommunes = ref([]);
 const openCardId = ref(null);
 const loading = ref(false);
 const error = ref(null);
+const reportLoading = ref(false);
+const reportError = ref(null);
+const reportData = ref(null);
 
 // Paginación y Filtros de Servidor
 const searchQuery = ref('');
@@ -273,6 +435,52 @@ const resetFilters = () => {
 
 const toggleCard = (id) => {
   openCardId.value = openCardId.value === id ? null : id;
+};
+
+const generateReport = async () => {
+  reportLoading.value = true;
+  reportError.value = null;
+
+  try {
+    const params = {};
+
+    if (searchQuery.value?.trim()) {
+      params.search = searchQuery.value.trim();
+    }
+
+    if (selectedCommune.value) {
+      params.commune_id = selectedCommune.value;
+    }
+
+    const response = await axios.get('/admin/neighborhoods/report', {
+      params,
+      timeout: 120000,
+      skipGlobalLoading: true,
+    });
+
+    if (response.data?.success) {
+      reportData.value = response.data.data;
+    } else {
+      reportData.value = null;
+      reportError.value = 'No fue posible generar el reporte.';
+    }
+  } catch (err) {
+    if (err?.response?.status === 401) {
+      router.push({ name: 'login' });
+      return;
+    }
+
+    console.error('Error generando reporte del directorio de candidatos:', err);
+    reportData.value = null;
+    reportError.value = 'Error al generar el reporte. Intenta de nuevo.';
+  } finally {
+    reportLoading.value = false;
+  }
+};
+
+const formatQuota = (value) => {
+  const numeric = Number(value || 0);
+  return Number.isFinite(numeric) ? numeric.toFixed(2) : '0.00';
 };
 
 // --- WATCHERS (OBSERVADORES) ---
