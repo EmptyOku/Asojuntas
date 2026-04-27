@@ -22,7 +22,7 @@
             Fotografía {{ isPlancha ? 'las Planchas de Candidatos' : 'el Formato de Escrutinio' }}
           </h3>
           <p class="text-sm text-gray-500 mt-2 max-w-xs mx-auto">
-            {{ isPlancha ? 'Son alrededor de 6 páginas. Asegúrate de que los nombres y números sean legibles.' : 'Debes subir el paquete completo de 3 páginas juntas. Enfoca claramente las tablas con los totales numéricos.' }}
+            {{ isPlancha ? 'Son alrededor de 6 páginas. Asegúrate de que los nombres y números sean legibles.' : 'Debes subir una sola foto del acta de escrutinio. Enfoca claramente la tabla con los totales numéricos.' }}
           </p>
         </div>
 
@@ -75,7 +75,7 @@
        
         <button @click="enviarActa" :disabled="isUploading || !canSendPackage" class="w-full py-4 bg-aso-primary text-white font-bold rounded-xl shadow-md hover:bg-aso-primary-dark transition-all flex items-center justify-center gap-2 disabled:opacity-70 mt-4 shrink-0">
           <template v-if="isUploading">
-            <Loader2 class="w-5 h-5 animate-spin" /> Extrayendo paquete...
+            <Loader2 class="w-5 h-5 animate-spin" /> Encolando acta...
           </template>
           <template v-else>
             <Send class="w-5 h-5" /> Enviar {{ isPlancha ? 'Planchas' : 'Escrutinio' }}
@@ -165,7 +165,7 @@ const capturedImages = ref([]);
 const isUploading = ref(false);
 const uploadError = ref('');
 const uploadStep = ref('');
-const REQUIRED_SCRUTINY_PAGES = 3;
+const REQUIRED_SCRUTINY_PAGES = 1;
 const PREVIEW_MAX_ATTEMPTS = 3;
 const PREVIEW_BASE_BACKOFF_MS = 1200;
 const PREVIEW_TIMEOUT_MS = 240000;
@@ -290,7 +290,7 @@ const resolveIntegrationContext = async () => {
   return { recordId, pollingTableId };
 };
 
-const submitScrutinyPackageInBackground = async (extractedPages) => {
+const submitScrutinyPackageInBackground = async () => {
   const context = await resolveIntegrationContext();
   let recordId = context.recordId;
   const pollingTableId = context.pollingTableId;
@@ -299,13 +299,12 @@ const submitScrutinyPackageInBackground = async (extractedPages) => {
     throw new Error('No se pudo resolver la mesa de votacion para enviar el acta.');
   }
 
-  const uploadPage = async (index, forcedRecordId = null) => {
-    const image = capturedImages.value[index];
+  const uploadSinglePage = async (forcedRecordId = null) => {
+    const image = capturedImages.value[0];
     if (!image?.file) {
       return null;
     }
 
-    const pageData = extractedPages[index] || { bloques: [] };
     const uploadForm = new FormData();
 
     const effectiveRecordId = forcedRecordId || recordId;
@@ -318,20 +317,12 @@ const submitScrutinyPackageInBackground = async (extractedPages) => {
     }
 
     uploadForm.append('document_file', image.file);
-    uploadForm.append('page_number', String(index + 1));
-    uploadForm.append('is_primary', index === 0 ? '1' : '0');
-    uploadForm.append('notes', `Enviado directamente desde captura jurado (pagina ${index + 1})`);
+    uploadForm.append('page_number', '1');
+    uploadForm.append('is_primary', '1');
+    uploadForm.append('notes', 'Enviado directamente desde captura jurado.');
     uploadForm.append('source_type', 'ai');
-    uploadForm.append('engine_name', 'Jury-UI-Capture');
-    uploadForm.append('engine_version', 'dev-1');
-    uploadForm.append('confidence_score', '0.85');
-    uploadForm.append('status', 'pending_review');
-    uploadForm.append('raw_payload', JSON.stringify({
-      page: index + 1,
-      image_name: image.file.name,
-      review_data: pageData,
-    }));
-    uploadForm.append('normalized_payload', JSON.stringify(buildNormalizedPayload(pageData, index)));
+    uploadForm.append('engine_name', 'Jury-UI-Capture-Queue');
+    uploadForm.append('engine_version', 'queue-ocr');
 
     const { data } = await axios.post('/jury/submit', uploadForm, {
       headers: {
@@ -347,21 +338,12 @@ const submitScrutinyPackageInBackground = async (extractedPages) => {
     return responseData;
   };
 
-  let startIndex = 0;
   if (!recordId) {
-    uploadStep.value = `Enviando pagina 1 de ${capturedImages.value.length}...`;
-    await uploadPage(0, null);
-    startIndex = 1;
-  }
-
-  const remainingUploads = [];
-  for (let index = startIndex; index < capturedImages.value.length; index += 1) {
-    uploadStep.value = `Encolando paginas ${index + 1} de ${capturedImages.value.length}...`;
-    remainingUploads.push(uploadPage(index, recordId));
-  }
-
-  if (remainingUploads.length > 0) {
-    await Promise.all(remainingUploads);
+    uploadStep.value = 'Encolando acta para procesamiento...';
+    await uploadSinglePage(null);
+  } else {
+    uploadStep.value = 'Actualizando acta en cola...';
+    await uploadSinglePage(recordId);
   }
 
   if (pollingTableId) {
@@ -394,32 +376,12 @@ const createManualScrutinyPageTemplate = () => ({
 const shouldFallbackToManualReview = (error) => {
   const status = error?.response?.status;
   const code = error?.response?.data?.error_code;
-  const message = String(error?.response?.data?.message || error?.response?.data?.error || error?.message || '').toLowerCase();
-
-  if (
-    error?.code === 'ECONNABORTED'
-    || error?.code === 'ERR_NETWORK'
-    || message.includes('timeout')
-    || message.includes('timed out')
-    || message.includes('network error')
-  ) {
-    return true;
-  }
 
   if (status === 503) {
     return true;
   }
 
-  if ([500, 502, 504].includes(status)) {
-    return true;
-  }
-
-  return [
-    'bedrock_connectivity_error',
-    'bedrock_credentials_error',
-    'extractor_process_failed',
-    'extractor_invalid_json',
-  ].includes(code);
+  return code === 'bedrock_connectivity_error' || code === 'bedrock_credentials_error';
 };
 
 const isRetryablePreviewError = (error) => {
@@ -518,6 +480,14 @@ const enviarActa = async () => {
   docStore.clearExtractionWarning();
 
   try {
+    if (!isPlancha.value) {
+      uploadStep.value = 'Enviando acta a la cola de procesamiento...';
+      await submitScrutinyPackageInBackground();
+      docStore.clearStore();
+      router.push('/jury/dashboard');
+      return;
+    }
+
     const extractedPages = {};
     for (let index = 0; index < capturedImages.value.length; index += 1) {
       uploadStep.value = `Extrayendo página ${index + 1} de ${capturedImages.value.length}...`;
@@ -526,33 +496,15 @@ const enviarActa = async () => {
 
     uploadStep.value = 'Preparando validación...';
 
-    if (!isPlancha.value) {
-      uploadStep.value = 'Enviando acta en segundo plano...';
-      await submitScrutinyPackageInBackground(extractedPages);
-      docStore.clearStore();
-      router.push('/jury/dashboard');
-      return;
-    }
-
     // 3. Guardamos en Pinia y pasamos a la siguiente vista
     docStore.setImages(capturedImages.value, isPlancha.value ? 'plancha' : 'escrutinio');
     docStore.setExtractedData(extractedPages);
 
     router.push('/jury/review');
   } catch (error) {
-    if (shouldFallbackToManualReview(error)) {
-      const extractedPages = {};
-      for (let index = 0; index < capturedImages.value.length; index += 1) {
-        extractedPages[index] = createManualScrutinyPageTemplate();
-      }
-
-      docStore.setImages(capturedImages.value, isPlancha.value ? 'plancha' : 'escrutinio');
-      docStore.setExtractedData(extractedPages);
-      docStore.setExtractionWarning(
-        'OCR no disponible temporalmente. Puedes continuar con validacion manual y ajustar los votos antes de enviar.'
-      );
-
-      router.push('/jury/review');
+    if (!isPlancha.value) {
+      const backendMessage = error?.response?.data?.message || error?.response?.data?.error || error?.message;
+      uploadError.value = `No se pudo encolar el acta: ${backendMessage}`;
       return;
     }
 

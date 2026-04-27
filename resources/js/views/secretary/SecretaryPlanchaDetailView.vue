@@ -69,6 +69,10 @@
       </div>
     </div>
 
+    <div v-if="docStore.extractionWarning" class="bg-amber-50 border-l-4 border-amber-500 p-4 rounded-r-xl shadow-sm animate-in fade-in slide-in-from-top-4">
+      <p class="text-sm font-semibold text-amber-900">{{ docStore.extractionWarning }}</p>
+    </div>
+
     <div class="flex flex-col lg:flex-row gap-6 items-start">
       
       <div class="w-full lg:w-5/12 bg-[#1a1c23] rounded-2xl overflow-hidden relative lg:sticky lg:top-6 shadow-lg flex flex-col h-[50vh] lg:h-[calc(100vh-6rem)] z-10 border border-gray-800">
@@ -313,6 +317,7 @@ const applyDraftToPlancha = (draft) => {
     TESORERO: planchaData.bloque1.tesorero,
     SECRETARIO: planchaData.bloque1.secretario,
     'SUPLENTE DE PRESIDENTE': planchaData.bloque2.suplentePresidente,
+    'SUPLENTE PRESIDENTE': planchaData.bloque2.suplentePresidente,
     'DELEGADO ASOJUNTAS 1': planchaData.bloque2.delegado1,
     'SUPLENTE DELEGADO ASOJUNTAS 1': planchaData.bloque2.suplente1,
     'DELEGADO ASOJUNTAS 2': planchaData.bloque2.delegado2,
@@ -389,7 +394,10 @@ const hydratePlanchaFromExtraction = () => {
   fillFromLookup(planchaData.bloque1.tesorero, lookup.TESORERO);
   fillFromLookup(planchaData.bloque1.secretario, lookup.SECRETARIO);
 
-  fillFromLookup(planchaData.bloque2.suplentePresidente, lookup['SUPLENTE DE PRESIDENTE']);
+  fillFromLookup(
+    planchaData.bloque2.suplentePresidente,
+    lookup['SUPLENTE DE PRESIDENTE'] || lookup['SUPLENTE PRESIDENTE']
+  );
   fillFromLookup(planchaData.bloque2.delegado1, lookup['DELEGADO ASOJUNTAS 1']);
   fillFromLookup(planchaData.bloque2.suplente1, lookup['SUPLENTE DELEGADO ASOJUNTAS 1']);
   fillFromLookup(planchaData.bloque2.delegado2, lookup['DELEGADO ASOJUNTAS 2']);

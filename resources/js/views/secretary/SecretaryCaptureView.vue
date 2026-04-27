@@ -196,9 +196,60 @@ const removeImage = (idToRemove) => {
   capturedImages.value = capturedImages.value.filter((img) => img.id !== idToRemove);
 };
 
+const createManualPageTemplate = () => ({ bloques: [] });
+const PREVIEW_MAX_ATTEMPTS = 3;
+const PREVIEW_BASE_BACKOFF_MS = 1200;
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const hasRecognizedCandidates = (pageData) => {
+  const blocks = Array.isArray(pageData?.bloques) ? pageData.bloques : [];
+  return blocks.some((block) =>
+    Array.isArray(block?.cargos) && block.cargos.some((cargo) =>
+      String(cargo?.puesto || '').trim() !== '' || String(cargo?.nombre || '').trim() !== ''
+    )
+  );
+};
+
+const shouldFallbackToManualReview = (error) => {
+  const status = error?.response?.status;
+  const code = error?.response?.data?.error_code;
+
+  if ([422, 502, 503, 504].includes(status)) {
+    return true;
+  }
+
+  return [
+    'bedrock_connectivity_error',
+    'bedrock_credentials_error',
+    'extractor_process_failed',
+    'extractor_invalid_json',
+  ].includes(code);
+};
+
+const isRetryablePreviewError = (error) => {
+  const backendRetryable = error?.response?.data?.retriable;
+  if (typeof backendRetryable === 'boolean') {
+    return backendRetryable;
+  }
+
+  const code = error?.response?.data?.error_code;
+  if (['bedrock_connectivity_error', 'extractor_process_failed'].includes(code)) {
+    return true;
+  }
+
+  const status = error?.response?.status;
+  if (!status) {
+    return true;
+  }
+
+  return [408, 422, 429, 500, 502, 503, 504].includes(status);
+};
+
 // --- LÓGICA DE EXTRACCIÓN (Vinculada al flujo Slates > Election > Neighborhood) ---
 const extractPlanchas = async () => {
   extractError.value = '';
+  docStore.clearExtractionWarning();
 
   if (!selectedNeighborhood.value?.active_election?.id) {
     extractError.value = 'El barrio seleccionado no tiene una elección activa configurada.';
@@ -214,23 +265,69 @@ const extractPlanchas = async () => {
 
   try {
     const extractedPages = {};
+    const fallbackPages = [];
 
     for (let index = 0; index < capturedImages.value.length; index += 1) {
-      extractStep.value = `Procesando página ${index + 1} de ${capturedImages.value.length}...`;
+      let pageResolved = false;
 
-      const form = new FormData();
-      form.append('document_file', capturedImages.value[index].file);
-      form.append('page_number', String(index + 1));
-      
-      // VINCULACIÓN: Enviamos el election_id que pertenece al barrio seleccionado
-      form.append('election_id', selectedNeighborhood.value.active_election.id);
+      for (let attempt = 1; attempt <= PREVIEW_MAX_ATTEMPTS; attempt += 1) {
+        extractStep.value = `Procesando página ${index + 1} de ${capturedImages.value.length} (intento ${attempt}/${PREVIEW_MAX_ATTEMPTS})...`;
 
-      const { data } = await axios.post('/secretary/planchas/extract-preview', form, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-        timeout: 240000,
-      });
+        const form = new FormData();
+        form.append('document_file', capturedImages.value[index].file);
+        form.append('page_number', String(index + 1));
+        form.append('election_id', selectedNeighborhood.value.active_election.id);
 
-      extractedPages[index] = data?.data?.review_page_data || { bloques: [] };
+        try {
+          const { data } = await axios.post('/secretary/planchas/extract-preview', form, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+            timeout: 240000,
+          });
+
+          const pageData = data?.data?.review_page_data;
+          if (hasRecognizedCandidates(pageData)) {
+            extractedPages[index] = pageData;
+            pageResolved = true;
+            break;
+          }
+
+          if (attempt < PREVIEW_MAX_ATTEMPTS) {
+            await sleep(PREVIEW_BASE_BACKOFF_MS * attempt);
+            continue;
+          }
+
+          extractedPages[index] = createManualPageTemplate();
+          fallbackPages.push(index + 1);
+          pageResolved = true;
+          break;
+        } catch (error) {
+          if (attempt < PREVIEW_MAX_ATTEMPTS && isRetryablePreviewError(error)) {
+            await sleep(PREVIEW_BASE_BACKOFF_MS * attempt);
+            continue;
+          }
+
+          if (!shouldFallbackToManualReview(error)) {
+            throw error;
+          }
+
+          extractedPages[index] = createManualPageTemplate();
+          fallbackPages.push(index + 1);
+          pageResolved = true;
+          break;
+        }
+      }
+
+      if (!pageResolved) {
+        extractedPages[index] = createManualPageTemplate();
+        fallbackPages.push(index + 1);
+      }
+    }
+
+    const fallbackTriggered = fallbackPages.length > 0;
+    if (fallbackTriggered) {
+      docStore.setExtractionWarning(
+        `OCR no pudo completar las páginas ${fallbackPages.join(', ')}. Esas páginas quedaron habilitadas para corrección manual.`
+      );
     }
 
     docStore.setImages(capturedImages.value, 'plancha');
@@ -239,7 +336,12 @@ const extractPlanchas = async () => {
     router.push({
       name: 'secretary-plancha-detail',
       params: { id: 'preview' },
-      query: { preview: '1', edit: 'true', election_id: selectedNeighborhood.value.active_election.id , neighborhood_name: selectedNeighborhood.value.name},
+      query: {
+        preview: '1',
+        edit: 'true',
+        election_id: selectedNeighborhood.value.active_election.id,
+        neighborhood_name: selectedNeighborhood.value.name,
+      },
     });
   } catch (error) {
     const backendMessage = error?.response?.data?.message || error?.response?.data?.error || error?.message;

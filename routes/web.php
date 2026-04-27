@@ -104,6 +104,9 @@ Route::prefix('api')->name('api.')->group(function (): void {
             Route::get('/neighborhoods', [NeighborhoodDirectoryController::class, 'index'])
                 ->name('admin.neighborhoods.index');
 
+            Route::get('/neighborhoods/report', [NeighborhoodDirectoryController::class, 'report'])
+                ->name('admin.neighborhoods.report');
+
             Route::get('/neighborhoods/list-for-forms', [NeighborhoodDirectoryController::class, 'listForForms'])
                 ->name('admin.neighborhoods.list-for-forms');
 
