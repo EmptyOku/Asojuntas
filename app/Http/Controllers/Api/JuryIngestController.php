@@ -3,12 +3,12 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Jobs\ImportScrutinyExtractionJob;
 use App\Models\Election;
 use App\Models\PollingTable;
 use App\Models\ScrutinyExtraction;
 use App\Models\ScrutinyRecord;
 use App\Models\ScrutinyRecordFile;
+use App\Services\ScrutinyExtractionImporter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -169,7 +169,7 @@ class JuryIngestController extends Controller
         ]);
     }
 
-    public function submit(Request $request): JsonResponse
+    public function submit(Request $request, ScrutinyExtractionImporter $importer): JsonResponse
     {
         $this->extendExecutionTimeout();
 
@@ -293,33 +293,16 @@ class JuryIngestController extends Controller
             'notes' => $validated['notes'] ?? null,
         ];
 
-        $queueMode = 'queued';
-        $this->updateIngestProcessingMetadata($record, $recordFile, 'queued');
-
-        $importConnection = (string) config('queue.scrutiny_import_connection', config('queue.default'));
-        $importQueue = (string) config('queue.scrutiny_import_queue', 'scrutiny-imports');
-
-        if ($importConnection === 'sync') {
-            // Even in sync environments we defer heavy processing until after the HTTP response.
-            ImportScrutinyExtractionJob::dispatchAfterResponse(
-                $record->id,
-                $recordFile->id,
-                $request->user()->id,
-                $fileHash,
-                $payload
-            );
-            $queueMode = 'after_response';
-        } else {
-            ImportScrutinyExtractionJob::dispatch(
-                $record->id,
-                $recordFile->id,
-                $request->user()->id,
-                $fileHash,
-                $payload
-            )
-                ->onConnection($importConnection)
-                ->onQueue($importQueue);
+        if (! is_array($payload['normalized_payload'] ?? null)) {
+            throw ValidationException::withMessages([
+                'normalized_payload' => 'Se requiere normalized_payload para guardar el escrutinio desde jurado.',
+            ]);
         }
+
+        $queueMode = 'direct';
+        $this->updateIngestProcessingMetadata($record, $recordFile, 'processing');
+        $importer->import($payload, (int) $request->user()->id);
+        $this->updateIngestProcessingMetadata($record, $recordFile, 'completed');
 
         if ($record->status === 'draft') {
             $record->status = 'pending';
@@ -336,14 +319,14 @@ class JuryIngestController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Carga recibida y enviada a procesamiento en segundo plano.',
+            'message' => 'Carga recibida y procesada inmediatamente.',
             'data' => [
                 'scrutiny_record_id' => $record->id,
                 'scrutiny_record_file_id' => $recordFile->id,
                 'storage_path' => $recordFile->storage_path,
                 'server_file_path' => $serverFilePath,
                 'download_url' => route('api.jury.scrutiny-files.show', $recordFile),
-                'queued' => true,
+                'queued' => false,
                 'queue_mode' => $queueMode,
             ],
         ], 201);

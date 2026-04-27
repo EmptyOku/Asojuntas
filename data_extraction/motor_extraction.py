@@ -6,6 +6,7 @@ import os
 import re
 import sys
 import time
+import unicodedata
 from pathlib import Path
 
 try:
@@ -45,6 +46,56 @@ def safe_int(value):
         return 0
     digits = re.sub(r"[^\d]", "", text)
     return int(digits) if digits else 0
+
+
+def normalize_key(key: str) -> str:
+    text = unicodedata.normalize("NFD", str(key))
+    text = "".join(ch for ch in text if unicodedata.category(ch) != "Mn")
+    text = text.lower()
+    text = re.sub(r"[^a-z0-9]", "", text)
+    return text
+
+
+def get_first_value_loose(source: dict, aliases: list[str]):
+    if not isinstance(source, dict):
+        return None
+
+    normalized_source = {normalize_key(key): value for key, value in source.items()}
+    for alias in aliases:
+        alias_norm = normalize_key(alias)
+        if alias_norm in normalized_source:
+            return normalized_source[alias_norm]
+
+    return None
+
+
+def get_blocks_from_payload(extracted_json: dict) -> list[dict]:
+    if not isinstance(extracted_json, dict):
+        return []
+
+    direct_blocks = extracted_json.get("BLOQUES")
+    if isinstance(direct_blocks, list):
+        return [row for row in direct_blocks if isinstance(row, dict)]
+
+    for key in ("bloques", "blocks", "BLOCKS"):
+        candidate = extracted_json.get(key)
+        if isinstance(candidate, list):
+            return [row for row in candidate if isinstance(row, dict)]
+
+    collected = []
+    for key, value in extracted_json.items():
+        if not isinstance(value, dict):
+            continue
+
+        key_norm = normalize_key(key)
+        if "bloque" not in key_norm and "block" not in key_norm:
+            continue
+
+        row = dict(value)
+        row.setdefault("BLOQUE", str(key))
+        collected.append(row)
+
+    return collected
 
 
 def get_first_value(source: dict, keys: list[str]):
@@ -204,9 +255,11 @@ ERES UN ANALISTA DE DATOS ELECTORALES.
 Devuelve exclusivamente JSON dentro de etiquetas <json></json>.
 
 Reglas:
-1. Extrae todos los bloques visibles en la pagina (hay 4 bloques en esta imagen).
-2. ATENCIÓN: Los números de los votos están ESCRITOS A MANO. Fíjate meticulosamente en los trazos para no confundir números.
-3. Para cada bloque, captura exactamente estos campos numéricos:
+1. Extrae solo la TABLA DE VOTOS de los BLOQUES 1, 2, 3 y 4.
+2. Ignora totalmente la parte inferior de personas/candidatos (nombre, identificacion, celular, correo, firma).
+3. Deben salir exactamente 4 bloques en el arreglo BLOQUES.
+4. ATENCIÓN: Los números de los votos están ESCRITOS A MANO. Fíjate meticulosamente en los trazos para no confundir números.
+5. Para cada bloque, captura exactamente estos campos numéricos:
      - TOTAL_VOTOS
      - PLANCHA_1
      - PLANCHA_2
@@ -215,8 +268,10 @@ Reglas:
      - VOTOS_NULOS
      - VOTOS_NO_MARCADOS
      - VOTOS_VALIDOS
-4. Si un campo viene vacío o ilegible, usa 0.
-5. Transcribe el nombre del BLOQUE exactamente como aparece en la cabecera azul, incluyendo símbolos.
+6. Si un campo viene vacío o ilegible, usa 0.
+7. Transcribe el nombre del BLOQUE como aparece en la cabecera azul.
+8. Si no ves número en PLANCHA_2 o PLANCHA_3, registra 0.
+9. No agregues explicaciones ni texto fuera del JSON.
 
 Formato esperado:
 {
@@ -286,10 +341,7 @@ def get_block_name(block_label: str) -> str:
 def normalize_payload(extracted_json: dict):
     block_results = []
     block_votes = []
-    blocks = extracted_json.get("BLOQUES", [])
-
-    if not isinstance(blocks, list):
-        blocks = []
+    blocks = get_blocks_from_payload(extracted_json)
 
     for block in blocks:
         if not isinstance(block, dict):
@@ -298,14 +350,38 @@ def normalize_payload(extracted_json: dict):
         block_label = str(block.get("BLOQUE", "")).strip()
         block_name = get_block_name(block_label)
 
-        total_votes = safe_int(get_first_value(block, ["TOTAL_VOTOS", "TOTAL", "VOTOS_TOTALES"]))
-        plancha_1 = safe_int(get_first_value(block, ["PLANCHA_1", "P1"]))
-        plancha_2 = safe_int(get_first_value(block, ["PLANCHA_2", "P2"]))
-        plancha_3 = safe_int(get_first_value(block, ["PLANCHA_3", "P3"]))
-        blancos = safe_int(get_first_value(block, ["VOTOS_BLANCOS", "BLANCOS", "VOTO_BLANCO"]))
-        nulos = safe_int(get_first_value(block, ["VOTOS_NULOS", "NULOS", "VOTO_NULO"]))
-        no_marcados = safe_int(get_first_value(block, ["VOTOS_NO_MARCADOS", "NO_MARCADOS", "VOTOS_NOMARCADOS"]))
-        validos = safe_int(get_first_value(block, ["VOTOS_VALIDOS", "VALIDOS", "VOTO_VALIDO"]))
+        total_votes = safe_int(get_first_value_loose(block, [
+            "totalvotos", "total", "votostotales", "totaldevotos"
+        ]))
+        plancha_1 = safe_int(get_first_value_loose(block, [
+            "plancha1", "p1", "votosplancha1"
+        ]))
+        plancha_2 = safe_int(get_first_value_loose(block, [
+            "plancha2", "p2", "votosplancha2"
+        ]))
+        plancha_3 = safe_int(get_first_value_loose(block, [
+            "plancha3", "p3", "votosplancha3"
+        ]))
+        blancos = safe_int(get_first_value_loose(block, [
+            "votosblancos", "blancos", "votoblanco"
+        ]))
+        nulos = safe_int(get_first_value_loose(block, [
+            "votosnulos", "nulos", "votonulo"
+        ]))
+        no_marcados = safe_int(get_first_value_loose(block, [
+            "votosnomarcados", "nomarcados", "votosnoMarcados"
+        ]))
+        validos = safe_int(get_first_value_loose(block, [
+            "votosvalidos", "validos", "votovalido"
+        ]))
+
+        if validos == 0:
+            inferred_valid = plancha_1 + plancha_2 + plancha_3 + blancos
+            if inferred_valid > 0:
+                validos = inferred_valid
+
+        if total_votes == 0 and (validos > 0 or nulos > 0 or no_marcados > 0):
+            total_votes = validos + nulos + no_marcados
 
         block_votes.append(
             {
@@ -331,6 +407,49 @@ def normalize_payload(extracted_json: dict):
                 "slate_name": f"PLANCHA {slate_number}",
             }
             block_results.append(result)
+
+    expected_block_names = [
+        "DIRECTIVA",
+        "DELEGADOS ASOJUNTAS",
+        "FISCAL",
+        "COMISION DE CONVIVENCIA Y CONCILIACION",
+    ]
+
+    normalized_present = {
+        normalize_key(row.get("block_name", ""))
+        for row in block_votes
+        if isinstance(row, dict)
+    }
+
+    for expected in expected_block_names:
+        if normalize_key(expected) in normalized_present:
+            continue
+
+        block_votes.append(
+            {
+                "block_name": expected,
+                "total_votes": 0,
+                "plancha_1": 0,
+                "plancha_2": 0,
+                "plancha_3": 0,
+                "blancos": 0,
+                "nulos": 0,
+                "no_marcados": 0,
+                "validos": 0,
+            }
+        )
+
+        for slate_number in ("1", "2", "3"):
+            block_results.append(
+                {
+                    "votes": 0,
+                    "status": "pending",
+                    "notes": f"OCR fallback PLANCHA_{slate_number}",
+                    "block_name": expected,
+                    "slate_code": slate_number,
+                    "slate_name": f"PLANCHA {slate_number}",
+                }
+            )
 
     return {
         "block_results": block_results,
@@ -437,7 +556,9 @@ def main():
         "status": "success",
         "mode": "dry-run" if args.dry_run else "live",
         "bedrock_extraction": extraction["parsed_json"],
-        "normalized_data": normalized
+        # Keep both keys for backward compatibility across callers.
+        "normalized_data": normalized,
+        "normalized_payload": normalized,
     }
 
     if args.dry_run:

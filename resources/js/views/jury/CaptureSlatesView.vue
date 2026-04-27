@@ -541,14 +541,6 @@ const enviarActa = async () => {
   docStore.clearExtractionWarning();
 
   try {
-    if (!isPlancha.value) {
-      uploadStep.value = 'Enviando acta a la cola de procesamiento...';
-      await submitScrutinyPackageInBackground();
-      docStore.clearStore();
-      router.push('/jury/dashboard');
-      return;
-    }
-
     const extractedPages = {};
     for (let index = 0; index < capturedImages.value.length; index += 1) {
       uploadStep.value = `Extrayendo página ${index + 1} de ${capturedImages.value.length}...`;
@@ -563,12 +555,6 @@ const enviarActa = async () => {
 
     router.push('/jury/review');
   } catch (error) {
-    if (!isPlancha.value) {
-      const backendMessage = error?.response?.data?.message || error?.response?.data?.error || error?.message;
-      uploadError.value = `No se pudo encolar el acta: ${backendMessage}`;
-      return;
-    }
-
     const backendMessage = error?.response?.data?.message || error?.response?.data?.error || error?.message;
     uploadError.value = `No se pudo completar la extracción del paquete: ${backendMessage}`;
   } finally {

@@ -332,7 +332,8 @@ class AuditManagementController extends Controller
                     'page_number' => $file->page_number,
                     'name' => $file->original_name,
                     'mime_type' => $file->mime_type,
-                    'url' => route('api.admin.audit-records.files.show', $file),
+                    // Relative URL avoids mixed-content or host mismatch when APP_URL differs from browser origin.
+                    'url' => route('api.admin.audit-records.files.show', $file, false),
                 ];
             })
             ->all();

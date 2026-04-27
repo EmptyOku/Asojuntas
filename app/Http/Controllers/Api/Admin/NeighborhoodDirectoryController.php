@@ -544,7 +544,7 @@ class NeighborhoodDirectoryController extends Controller
         $electionBlocks = ElectionBlock::with(['block'])
             ->where('election_id', $election->id)
             ->get();
-|        $electionBlocksBySequence = $electionBlocks->values()->mapWithKeys(function ($block, $index) {
+        $electionBlocksBySequence = $electionBlocks->values()->mapWithKeys(function ($block, $index) {
             return [($index + 1) => $block];
         });
 

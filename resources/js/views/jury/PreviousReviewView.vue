@@ -81,7 +81,7 @@
                     type="text"
                     inputmode="numeric"
                     :value="valor"
-                    @input="setBlockVoteByRef(bloque.pageIndex, bloque.blockIndex, label, $event.target.value)"
+                    readonly
                     class="w-full text-lg font-black text-aso-primary-dark focus:outline-none bg-transparent border-b border-dashed border-gray-300"
                   >
                 </div>
@@ -172,6 +172,7 @@ const integration = ref({
   lastDownloadUrl: '',
 });
 const REQUIRED_SCRUTINY_PAGES = 1;
+const DEFAULT_SCRUTINY_BLOCKS = 4;
 const isPlancha = computed(() => docStore.documentType === 'plancha');
 const currentImage = computed(() => docStore.capturedImages[currentPage.value]);
 
@@ -188,6 +189,31 @@ const currentDataPage = computed(() => {
   return extractedPages.value[currentPage.value] || { bloques: [] };
 });
 
+const createFallbackVotes = () => ({
+  'Votos totales': 0,
+  'Plancha 1': 0,
+  'Plancha 2': 0,
+  'Plancha 3': 0,
+  'Votos blancos': 0,
+  'Votos nulos': 0,
+  'Votos no marcados': 0,
+  'Votos validos': 0,
+});
+
+const createFallbackBlocks = (pageIndex) => {
+  const blocks = [];
+  for (let index = 0; index < DEFAULT_SCRUTINY_BLOCKS; index += 1) {
+    blocks.push({
+      titulo: `Bloque - BLOQUE ${index + 1}`,
+      votos: createFallbackVotes(),
+      pageIndex,
+      blockIndex: index,
+    });
+  }
+
+  return blocks;
+};
+
 const scrutinyBlocksForReview = computed(() => {
   if (isPlancha.value) {
     return [];
@@ -203,13 +229,24 @@ const scrutinyBlocksForReview = computed(() => {
   const blocks = [];
   for (const pageEntry of pages) {
     const pageBlocks = Array.isArray(pageEntry.page?.bloques) ? pageEntry.page.bloques : [];
+
+    if (pageBlocks.length === 0) {
+      blocks.push(...createFallbackBlocks(pageEntry.pageIndex));
+      continue;
+    }
+
     pageBlocks.forEach((bloque, blockIndex) => {
       blocks.push({
         ...bloque,
+        votos: { ...createFallbackVotes(), ...(bloque?.votos || {}) },
         pageIndex: pageEntry.pageIndex,
         blockIndex,
       });
     });
+  }
+
+  if (blocks.length === 0) {
+    return createFallbackBlocks(currentPage.value);
   }
 
   return blocks;
@@ -527,10 +564,10 @@ const confirmAndSend = async () => {
       localStorage.setItem('juryLastScrutinyRecordId', String(integration.value.recordId));
     }
 
-    const queueModeLabel = queueModes.includes('queued')
-      ? 'cola de trabajos'
-      : 'procesamiento post-respuesta';
-    submitSuccess.value = `Acta enviada: ${docStore.capturedImages.length} pagina(s) cargadas y en procesamiento en segundo plano (${queueModeLabel}).`;
+    const queueModeLabel = queueModes.includes('direct')
+      ? 'almacenamiento inmediato'
+      : 'cola de trabajos';
+    submitSuccess.value = `Acta enviada: ${docStore.capturedImages.length} pagina(s) almacenadas (${queueModeLabel}).`;
     router.push('/jury/dashboard');
   } catch (error) {
     const backendMessage = error?.response?.data?.message || error?.response?.data?.error || error?.message;
