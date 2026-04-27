@@ -209,6 +209,40 @@ def invoke_model_with_retry(client, model_id: str, payload: dict):
             time.sleep(base_delay * attempt)
 
 
+def resolve_bedrock_model_candidates() -> list[str]:
+    candidates = []
+
+    configured_single = os.getenv("BEDROCK_MODEL_ID", "").strip()
+    configured_multi = os.getenv("BEDROCK_MODEL_IDS", "").strip()
+
+    if configured_single:
+        candidates.append(configured_single)
+
+    if configured_multi:
+        for entry in configured_multi.split(","):
+            model = entry.strip()
+            if model:
+                candidates.append(model)
+
+    # Safe defaults commonly available in Bedrock (ordered by quality/cost preference).
+    candidates.extend([
+        "anthropic.claude-3-5-sonnet-20241022-v2:0",
+        "anthropic.claude-3-5-haiku-20241022-v1:0",
+        "anthropic.claude-3-haiku-20240307-v1:0",
+    ])
+
+    # Preserve order while deduplicating.
+    unique = []
+    seen = set()
+    for model in candidates:
+        if model in seen:
+            continue
+        seen.add(model)
+        unique.append(model)
+
+    return unique
+
+
 def extract_with_bedrock(image_path: Path):
     try:
         import boto3
@@ -228,7 +262,7 @@ def extract_with_bedrock(image_path: Path):
         raise RuntimeError("Credenciales AWS de ejemplo detectadas en .env. Configura claves reales con acceso a Bedrock")
 
     region = os.getenv("AWS_REGION", "us-east-1")
-    model_id = os.getenv("BEDROCK_MODEL_ID", "anthropic.claude-3-5-sonnet-20240620-v1:0")
+    model_candidates = resolve_bedrock_model_candidates()
 
     session = boto3.Session(
         aws_access_key_id=aws_access_key,
@@ -316,16 +350,53 @@ Formato esperado:
         ],
     }
 
-    try:
-        response = invoke_model_with_retry(client, model_id, body)
-    except (ProxyConnectionError, SSLError, EndpointConnectionError, ConnectTimeoutError, ReadTimeoutError, NoCredentialsError, PartialCredentialsError, ClientError) as exc:
-        raise RuntimeError(build_bedrock_error_message(exc, region, model_id)) from exc
+    response = None
+    selected_model_id = None
+    last_model_error = None
+
+    for candidate_model_id in model_candidates:
+        try:
+            response = invoke_model_with_retry(client, candidate_model_id, body)
+            selected_model_id = candidate_model_id
+            break
+        except ClientError as exc:
+            response_data = getattr(exc, "response", {}) or {}
+            error_data = response_data.get("Error", {}) if isinstance(response_data, dict) else {}
+            code = str(error_data.get("Code", "")).strip()
+            message = str(error_data.get("Message", "")).lower()
+
+            is_model_eol_or_missing = code == "ResourceNotFoundException" and (
+                "end of its life" in message
+                or "not found" in message
+                or "not available" in message
+            )
+
+            if is_model_eol_or_missing:
+                last_model_error = exc
+                continue
+
+            raise RuntimeError(build_bedrock_error_message(exc, region, candidate_model_id)) from exc
+        except (ProxyConnectionError, SSLError, EndpointConnectionError, ConnectTimeoutError, ReadTimeoutError, NoCredentialsError, PartialCredentialsError) as exc:
+            raise RuntimeError(build_bedrock_error_message(exc, region, candidate_model_id)) from exc
+
+    if response is None or selected_model_id is None:
+        detail = ""
+        if last_model_error is not None:
+            detail = f" Detalle Bedrock: {last_model_error}"
+
+        tried = ", ".join(model_candidates)
+        raise RuntimeError(
+            "No se pudo invocar Bedrock con ningun modelo configurado. "
+            f"Modelos probados: {tried}. "
+            "Actualiza BEDROCK_MODEL_ID o BEDROCK_MODEL_IDS en .env con un modelo vigente."
+            + detail
+        )
 
     raw_text = json.loads(response["body"].read())["content"][0]["text"]
     parsed_json = parse_json_from_response(raw_text)
 
     return {
-        "model_id": model_id,
+        "model_id": selected_model_id,
         "raw_text": raw_text,
         "parsed_json": parsed_json,
     }
