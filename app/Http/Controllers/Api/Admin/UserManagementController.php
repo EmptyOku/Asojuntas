@@ -178,7 +178,7 @@ class UserManagementController extends Controller
             'roles.*'   => 'exists:roles,id',
             'neighborhood_id' => [
                 'nullable',
-                'exists:neighborhoods,id',
+                'active_exists:neighborhoods,id',
                 function ($attribute, $value, $fail) use ($request) {
                     // Buscar el rol de digitizer (jurado)
                     $digitizerRole = Role::where('name', 'digitizer')->first();
@@ -307,7 +307,7 @@ class UserManagementController extends Controller
         $validated = $request->validate([
             'neighborhood_id' => [
                 'nullable',
-                'exists:neighborhoods,id',
+                'active_exists:neighborhoods,id',
                 function ($attribute, $value, $fail) use ($user) {
                     if ($value) {
                         // Verifica si otro usuario ya tiene asignada una persona de ese barrio

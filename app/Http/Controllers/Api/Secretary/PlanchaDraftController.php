@@ -25,6 +25,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use RuntimeException;
+use App\Services\ElectoralAccessGuard;
 use Symfony\Component\Process\Process;
 use Throwable;
 
@@ -372,8 +373,15 @@ class PlanchaDraftController extends Controller
         ]);
     }
 
-    public function showEvidenceFile(CandidateDraftFile $candidateDraftFile)
+    public function showEvidenceFile(Request $request, CandidateDraftFile $candidateDraftFile)
     {
+        // La evidencia contiene documentos de identidad: solo el barrio dueño o un revisor.
+        app(ElectoralAccessGuard::class)->assertCanReachElection(
+            $request->user(),
+            $candidateDraftFile->election_id,
+            'No tienes acceso a esta evidencia.'
+        );
+
         $storageDisk = $this->resolveStorageDisk($candidateDraftFile->storage_path);
 
         if ($storageDisk === null) {
@@ -391,7 +399,7 @@ class PlanchaDraftController extends Controller
         $this->extendExecutionTimeLimit();
 
         $request->validate([
-            'draft_id' => 'nullable|integer|exists:candidate_drafts,id',
+            'draft_id' => 'nullable|integer|active_exists:candidate_drafts,id',
             'election_id' => 'nullable|integer|exists:elections,id',
             'capture_batch_uuid' => 'nullable|uuid',
             'review_status' => 'nullable|string|in:pending,approved,rejected',
@@ -864,7 +872,7 @@ class PlanchaDraftController extends Controller
             'election_id' => 'nullable|exists:elections,id',
             'capture_batch_uuid' => 'nullable|uuid',
             'draft_ids' => 'nullable|array',
-            'draft_ids.*' => 'integer|exists:candidate_drafts,id',
+            'draft_ids.*' => 'integer|active_exists:candidate_drafts,id',
         ]);
 
         $query = CandidateDraft::query()
@@ -1746,8 +1754,18 @@ class PlanchaDraftController extends Controller
         ]));
 
         foreach ($disks as $disk) {
-            if (Storage::disk($disk)->exists($path)) {
-                return $disk;
+            try {
+                if (Storage::disk($disk)->exists($path)) {
+                    return $disk;
+                }
+            } catch (Throwable $exception) {
+                // Un disco remoto inalcanzable no debe tumbar la descarga:
+                // se registra y se intenta con el siguiente.
+                Log::warning('No se pudo consultar el disco de almacenamiento.', [
+                    'disk' => $disk,
+                    'path' => $path,
+                    'error' => $exception->getMessage(),
+                ]);
             }
         }
 

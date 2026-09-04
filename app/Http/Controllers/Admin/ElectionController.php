@@ -56,7 +56,7 @@ class ElectionController extends Controller
     public function store(Request $request): RedirectResponse
     {
         $validated = $request->validate([
-            'neighborhood_id' => 'required|exists:neighborhoods,id',
+            'neighborhood_id' => 'required|active_exists:neighborhoods,id',
             'name'            => 'required|string|max:150',
             'code'            => 'required|string|max:50|unique:elections,code',
             'election_date'   => 'required|date',
@@ -87,7 +87,7 @@ class ElectionController extends Controller
     public function update(Request $request, Election $election): RedirectResponse
     {
         $validated = $request->validate([
-            'neighborhood_id' => 'required|exists:neighborhoods,id',
+            'neighborhood_id' => 'required|active_exists:neighborhoods,id',
             'name'            => 'required|string|max:150',
             'code'            => 'required|string|max:50|unique:elections,code,' . $election->id,
             'election_date'   => 'required|date',

@@ -101,7 +101,7 @@ class PersonController extends Controller
             'phone' => 'nullable|string|max:20',
             'email' => 'nullable|email|max:150|unique:persons,email',
             'address' => 'nullable|string|max:255',
-            'neighborhood_id' => 'nullable|exists:neighborhoods,id',
+            'neighborhood_id' => 'nullable|active_exists:neighborhoods,id',
             'is_active' => 'sometimes|boolean',
         ]);
 
@@ -157,7 +157,7 @@ class PersonController extends Controller
             'phone' => 'nullable|string|max:20',
             'email' => 'nullable|email|max:150|unique:persons,email,' . $person->id,
             'address' => 'nullable|string|max:255',
-            'neighborhood_id' => 'nullable|exists:neighborhoods,id',
+            'neighborhood_id' => 'nullable|active_exists:neighborhoods,id',
             'is_active' => 'sometimes|boolean',
         ]);
 

@@ -19,7 +19,7 @@ class ExtractionIngestController extends Controller
         $maxFileSizeKb = (int) config('services.extractor.max_upload_kb', 10240);
 
         $validated = $request->validate([
-            'scrutiny_record_id' => 'required|exists:scrutiny_records,id',
+            'scrutiny_record_id' => 'required|active_exists:scrutiny_records,id',
             'document_file' => 'required|file|mimes:jpeg,png,jpg,pdf|max:'.$maxFileSizeKb,
             'page_number' => 'required|integer|min:1',
             'is_primary' => 'sometimes|boolean',
@@ -110,7 +110,7 @@ class ExtractionIngestController extends Controller
     public function ingestExtraction(Request $request, ScrutinyExtractionImporter $importer): JsonResponse
     {
         $validated = $request->validate([
-            'scrutiny_record_id' => 'required|exists:scrutiny_records,id',
+            'scrutiny_record_id' => 'required|active_exists:scrutiny_records,id',
             'scrutiny_record_file_id' => 'nullable|exists:scrutiny_record_files,id',
             'based_on_extraction_id' => 'nullable|exists:scrutiny_extractions,id',
             'source_type' => 'nullable|in:ai,manual,api',

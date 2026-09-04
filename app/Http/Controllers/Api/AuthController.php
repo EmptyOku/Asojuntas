@@ -36,6 +36,11 @@ class AuthController extends Controller
 
         Auth::login($user, false);
 
+        // Evita fijación de sesión: el identificador previo al login deja de ser válido.
+        $request->session()->regenerate();
+
+        $user->forceFill(['last_login_at' => now()])->save();
+
         app(AuditTrailLogger::class)->recordSystemEvent('login', [
             'identity' => $identity,
             'user_id' => $user->id,

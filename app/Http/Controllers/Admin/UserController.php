@@ -68,7 +68,7 @@ class UserController extends Controller
             'person.first_name'       => 'required|string|max:100',
             'person.last_name'        => 'required|string|max:100',
             // BLOQUEO DE BARRIO: Nadie más puede tener este neighborhood_id
-            'person.neighborhood_id'  => 'required|exists:neighborhoods,id|unique:persons,neighborhood_id',
+            'person.neighborhood_id'  => 'required|active_exists:neighborhoods,id|unique:persons,neighborhood_id',
 
             // Validaciones de Usuario
             'user.username'           => 'required|string|max:50|unique:users,username',
@@ -160,7 +160,7 @@ class UserController extends Controller
         }
 
         $validated = $request->validate([
-            'neighborhood_id' => 'required|exists:neighborhoods,id|unique:persons,neighborhood_id',
+            'neighborhood_id' => 'required|active_exists:neighborhoods,id|unique:persons,neighborhood_id',
         ], [
             'neighborhood_id.unique' => 'Este barrio ya fue tomado por otra persona.',
         ]);

@@ -12,7 +12,10 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
+use Symfony\Component\HttpFoundation\HeaderUtils;
 use Symfony\Component\HttpFoundation\StreamedResponse;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 class AuditManagementController extends Controller
 {
@@ -392,7 +395,12 @@ class AuditManagementController extends Controller
             }
         }, 200, [
             'Content-Type' => $scrutinyRecordFile->mime_type ?: 'application/octet-stream',
-            'Content-Disposition' => 'inline; filename="'.($scrutinyRecordFile->original_name ?: ('acta_'.$scrutinyRecordFile->id)).'"',
+            // El nombre viene del cliente: hay que escaparlo, no interpolarlo.
+            'Content-Disposition' => HeaderUtils::makeDisposition(
+                HeaderUtils::DISPOSITION_INLINE,
+                $scrutinyRecordFile->original_name ?: ('acta_'.$scrutinyRecordFile->id),
+                'acta_'.$scrutinyRecordFile->id
+            ),
         ]);
     }
 
@@ -409,8 +417,18 @@ class AuditManagementController extends Controller
         ]));
 
         foreach ($disks as $disk) {
-            if (Storage::disk($disk)->exists($path)) {
-                return $disk;
+            try {
+                if (Storage::disk($disk)->exists($path)) {
+                    return $disk;
+                }
+            } catch (Throwable $exception) {
+                // Un disco remoto inalcanzable no debe tumbar la descarga:
+                // se registra y se intenta con el siguiente.
+                Log::warning('No se pudo consultar el disco de almacenamiento.', [
+                    'disk' => $disk,
+                    'path' => $path,
+                    'error' => $exception->getMessage(),
+                ]);
             }
         }
 
