@@ -168,21 +168,18 @@ def extract_with_bedrock(image_path: Path):
 
     aws_access_key = os.getenv("AWS_ACCESS_KEY_ID", "").strip()
     aws_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY", "").strip()
-    aws_session_token = os.getenv("AWS_SESSION_TOKEN", "").strip()
-
+    
     if not aws_access_key or not aws_secret_key:
         raise RuntimeError("Faltan credenciales AWS (AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY) en .env")
 
-    if aws_access_key.upper().startswith("TU_") or aws_secret_key.upper().startswith("TU_"):
-        raise RuntimeError("Credenciales AWS de ejemplo detectadas en .env. Configura claves reales con acceso a Bedrock")
-
     region = os.getenv("AWS_REGION", "us-east-1")
-    model_id = os.getenv("BEDROCK_MODEL_ID", "anthropic.claude-3-5-sonnet-20240620-v1:0")
+    
+    # CORRECCIÓN AQUÍ: Establecido el perfil de inferencia cruzada para Sonnet 4.6 como predeterminado
+    model_id = os.getenv("BEDROCK_MODEL_ID", "us.anthropic.claude-sonnet-4-6")
 
     session = boto3.Session(
         aws_access_key_id=aws_access_key,
         aws_secret_access_key=aws_secret_key,
-        aws_session_token=aws_session_token or None,
         region_name=region,
     )
 
@@ -429,7 +426,6 @@ def main():
     if not args.dry_run and not args.token:
         raise RuntimeError("Falta token. Configura EXTRACTOR_INGEST_TOKEN o usa --token")
 
-    # Ejecución sin impresiones en consola estándar
     extraction = extract_with_bedrock(image_path)
     normalized = normalize_payload(extraction["parsed_json"])
 
@@ -437,7 +433,7 @@ def main():
         "status": "success",
         "mode": "dry-run" if args.dry_run else "live",
         "bedrock_extraction": extraction["parsed_json"],
-        "normalized_data": normalized
+        "normalized_payload": normalized
     }
 
     if args.dry_run:
@@ -470,7 +466,6 @@ def main():
 
     output_payload["api_response"] = api_result
     
-    # Única impresión a la salida estándar
     print(json.dumps(output_payload, indent=2, ensure_ascii=False))
 
 
