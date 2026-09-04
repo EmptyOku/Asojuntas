@@ -122,7 +122,7 @@
 <script setup>
 import { ref } from 'vue';
 import { useRouter } from 'vue-router';
-import axios from '@/services/axios';
+import axios, { extractorInstance } from '@/services/axios';
 import { useDocumentStore } from '@/stores/document';
 import { ArrowLeft, ScanLine, Camera, Send, Loader2, Plus, X, Search, MapPin } from 'lucide-vue-next';
 
@@ -233,9 +233,9 @@ const extractPlanchas = async () => {
       // VINCULACIÓN: Enviamos el election_id que pertenece al barrio seleccionado
       form.append('election_id', selectedNeighborhood.value.active_election.id);
 
-      const { data } = await axios.post('/secretary/planchas/extract-preview', form, {
+      const { data } = await extractorInstance.post('/secretary/planchas/extract-preview', form, {
         headers: { 'Content-Type': 'multipart/form-data' },
-        timeout: 240000,
+
       });
 
       extractedPages[index] = data?.data?.review_page_data || { bloques: [] };

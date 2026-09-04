@@ -138,7 +138,7 @@ import { ref, computed, nextTick } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { ArrowLeft, ScanLine, Camera, Send, Loader2, Plus, X } from 'lucide-vue-next';
 import { useDocumentStore } from '@/stores/document';
-import axios from '@/services/axios';
+import axios, { extractorInstance } from '@/services/axios';
 
 const router = useRouter();
 const route = useRoute();
@@ -187,7 +187,7 @@ const REQUIRED_SCRUTINY_PAGES = 1; // Cambiado de 3 a 1 página
 const PREVIEW_MAX_ATTEMPTS = 3;
 const MAX_PLANCHA_PAGES = 6;
 const PREVIEW_BASE_BACKOFF_MS = 1200;
-const PREVIEW_TIMEOUT_MS = 240000;
+
 const DEFAULT_SCRUTINY_BLOCKS = 4; // Ajustado a 4 bloques según el nuevo formato visual
 const docStore = useDocumentStore();
 
@@ -452,11 +452,11 @@ const extractPreviewForPage = async (image, pageIndex) => {
 
   for (let attempt = 1; attempt <= PREVIEW_MAX_ATTEMPTS; attempt += 1) {
     try {
-      const { data } = await axios.post('/jury/extract-preview', form, {
+      const { data } = await extractorInstance.post('/jury/extract-preview', form, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
-        timeout: PREVIEW_TIMEOUT_MS,
+
       });
 
       const pageData = data?.data?.review_page_data;
