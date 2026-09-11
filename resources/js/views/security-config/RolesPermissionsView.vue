@@ -313,7 +313,7 @@
               :key="role.id"
               class="flex items-center gap-2 rounded-lg border border-gray-100 px-3 py-2 text-sm cursor-pointer hover:bg-gray-50"
             >
-              <input type="radio" :value="role.id" v-model="editingRole" class="border-gray-300 text-aso-primary focus:ring-aso-primary" />
+              <input type="checkbox" :value="role.id" v-model="editingRoles" class="border-gray-300 text-aso-primary focus:ring-aso-primary" />
               <span>{{ role.display_name }} <span class="text-xs text-gray-400">({{ role.name }})</span></span>
             </label>
           </div>
@@ -325,7 +325,7 @@
             <button
               type="button"
               class="px-4 py-2 rounded-xl text-sm font-semibold text-white bg-aso-primary hover:bg-aso-primary-dark transition-colors disabled:opacity-60"
-              :disabled="loading || !editingRole"
+              :disabled="loading || editingRoles.length === 0"
               @click="saveRoles"
             >
               Guardar
@@ -568,7 +568,7 @@ const createForm = ref({
 
 const modalError = ref('');
 const editingUser = ref(null);
-const editingRole = ref(null);
+const editingRoles = ref([]);
 const editorSelectedCommune = ref('');
 const editorNeighborhoods = ref([]);
 const loadingEditorNeighborhoods = ref(false);
@@ -799,10 +799,10 @@ const clearPersonSelection = () => {
 const openRoleEditor = (user) => {
   modalError.value = '';
   editingUser.value = user;
-  editingRole.value = user.roles?.[0]?.id ?? null;
+  editingRoles.value = (user.roles || []).map((role) => role.id);
 };
 
-const closeRoleEditor = () => { editingUser.value = null; editingRole.value = null; modalError.value = ''; };
+const closeRoleEditor = () => { editingUser.value = null; editingRoles.value = []; modalError.value = ''; };
 
 const loadEditorNeighborhoods = async (communeId) => {
   if (!communeId) {
@@ -830,11 +830,11 @@ const handleEditorCommuneChange = () => {
 };
 
 const saveRoles = async () => {
-  if (!editingUser.value || !editingRole.value) return;
+  if (!editingUser.value || editingRoles.value.length === 0) return;
   loading.value = true;
   modalError.value = '';
   try {
-    await axios.put(`/admin/users/${editingUser.value.id}/roles`, { roles: [editingRole.value] });
+    await axios.put(`/admin/users/${editingUser.value.id}/roles`, { roles: editingRoles.value });
     await loadUsers();
   } catch (error) {
     modalError.value = error?.response?.data?.message || 'Error al actualizar roles.';
