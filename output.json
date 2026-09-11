@@ -1,0 +1,346 @@
+﻿{
+  "status": "success",
+  "mode": "dry-run",
+  "bedrock_extraction": {
+    "BLOQUES": [
+      {
+        "BLOQUE": "BLOQUE N.░ 1 û DIRECTIVA",
+        "TOTAL_VOTOS": 165,
+        "PLANCHA_1": 75,
+        "PLANCHA_2": 50,
+        "PLANCHA_3": 25,
+        "VOTOS_BLANCOS": 10,
+        "VOTOS_NULOS": 3,
+        "VOTOS_NO_MARCADOS": 2,
+        "VOTOS_VALIDOS": 160
+      },
+      {
+        "BLOQUE": "BLOQUE N.░ 2 û DELEGADOS ASOJUNTAS",
+        "TOTAL_VOTOS": 162,
+        "PLANCHA_1": 58,
+        "PLANCHA_2": 62,
+        "PLANCHA_3": 30,
+        "VOTOS_BLANCOS": 8,
+        "VOTOS_NULOS": 2,
+        "VOTOS_NO_MARCADOS": 2,
+        "VOTOS_VALIDOS": 158
+      },
+      {
+        "BLOQUE": "BLOQUE N.░ 3 û FISCAL",
+        "TOTAL_VOTOS": 170,
+        "PLANCHA_1": 85,
+        "PLANCHA_2": 45,
+        "PLANCHA_3": 30,
+        "VOTOS_BLANCOS": 5,
+        "VOTOS_NULOS": 3,
+        "VOTOS_NO_MARCADOS": 2,
+        "VOTOS_VALIDOS": 165
+      },
+      {
+        "BLOQUE": "BLOQUE N.░ 4 û COMISIËN DE CONVIVENCIA Y CONCILIACIËN",
+        "TOTAL_VOTOS": 168,
+        "PLANCHA_1": 50,
+        "PLANCHA_2": 55,
+        "PLANCHA_3": 52,
+        "VOTOS_BLANCOS": 6,
+        "VOTOS_NULOS": 2,
+        "VOTOS_NO_MARCADOS": 3,
+        "VOTOS_VALIDOS": 163
+      }
+    ]
+  },
+  "normalized_data": {
+    "block_results": [
+      {
+        "votes": 75,
+        "status": "pending",
+        "notes": "OCR campo PLANCHA_1",
+        "block_name": "DIRECTIVA",
+        "slate_code": "1",
+        "slate_name": "PLANCHA 1"
+      },
+      {
+        "votes": 50,
+        "status": "pending",
+        "notes": "OCR campo PLANCHA_2",
+        "block_name": "DIRECTIVA",
+        "slate_code": "2",
+        "slate_name": "PLANCHA 2"
+      },
+      {
+        "votes": 25,
+        "status": "pending",
+        "notes": "OCR campo PLANCHA_3",
+        "block_name": "DIRECTIVA",
+        "slate_code": "3",
+        "slate_name": "PLANCHA 3"
+      },
+      {
+        "votes": 58,
+        "status": "pending",
+        "notes": "OCR campo PLANCHA_1",
+        "block_name": "DELEGADOS ASOJUNTAS",
+        "slate_code": "1",
+        "slate_name": "PLANCHA 1"
+      },
+      {
+        "votes": 62,
+        "status": "pending",
+        "notes": "OCR campo PLANCHA_2",
+        "block_name": "DELEGADOS ASOJUNTAS",
+        "slate_code": "2",
+        "slate_name": "PLANCHA 2"
+      },
+      {
+        "votes": 30,
+        "status": "pending",
+        "notes": "OCR campo PLANCHA_3",
+        "block_name": "DELEGADOS ASOJUNTAS",
+        "slate_code": "3",
+        "slate_name": "PLANCHA 3"
+      },
+      {
+        "votes": 85,
+        "status": "pending",
+        "notes": "OCR campo PLANCHA_1",
+        "block_name": "FISCAL",
+        "slate_code": "1",
+        "slate_name": "PLANCHA 1"
+      },
+      {
+        "votes": 45,
+        "status": "pending",
+        "notes": "OCR campo PLANCHA_2",
+        "block_name": "FISCAL",
+        "slate_code": "2",
+        "slate_name": "PLANCHA 2"
+      },
+      {
+        "votes": 30,
+        "status": "pending",
+        "notes": "OCR campo PLANCHA_3",
+        "block_name": "FISCAL",
+        "slate_code": "3",
+        "slate_name": "PLANCHA 3"
+      },
+      {
+        "votes": 50,
+        "status": "pending",
+        "notes": "OCR campo PLANCHA_1",
+        "block_name": "COMISIËN DE CONVIVENCIA Y CONCILIACIËN",
+        "slate_code": "1",
+        "slate_name": "PLANCHA 1"
+      },
+      {
+        "votes": 55,
+        "status": "pending",
+        "notes": "OCR campo PLANCHA_2",
+        "block_name": "COMISIËN DE CONVIVENCIA Y CONCILIACIËN",
+        "slate_code": "2",
+        "slate_name": "PLANCHA 2"
+      },
+      {
+        "votes": 52,
+        "status": "pending",
+        "notes": "OCR campo PLANCHA_3",
+        "block_name": "COMISIËN DE CONVIVENCIA Y CONCILIACIËN",
+        "slate_code": "3",
+        "slate_name": "PLANCHA 3"
+      }
+    ],
+    "block_votes": [
+      {
+        "block_name": "DIRECTIVA",
+        "total_votes": 165,
+        "plancha_1": 75,
+        "plancha_2": 50,
+        "plancha_3": 25,
+        "blancos": 10,
+        "nulos": 3,
+        "no_marcados": 2,
+        "validos": 160
+      },
+      {
+        "block_name": "DELEGADOS ASOJUNTAS",
+        "total_votes": 162,
+        "plancha_1": 58,
+        "plancha_2": 62,
+        "plancha_3": 30,
+        "blancos": 8,
+        "nulos": 2,
+        "no_marcados": 2,
+        "validos": 158
+      },
+      {
+        "block_name": "FISCAL",
+        "total_votes": 170,
+        "plancha_1": 85,
+        "plancha_2": 45,
+        "plancha_3": 30,
+        "blancos": 5,
+        "nulos": 3,
+        "no_marcados": 2,
+        "validos": 165
+      },
+      {
+        "block_name": "COMISIËN DE CONVIVENCIA Y CONCILIACIËN",
+        "total_votes": 168,
+        "plancha_1": 50,
+        "plancha_2": 55,
+        "plancha_3": 52,
+        "blancos": 6,
+        "nulos": 2,
+        "no_marcados": 3,
+        "validos": 163
+      }
+    ],
+    "elected_people": []
+  },
+  "normalized_payload": {
+    "block_results": [
+      {
+        "votes": 75,
+        "status": "pending",
+        "notes": "OCR campo PLANCHA_1",
+        "block_name": "DIRECTIVA",
+        "slate_code": "1",
+        "slate_name": "PLANCHA 1"
+      },
+      {
+        "votes": 50,
+        "status": "pending",
+        "notes": "OCR campo PLANCHA_2",
+        "block_name": "DIRECTIVA",
+        "slate_code": "2",
+        "slate_name": "PLANCHA 2"
+      },
+      {
+        "votes": 25,
+        "status": "pending",
+        "notes": "OCR campo PLANCHA_3",
+        "block_name": "DIRECTIVA",
+        "slate_code": "3",
+        "slate_name": "PLANCHA 3"
+      },
+      {
+        "votes": 58,
+        "status": "pending",
+        "notes": "OCR campo PLANCHA_1",
+        "block_name": "DELEGADOS ASOJUNTAS",
+        "slate_code": "1",
+        "slate_name": "PLANCHA 1"
+      },
+      {
+        "votes": 62,
+        "status": "pending",
+        "notes": "OCR campo PLANCHA_2",
+        "block_name": "DELEGADOS ASOJUNTAS",
+        "slate_code": "2",
+        "slate_name": "PLANCHA 2"
+      },
+      {
+        "votes": 30,
+        "status": "pending",
+        "notes": "OCR campo PLANCHA_3",
+        "block_name": "DELEGADOS ASOJUNTAS",
+        "slate_code": "3",
+        "slate_name": "PLANCHA 3"
+      },
+      {
+        "votes": 85,
+        "status": "pending",
+        "notes": "OCR campo PLANCHA_1",
+        "block_name": "FISCAL",
+        "slate_code": "1",
+        "slate_name": "PLANCHA 1"
+      },
+      {
+        "votes": 45,
+        "status": "pending",
+        "notes": "OCR campo PLANCHA_2",
+        "block_name": "FISCAL",
+        "slate_code": "2",
+        "slate_name": "PLANCHA 2"
+      },
+      {
+        "votes": 30,
+        "status": "pending",
+        "notes": "OCR campo PLANCHA_3",
+        "block_name": "FISCAL",
+        "slate_code": "3",
+        "slate_name": "PLANCHA 3"
+      },
+      {
+        "votes": 50,
+        "status": "pending",
+        "notes": "OCR campo PLANCHA_1",
+        "block_name": "COMISIËN DE CONVIVENCIA Y CONCILIACIËN",
+        "slate_code": "1",
+        "slate_name": "PLANCHA 1"
+      },
+      {
+        "votes": 55,
+        "status": "pending",
+        "notes": "OCR campo PLANCHA_2",
+        "block_name": "COMISIËN DE CONVIVENCIA Y CONCILIACIËN",
+        "slate_code": "2",
+        "slate_name": "PLANCHA 2"
+      },
+      {
+        "votes": 52,
+        "status": "pending",
+        "notes": "OCR campo PLANCHA_3",
+        "block_name": "COMISIËN DE CONVIVENCIA Y CONCILIACIËN",
+        "slate_code": "3",
+        "slate_name": "PLANCHA 3"
+      }
+    ],
+    "block_votes": [
+      {
+        "block_name": "DIRECTIVA",
+        "total_votes": 165,
+        "plancha_1": 75,
+        "plancha_2": 50,
+        "plancha_3": 25,
+        "blancos": 10,
+        "nulos": 3,
+        "no_marcados": 2,
+        "validos": 160
+      },
+      {
+        "block_name": "DELEGADOS ASOJUNTAS",
+        "total_votes": 162,
+        "plancha_1": 58,
+        "plancha_2": 62,
+        "plancha_3": 30,
+        "blancos": 8,
+        "nulos": 2,
+        "no_marcados": 2,
+        "validos": 158
+      },
+      {
+        "block_name": "FISCAL",
+        "total_votes": 170,
+        "plancha_1": 85,
+        "plancha_2": 45,
+        "plancha_3": 30,
+        "blancos": 5,
+        "nulos": 3,
+        "no_marcados": 2,
+        "validos": 165
+      },
+      {
+        "block_name": "COMISIËN DE CONVIVENCIA Y CONCILIACIËN",
+        "total_votes": 168,
+        "plancha_1": 50,
+        "plancha_2": 55,
+        "plancha_3": 52,
+        "blancos": 6,
+        "nulos": 2,
+        "no_marcados": 3,
+        "validos": 163
+      }
+    ],
+    "elected_people": []
+  }
+}
