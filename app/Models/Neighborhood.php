@@ -22,6 +22,13 @@ class Neighborhood extends Model
         'source_name',
         'is_verified',
         'notes',
+        'latitude',
+        'longitude',
+    ];
+
+    protected $casts = [
+        'latitude' => 'float',
+        'longitude' => 'float',
     ];
 
     /**

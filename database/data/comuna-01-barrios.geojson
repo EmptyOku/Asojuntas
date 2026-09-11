@@ -1,0 +1,15 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    { "type": "Feature", "properties": { "commune_code": "COM-01", "code": "COM01-BLANCO",       "name": "Blanco" },       "geometry": { "type": "Point", "coordinates": [-74.798582, 4.305553] } },
+    { "type": "Feature", "properties": { "commune_code": "COM-01", "code": "COM01-CENTRO",       "name": "Centro" },       "geometry": { "type": "Point", "coordinates": [-74.805996, 4.304379] } },
+    { "type": "Feature", "properties": { "commune_code": "COM-01", "code": "COM01-GRANADA",      "name": "Granada" },      "geometry": { "type": "Point", "coordinates": [-74.802700, 4.297266] } },
+    { "type": "Feature", "properties": { "commune_code": "COM-01", "code": "COM01-LA-MAGDALENA", "name": "La Magdalena" }, "geometry": { "type": "Point", "coordinates": [-74.799841, 4.304823] } },
+    { "type": "Feature", "properties": { "commune_code": "COM-01", "code": "COM01-LAS-ACACIAS",  "name": "Las Acacias" },  "geometry": { "type": "Point", "coordinates": [-74.801472, 4.297966] } },
+    { "type": "Feature", "properties": { "commune_code": "COM-01", "code": "COM01-MIRAFLORES",   "name": "Miraflores" },   "geometry": { "type": "Point", "coordinates": [-74.804179, 4.306212] } },
+    { "type": "Feature", "properties": { "commune_code": "COM-01", "code": "COM01-SAN-ANTONIO",  "name": "San Antonio" },  "geometry": { "type": "Point", "coordinates": [-74.799954, 4.299625] } },
+    { "type": "Feature", "properties": { "commune_code": "COM-01", "code": "COM01-SAN-MIGUEL",   "name": "San Miguel" },   "geometry": { "type": "Point", "coordinates": [-74.807547, 4.292478] } },
+    { "type": "Feature", "properties": { "commune_code": "COM-01", "code": "COM01-SANTANDER",    "name": "Santander" },    "geometry": { "type": "Point", "coordinates": [-74.801977, 4.301185] } },
+    { "type": "Feature", "properties": { "commune_code": "COM-01", "code": "COM01-SUCRE",        "name": "Sucre" },        "geometry": { "type": "Point", "coordinates": [-74.805294, 4.300203] } }
+  ]
+}

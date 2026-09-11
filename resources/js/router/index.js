@@ -76,6 +76,7 @@ const routes = [
       { path: 'audit', name: 'admin-audit', component: () => import('@/views/admin/AuditView.vue') },
       { path: 'audit-logs', name: 'admin-audit-logs', component: () => import('@/views/admin/AuditLogsView.vue'), meta: { permission: 'audit.view' } },
       { path: 'geography', name: 'admin-geography', component: () => import('@/views/admin/GeographyView.vue') },
+      { path: 'map', name: 'admin-map', component: () => import('@/views/admin/ElectoralMapView.vue') },
       { path: 'audit/:id', name: 'admin-audit-detail', component: () => import('@/views/admin/VoteValidationView.vue') },
       { path: 'roles', name: 'admin-roles', component: () => import('@/views/security-config/RolesPermissionsView.vue') },
       { path: 'candidates', name: 'admin.candidates', component: CandidatesDirectoryView },

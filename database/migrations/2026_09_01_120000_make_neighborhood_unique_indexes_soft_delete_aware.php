@@ -66,7 +66,17 @@ return new class extends Migration
     {
         $driver = DB::connection()->getDriverName();
 
-        if (in_array($driver, ['pgsql', 'sqlite'], true)) {
+        if ($driver === 'pgsql') {
+            // `unique()` genera un UNIQUE CONSTRAINT en PostgreSQL, y su indice no se
+            // puede borrar directamente: hay que soltar primero la constraint. El
+            // DROP INDEX posterior cubre el caso del indice parcial ya creado.
+            DB::statement('ALTER TABLE neighborhoods DROP CONSTRAINT IF EXISTS '.$name);
+            DB::statement('DROP INDEX IF EXISTS '.$name);
+
+            return;
+        }
+
+        if ($driver === 'sqlite') {
             DB::statement('DROP INDEX IF EXISTS '.$name);
 
             return;

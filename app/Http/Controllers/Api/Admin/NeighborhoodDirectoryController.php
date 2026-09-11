@@ -832,6 +832,72 @@ class NeighborhoodDirectoryController extends Controller
         ]);
     }
 
+    /**
+     * Devuelve las comunas como FeatureCollection GeoJSON para pintarlas
+     * e interactuar con ellas en el mapa electoral.
+     */
+    public function communesGeo(): JsonResponse
+    {
+        $features = Commune::query()
+            ->whereNotNull('boundary')
+            ->withCount('neighborhoods')
+            ->orderBy('name')
+            ->get()
+            ->map(fn (Commune $commune) => [
+                'type' => 'Feature',
+                'properties' => [
+                    'id' => $commune->id,
+                    'name' => $commune->name,
+                    'code' => $commune->code,
+                    'neighborhoods_count' => $commune->neighborhoods_count,
+                ],
+                'geometry' => $commune->boundary,
+            ])
+            ->values()
+            ->all();
+
+        return response()->json([
+            'type' => 'FeatureCollection',
+            'features' => $features,
+        ]);
+    }
+
+    /**
+     * Devuelve un punto por cada barrio / JAC que ya tiene coordenadas,
+     * como FeatureCollection GeoJSON, agrupable por comuna en el mapa.
+     */
+    public function neighborhoodsGeo(): JsonResponse
+    {
+        $features = Neighborhood::query()
+            ->whereNotNull('latitude')
+            ->whereNotNull('longitude')
+            ->with('commune:id,name,code')
+            ->orderBy('name')
+            ->get()
+            ->map(fn (Neighborhood $barrio) => [
+                'type' => 'Feature',
+                'properties' => [
+                    'id' => $barrio->id,
+                    'name' => $barrio->name,
+                    'code' => $barrio->code,
+                    'commune_id' => $barrio->commune_id,
+                    'commune_name' => $barrio->commune?->name,
+                    'commune_code' => $barrio->commune?->code,
+                ],
+                'geometry' => [
+                    'type' => 'Point',
+                    'coordinates' => [(float) $barrio->longitude, (float) $barrio->latitude],
+                ],
+            ])
+            ->values()
+            ->all();
+
+        return response()->json([
+            'type' => 'FeatureCollection',
+            'features' => $features,
+        ]);
+    }
+
     public function listForForms(Request $request): JsonResponse
     {
         $query = Neighborhood::query()
