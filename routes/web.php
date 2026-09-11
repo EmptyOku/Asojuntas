@@ -189,6 +189,18 @@ Route::prefix('api')->name('api.')->group(function (): void {
                 ->middleware('api.permission:users.create')
                 ->name('admin.users.store');
 
+            Route::put('/users/{user}', [UserManagementController::class, 'update'])
+                ->middleware('api.permission:users.update')
+                ->name('admin.users.update');
+
+            Route::post('/users/{user}/reset-password', [UserManagementController::class, 'resetPassword'])
+                ->middleware('api.permission:users.update')
+                ->name('admin.users.reset-password');
+
+            Route::patch('/users/{user}/toggle-active', [UserManagementController::class, 'toggleActive'])
+                ->middleware('api.permission:users.update')
+                ->name('admin.users.toggle-active');
+
             Route::put('/users/{user}/roles', [UserManagementController::class, 'syncRoles'])
                 ->middleware('api.permission:roles.assign')
                 ->name('admin.users.roles.sync');

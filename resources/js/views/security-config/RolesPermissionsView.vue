@@ -272,21 +272,267 @@
                 </div>
               </td>
               <td class="px-3 py-2.5">
-                <button type="button" class="text-xs px-3 py-1.5 rounded-md bg-gray-900 text-white hover:bg-black" @click="openRoleEditor(user)">Editar Roles</button>
-                <button type="button" class="text-xs px-3 py-1.5 rounded-md border border-gray-200 text-gray-700 hover:bg-gray-50 ml-2" @click="openNeighborhoodEditor(user)">Asignar Barrio</button>
+                <div class="flex flex-wrap gap-2">
+                  <button type="button" class="text-xs px-3 py-1.5 rounded-md bg-gray-900 text-white hover:bg-black" @click="openRoleEditor(user)">Editar Roles</button>
+                  <button type="button" class="text-xs px-3 py-1.5 rounded-md border border-gray-200 text-gray-700 hover:bg-gray-50" @click="openUserEditor(user)">Editar Usuario</button>
+                  <button type="button" class="text-xs px-3 py-1.5 rounded-md border border-amber-200 text-amber-700 hover:bg-amber-50" @click="openPasswordReset(user)">Restablecer Contraseña</button>
+                  <button
+                    type="button"
+                    class="text-xs px-3 py-1.5 rounded-md border"
+                    :class="user.is_active ? 'border-red-200 text-red-700 hover:bg-red-50' : 'border-emerald-200 text-emerald-700 hover:bg-emerald-50'"
+                    @click="toggleUserStatus(user)"
+                  >
+                    {{ user.is_active ? 'Deshabilitar' : 'Habilitar' }}
+                  </button>
+                </div>
               </td>
             </tr>
           </tbody>
         </table>
       </div>
     </section>
+
+    <Teleport to="body">
+      <div v-if="editingUser" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/50 backdrop-blur-sm">
+        <div class="w-full max-w-md rounded-2xl bg-white shadow-2xl border border-gray-100 overflow-hidden">
+          <div class="px-6 py-5 border-b border-gray-100 flex items-start justify-between gap-4">
+            <div>
+              <p class="text-xs font-bold uppercase tracking-[0.2em] text-gray-400">Editar Roles</p>
+              <h2 class="mt-1 text-lg font-bold text-gray-900">{{ editingUser.username }}</h2>
+            </div>
+            <button type="button" class="text-gray-400 hover:text-gray-700" @click="closeRoleEditor">
+              <X class="w-5 h-5" />
+            </button>
+          </div>
+
+          <div v-if="modalError" class="mx-6 mt-4 rounded-lg bg-red-50 border border-red-200 text-red-700 px-3 py-2 text-xs">{{ modalError }}</div>
+
+          <div class="px-6 py-5 space-y-2 max-h-72 overflow-y-auto">
+            <label
+              v-for="role in roles"
+              :key="role.id"
+              class="flex items-center gap-2 rounded-lg border border-gray-100 px-3 py-2 text-sm cursor-pointer hover:bg-gray-50"
+            >
+              <input type="radio" :value="role.id" v-model="editingRole" class="border-gray-300 text-aso-primary focus:ring-aso-primary" />
+              <span>{{ role.display_name }} <span class="text-xs text-gray-400">({{ role.name }})</span></span>
+            </label>
+          </div>
+
+          <div class="px-6 py-4 bg-gray-50 flex items-center justify-end gap-3">
+            <button type="button" class="px-4 py-2 rounded-xl border border-gray-200 text-sm font-semibold text-gray-700 hover:bg-white transition-colors" @click="closeRoleEditor">
+              Cancelar
+            </button>
+            <button
+              type="button"
+              class="px-4 py-2 rounded-xl text-sm font-semibold text-white bg-aso-primary hover:bg-aso-primary-dark transition-colors disabled:opacity-60"
+              :disabled="loading || !editingRole"
+              @click="saveRoles"
+            >
+              Guardar
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="editingUserData" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/50 backdrop-blur-sm">
+        <div class="w-full max-w-lg rounded-2xl bg-white shadow-2xl border border-gray-100 overflow-hidden">
+          <div class="px-6 py-5 border-b border-gray-100 flex items-start justify-between gap-4">
+            <div>
+              <p class="text-xs font-bold uppercase tracking-[0.2em] text-gray-400">Editar Usuario</p>
+              <h2 class="mt-1 text-lg font-bold text-gray-900">{{ editingUserData.username }}</h2>
+            </div>
+            <button type="button" class="text-gray-400 hover:text-gray-700" @click="closeUserEditor">
+              <X class="w-5 h-5" />
+            </button>
+          </div>
+
+          <div v-if="modalError" class="mx-6 mt-4 rounded-lg bg-red-50 border border-red-200 text-red-700 px-3 py-2 text-xs">{{ modalError }}</div>
+
+          <div class="px-6 py-5 space-y-4 max-h-[70vh] overflow-y-auto">
+            <div>
+              <p class="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">Datos de la persona</p>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-sm text-gray-700 mb-1">Tipo de Doc.</label>
+                  <select v-model="editingUserForm.document_type_id" required class="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm">
+                    <option value="" disabled>Seleccione...</option>
+                    <option value="1">Cédula de Ciudadanía (CC)</option>
+                    <option value="2">Tarjeta de Identidad (TI)</option>
+                    <option value="3">Cédula de Extranjería (CE)</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-sm text-gray-700 mb-1">Número de Doc.</label>
+                  <input v-model="editingUserForm.document_number" required type="text" class="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm" />
+                </div>
+                <div>
+                  <label class="block text-sm text-gray-700 mb-1">Primer Nombre</label>
+                  <input v-model="editingUserForm.first_name" required type="text" class="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm" />
+                </div>
+                <div>
+                  <label class="block text-sm text-gray-700 mb-1">Segundo Nombre</label>
+                  <input v-model="editingUserForm.middle_name" type="text" class="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm" placeholder="Opcional" />
+                </div>
+                <div>
+                  <label class="block text-sm text-gray-700 mb-1">Primer Apellido</label>
+                  <input v-model="editingUserForm.last_name" required type="text" class="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm" />
+                </div>
+                <div>
+                  <label class="block text-sm text-gray-700 mb-1">Segundo Apellido</label>
+                  <input v-model="editingUserForm.second_last_name" type="text" class="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm" placeholder="Opcional" />
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <p class="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">Ubicación</p>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-sm text-gray-700 mb-1">Comuna</label>
+                  <select v-model="editorSelectedCommune" @change="handleEditorCommuneChange" class="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm">
+                    <option value="">Seleccione una comuna...</option>
+                    <option v-for="item in communes" :key="item.id" :value="String(item.id)">
+                      {{ item.name }}
+                    </option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-sm text-gray-700 mb-1">Barrio</label>
+                  <div class="relative">
+                    <select
+                      v-model="editingUserForm.neighborhood_id"
+                      :disabled="!editorSelectedCommune || loadingEditorNeighborhoods"
+                      class="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm disabled:opacity-60"
+                    >
+                      <option value="">{{ editorSelectedCommune ? 'Sin asignar' : 'Primero seleccione una comuna...' }}</option>
+                      <option v-for="item in editorNeighborhoods" :key="item.id" :value="String(item.id)">
+                        {{ item.name }}
+                      </option>
+                    </select>
+                    <Loader2 v-if="loadingEditorNeighborhoods" class="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-aso-primary animate-spin" />
+                  </div>
+                  <p v-if="loadingEditorNeighborhoods" class="text-xs text-gray-400 mt-1">Cargando barrios...</p>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <p class="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">Cuenta</p>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-sm text-gray-700 mb-1">Usuario</label>
+                  <input v-model="editingUserForm.username" required type="text" class="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm" />
+                </div>
+                <div>
+                  <label class="block text-sm text-gray-700 mb-1">Correo</label>
+                  <input v-model="editingUserForm.email" required type="email" class="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="px-6 py-4 bg-gray-50 flex items-center justify-end gap-3">
+            <button type="button" class="px-4 py-2 rounded-xl border border-gray-200 text-sm font-semibold text-gray-700 hover:bg-white transition-colors" @click="closeUserEditor">
+              Cancelar
+            </button>
+            <button
+              type="button"
+              class="px-4 py-2 rounded-xl text-sm font-semibold text-white bg-aso-primary hover:bg-aso-primary-dark transition-colors disabled:opacity-60"
+              :disabled="loading || !editingUserForm.document_type_id || !editingUserForm.document_number || !editingUserForm.first_name || !editingUserForm.last_name || !editingUserForm.username || !editingUserForm.email"
+              @click="saveUserData"
+            >
+              Guardar
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="resettingUser" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/50 backdrop-blur-sm">
+        <div class="w-full max-w-md rounded-2xl bg-white shadow-2xl border border-gray-100 overflow-hidden">
+          <div class="px-6 py-5 border-b border-gray-100 flex items-start justify-between gap-4">
+            <div>
+              <p class="text-xs font-bold uppercase tracking-[0.2em] text-gray-400">Restablecer Contraseña</p>
+              <h2 class="mt-1 text-lg font-bold text-gray-900">{{ resettingUser.username }}</h2>
+            </div>
+            <button type="button" class="text-gray-400 hover:text-gray-700" @click="closePasswordReset">
+              <X class="w-5 h-5" />
+            </button>
+          </div>
+
+          <div v-if="modalError" class="mx-6 mt-4 rounded-lg bg-red-50 border border-red-200 text-red-700 px-3 py-2 text-xs">{{ modalError }}</div>
+
+          <div class="px-6 py-5 space-y-4">
+            <div>
+              <label class="block text-sm text-gray-700 mb-1">Nueva contraseña</label>
+              <div class="relative">
+                <input
+                  v-model="passwordForm.password"
+                  required
+                  :type="showPassword ? 'text' : 'password'"
+                  class="w-full px-3 py-2 pr-10 rounded-lg border border-gray-200 bg-white text-sm"
+                  :class="passwordTooShort ? 'border-red-300' : ''"
+                />
+                <button
+                  type="button"
+                  class="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100"
+                  @click="showPassword = !showPassword"
+                  tabindex="-1"
+                >
+                  <EyeOff v-if="showPassword" class="w-4 h-4" />
+                  <Eye v-else class="w-4 h-4" />
+                </button>
+              </div>
+              <p v-if="passwordTooShort" class="text-xs text-red-600 mt-1">La contraseña debe tener al menos 8 caracteres.</p>
+              <p v-else-if="passwordForm.password.length >= 8" class="text-xs text-emerald-600 mt-1">Longitud válida.</p>
+            </div>
+            <div>
+              <label class="block text-sm text-gray-700 mb-1">Confirmar contraseña</label>
+              <div class="relative">
+                <input
+                  v-model="passwordForm.password_confirmation"
+                  required
+                  :type="showPasswordConfirm ? 'text' : 'password'"
+                  class="w-full px-3 py-2 pr-10 rounded-lg border border-gray-200 bg-white text-sm"
+                  :class="passwordMismatch ? 'border-red-300' : ''"
+                />
+                <button
+                  type="button"
+                  class="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100"
+                  @click="showPasswordConfirm = !showPasswordConfirm"
+                  tabindex="-1"
+                >
+                  <EyeOff v-if="showPasswordConfirm" class="w-4 h-4" />
+                  <Eye v-else class="w-4 h-4" />
+                </button>
+              </div>
+              <p v-if="passwordMismatch" class="text-xs text-red-600 mt-1">Las contraseñas no coinciden.</p>
+              <p v-else-if="passwordForm.password_confirmation.length > 0" class="text-xs text-emerald-600 mt-1">Las contraseñas coinciden.</p>
+            </div>
+          </div>
+
+          <div class="px-6 py-4 bg-gray-50 flex items-center justify-end gap-3">
+            <button type="button" class="px-4 py-2 rounded-xl border border-gray-200 text-sm font-semibold text-gray-700 hover:bg-white transition-colors" @click="closePasswordReset">
+              Cancelar
+            </button>
+            <button
+              type="button"
+              class="px-4 py-2 rounded-xl text-sm font-semibold text-white bg-amber-600 hover:bg-amber-700 transition-colors disabled:opacity-60"
+              :disabled="loading || passwordForm.password.length < 8 || passwordForm.password !== passwordForm.password_confirmation"
+              @click="saveNewPassword"
+            >
+              Restablecer
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import axios from '@/services/axios';
-import { Search, Loader2, X } from 'lucide-vue-next';
+import { Search, Loader2, X, Eye, EyeOff } from 'lucide-vue-next';
 
 const loading = ref(false);
 const loadingNeighborhoods = ref(false);
@@ -320,10 +566,30 @@ const createForm = ref({
   roles: [],
 });
 
+const modalError = ref('');
 const editingUser = ref(null);
-const editingRoles = ref([]);
-const editingNeighborhoodUser = ref(null);
-const editingNeighborhoodId = ref('');
+const editingRole = ref(null);
+const editorSelectedCommune = ref('');
+const editorNeighborhoods = ref([]);
+const loadingEditorNeighborhoods = ref(false);
+const editingUserData = ref(null);
+const editingUserForm = ref({
+  document_type_id: '',
+  document_number: '',
+  first_name: '',
+  middle_name: '',
+  last_name: '',
+  second_last_name: '',
+  neighborhood_id: '',
+  username: '',
+  email: '',
+});
+const resettingUser = ref(null);
+const passwordForm = ref({ password: '', password_confirmation: '' });
+const showPassword = ref(false);
+const showPasswordConfirm = ref(false);
+const passwordTooShort = computed(() => passwordForm.value.password.length > 0 && passwordForm.value.password.length < 8);
+const passwordMismatch = computed(() => passwordForm.value.password_confirmation.length > 0 && passwordForm.value.password !== passwordForm.value.password_confirmation);
 
 // --- LÓGICA DE FILTRADO ---
 const filteredUsers = computed(() => {
@@ -442,7 +708,6 @@ const suggestedTableForUser = (user) => {
   return getSuggestedTableByNeighborhood(neighborhoodId);
 };
 
-const editingSuggestedTable = computed(() => getSuggestedTableByNeighborhood(editingNeighborhoodId.value));
 
 // --- ACCIONES DE PERSONA ---
 const submitPerson = async () => {
@@ -532,44 +797,171 @@ const clearPersonSelection = () => {
 
 // --- MODALES Y EDITORES ---
 const openRoleEditor = (user) => {
+  modalError.value = '';
   editingUser.value = user;
-  editingRoles.value = (user.roles || []).map((r) => r.id);
+  editingRole.value = user.roles?.[0]?.id ?? null;
 };
 
-const closeRoleEditor = () => { editingUser.value = null; editingRoles.value = []; };
+const closeRoleEditor = () => { editingUser.value = null; editingRole.value = null; modalError.value = ''; };
 
-const openNeighborhoodEditor = (user) => {
-  editingNeighborhoodUser.value = user;
-  editingNeighborhoodId.value = user?.person?.neighborhood_id ? String(user.person.neighborhood_id) : '';
+const loadEditorNeighborhoods = async (communeId) => {
+  if (!communeId) {
+    editorNeighborhoods.value = [];
+    return;
+  }
+
+  loadingEditorNeighborhoods.value = true;
+  try {
+    const { data } = await axios.get('/admin/neighborhoods/list-for-forms', {
+      params: { commune_id: communeId },
+      skipGlobalLoading: true,
+    });
+    editorNeighborhoods.value = data.data ?? [];
+  } catch (error) {
+    console.error('Error loading neighborhoods for editor:', error);
+  } finally {
+    loadingEditorNeighborhoods.value = false;
+  }
 };
 
-const closeNeighborhoodEditor = () => { editingNeighborhoodUser.value = null; editingNeighborhoodId.value = ''; };
+const handleEditorCommuneChange = () => {
+  editingUserForm.value.neighborhood_id = '';
+  loadEditorNeighborhoods(editorSelectedCommune.value);
+};
 
 const saveRoles = async () => {
-  if (!editingUser.value) return;
+  if (!editingUser.value || !editingRole.value) return;
   loading.value = true;
+  modalError.value = '';
   try {
-    await axios.put(`/admin/users/${editingUser.value.id}/roles`, { roles: editingRoles.value });
+    await axios.put(`/admin/users/${editingUser.value.id}/roles`, { roles: [editingRole.value] });
     await loadUsers();
-    closeRoleEditor();
   } catch (error) {
-    errorMessage.value = 'Error al actualizar roles.';
+    modalError.value = error?.response?.data?.message || 'Error al actualizar roles.';
+    return;
+  } finally {
+    loading.value = false;
+  }
+  closeRoleEditor();
+};
+
+const emptyUserForm = () => ({
+  document_type_id: '',
+  document_number: '',
+  first_name: '',
+  middle_name: '',
+  last_name: '',
+  second_last_name: '',
+  neighborhood_id: '',
+  username: '',
+  email: '',
+});
+
+const openUserEditor = async (user) => {
+  modalError.value = '';
+  editingUserData.value = user;
+  const person = user.person ?? null;
+  const currentNeighborhood = person?.neighborhood ?? null;
+
+  editingUserForm.value = {
+    document_type_id: person?.document_type_id ? String(person.document_type_id) : '',
+    document_number: person?.document_number ?? '',
+    first_name: person?.first_name ?? '',
+    middle_name: person?.middle_name ?? '',
+    last_name: person?.last_name ?? '',
+    second_last_name: person?.second_last_name ?? '',
+    neighborhood_id: currentNeighborhood?.id ? String(currentNeighborhood.id) : '',
+    username: user.username,
+    email: user.email,
+  };
+
+  editorSelectedCommune.value = currentNeighborhood?.commune_id ? String(currentNeighborhood.commune_id) : '';
+  await loadEditorNeighborhoods(editorSelectedCommune.value);
+
+  // Garantiza que el barrio actual del usuario aparezca en el select aunque
+  // no esté entre los primeros resultados devueltos por el backend.
+  if (currentNeighborhood && !editorNeighborhoods.value.some((item) => Number(item.id) === Number(currentNeighborhood.id))) {
+    editorNeighborhoods.value = [{ id: currentNeighborhood.id, name: currentNeighborhood.name }, ...editorNeighborhoods.value];
+  }
+};
+
+const closeUserEditor = () => {
+  editingUserData.value = null;
+  editingUserForm.value = emptyUserForm();
+  editorSelectedCommune.value = '';
+  editorNeighborhoods.value = [];
+  modalError.value = '';
+};
+
+const saveUserData = async () => {
+  if (!editingUserData.value) return;
+  loading.value = true;
+  modalError.value = '';
+  try {
+    const form = editingUserForm.value;
+    await axios.put(`/admin/users/${editingUserData.value.id}`, {
+      document_type_id: Number(form.document_type_id),
+      document_number: form.document_number,
+      first_name: form.first_name,
+      middle_name: form.middle_name || null,
+      last_name: form.last_name,
+      second_last_name: form.second_last_name || null,
+      neighborhood_id: form.neighborhood_id ? Number(form.neighborhood_id) : null,
+      username: form.username,
+      email: form.email,
+    });
+    await loadUsers();
+  } catch (error) {
+    modalError.value = error?.response?.data?.message || 'Error al actualizar usuario.';
+    return;
+  } finally {
+    loading.value = false;
+  }
+  closeUserEditor();
+};
+
+const toggleUserStatus = async (user) => {
+  const action = user.is_active ? 'deshabilitar' : 'habilitar';
+  if (!confirm(`¿Seguro que deseas ${action} a "${user.username}"?`)) return;
+
+  loading.value = true;
+  errorMessage.value = '';
+  try {
+    await axios.patch(`/admin/users/${user.id}/toggle-active`);
+    await loadUsers();
+  } catch (error) {
+    errorMessage.value = error?.response?.data?.message || 'Error al cambiar el estado del usuario.';
   } finally {
     loading.value = false;
   }
 };
 
-const saveNeighborhood = async () => {
-  if (!editingNeighborhoodUser.value) return;
+const openPasswordReset = (user) => {
+  modalError.value = '';
+  resettingUser.value = user;
+  passwordForm.value = { password: '', password_confirmation: '' };
+  showPassword.value = false;
+  showPasswordConfirm.value = false;
+};
+
+const closePasswordReset = () => {
+  resettingUser.value = null;
+  passwordForm.value = { password: '', password_confirmation: '' };
+  showPassword.value = false;
+  showPasswordConfirm.value = false;
+  modalError.value = '';
+};
+
+const saveNewPassword = async () => {
+  if (!resettingUser.value) return;
   loading.value = true;
+  modalError.value = '';
   try {
-    await axios.put(`/admin/users/${editingNeighborhoodUser.value.id}/neighborhood`, {
-      neighborhood_id: editingNeighborhoodId.value ? Number(editingNeighborhoodId.value) : null,
-    });
-    await loadUsers();
-    closeNeighborhoodEditor();
+    await axios.post(`/admin/users/${resettingUser.value.id}/reset-password`, passwordForm.value);
+    closePasswordReset();
+    alert('Contraseña restablecida con éxito.');
   } catch (error) {
-    errorMessage.value = 'Error al actualizar barrio.';
+    modalError.value = error?.response?.data?.message || 'Error al restablecer la contraseña.';
   } finally {
     loading.value = false;
   }
