@@ -14,12 +14,13 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\Rule;
 
 class UserManagementController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $query = User::with(['person.neighborhood:id,name,code', 'roles:id,name,display_name']);
+        $query = User::with(['person.neighborhood:id,name,code,commune_id', 'roles:id,name,display_name']);
 
         if ($request->filled('search')) {
             $search = $request->string('search')->toString();
@@ -50,9 +51,12 @@ class UserManagementController extends Controller
                 'created_at' => $user->created_at,
                 'person' => $user->person ? [
                     'id' => $user->person->id,
-                    'first_name' => $user->person->first_name,
-                    'last_name' => $user->person->last_name,
+                    'document_type_id' => $user->person->document_type_id,
                     'document_number' => $user->person->document_number,
+                    'first_name' => $user->person->first_name,
+                    'middle_name' => $user->person->middle_name,
+                    'last_name' => $user->person->last_name,
+                    'second_last_name' => $user->person->second_last_name,
                     'neighborhood' => $user->person->neighborhood,
                 ] : null,
                 'roles' => $user->roles->map(fn($role) => [
@@ -261,6 +265,126 @@ class UserManagementController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Error al crear el usuario: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function update(Request $request, User $user): JsonResponse
+    {
+        $user->loadMissing('person');
+        $person = $user->person;
+
+        $validated = $request->validate([
+            'document_type_id' => 'sometimes|exists:document_types,id',
+            'document_number' => [
+                'sometimes',
+                'string',
+                'max:30',
+                Rule::unique('persons')->where(function ($query) use ($request, $person) {
+                    return $query->where('document_type_id', $request->document_type_id ?? $person?->document_type_id);
+                })->ignore($person?->id),
+            ],
+            'first_name' => 'sometimes|string|max:100',
+            'middle_name' => 'nullable|string|max:100',
+            'last_name' => 'sometimes|string|max:100',
+            'second_last_name' => 'nullable|string|max:100',
+            'neighborhood_id' => [
+                'nullable',
+                'exists:neighborhoods,id',
+                function ($attribute, $value, $fail) use ($user) {
+                    if (empty($value)) {
+                        return;
+                    }
+
+                    $isDigitizer = $user->roles()->where('name', 'digitizer')->exists();
+                    if (! $isDigitizer) {
+                        return;
+                    }
+
+                    $alreadyAssigned = User::where('id', '!=', $user->id)
+                        ->whereHas('person', function ($q) use ($value) {
+                            $q->where('neighborhood_id', $value);
+                        })->exists();
+
+                    if ($alreadyAssigned) {
+                        $fail('Este barrio ya tiene un jurado asignado. Selecciona otro barrio.');
+                    }
+                },
+            ],
+            'username' => 'required|string|max:50|unique:users,username,' . $user->id,
+            'email' => 'required|email|max:150|unique:users,email,' . $user->id,
+        ]);
+
+        try {
+            DB::transaction(function () use ($validated, $user, $person) {
+                $personData = collect($validated)->only([
+                    'document_type_id', 'document_number', 'first_name', 'middle_name',
+                    'last_name', 'second_last_name', 'neighborhood_id',
+                ])->toArray();
+
+                if ($person && ! empty($personData)) {
+                    $person->update($personData);
+                }
+
+                $user->update(collect($validated)->only(['username', 'email'])->toArray());
+            });
+
+            $user->load(['person.neighborhood:id,name,code,commune_id', 'roles:id,name,display_name']);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Usuario actualizado correctamente.',
+                'data' => $user,
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Error updating user', ['user_id' => $user->id, 'error' => $e->getMessage()]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al actualizar el usuario.',
+            ], 500);
+        }
+    }
+
+    public function toggleActive(User $user): JsonResponse
+    {
+        try {
+            $user->update(['is_active' => ! $user->is_active]);
+            $user->load(['person.neighborhood:id,name,code,commune_id', 'roles:id,name,display_name']);
+
+            return response()->json([
+                'success' => true,
+                'message' => $user->is_active ? 'Usuario habilitado correctamente.' : 'Usuario deshabilitado correctamente.',
+                'data' => $user,
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Error toggling user status', ['user_id' => $user->id, 'error' => $e->getMessage()]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al cambiar el estado del usuario.',
+            ], 500);
+        }
+    }
+
+    public function resetPassword(Request $request, User $user): JsonResponse
+    {
+        $validated = $request->validate([
+            'password' => 'required|string|min:8|confirmed',
+        ]);
+
+        try {
+            $user->update([
+                'password' => Hash::make($validated['password']),
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Contraseña restablecida correctamente.',
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Error resetting password', ['user_id' => $user->id, 'error' => $e->getMessage()]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al restablecer la contraseña.',
             ], 500);
         }
     }
