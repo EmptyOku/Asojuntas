@@ -2,6 +2,8 @@
 
 namespace Database\Seeders;
 
+use App\Models\Role;
+use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -101,6 +103,13 @@ class UserSeeder extends Seeder
                 ['user_id', 'role_id'],
                 ['assigned_at', 'assigned_by', 'updated_at']
             );
+        }
+
+        foreach ($seedUsers as $entry) {
+            $seedUser = User::where('email', $entry['email'])->first();
+            if ($seedUser) {
+                $seedUser->syncRoles(Role::whereIn('name', $entry['roles'])->get());
+            }
         }
 
         // El usuario reviewer de semilla queda deshabilitado en este flujo.

@@ -1,6 +1,11 @@
 <template>
   <div class="space-y-6">
-    <section class="bg-white border border-gray-100 rounded-2xl p-5 sm:p-6 shadow-sm">
+    <nav class="flex items-center gap-2 border-b border-gray-200" aria-label="Administración">
+      <button type="button" class="px-4 py-3 text-sm font-semibold border-b-2" :class="activeTab === 'users' ? 'border-aso-primary text-aso-primary' : 'border-transparent text-gray-500'" @click="activeTab = 'users'">Usuarios y Personas</button>
+      <button type="button" class="px-4 py-3 text-sm font-semibold border-b-2" :class="activeTab === 'roles' ? 'border-aso-primary text-aso-primary' : 'border-transparent text-gray-500'" @click="activeTab = 'roles'">Roles y Permisos</button>
+    </nav>
+
+    <section v-show="activeTab === 'users'" class="bg-white border border-gray-100 rounded-2xl p-5 sm:p-6 shadow-sm">
       <div class="flex items-start justify-between gap-3 mb-6">
         <div>
           <h1 class="text-xl sm:text-2xl font-semibold text-gray-900">Módulo para crear personas antes que usuarios.</h1>
@@ -96,7 +101,7 @@
       </div>
     </section>
 
-    <section class="bg-white border border-gray-100 rounded-2xl p-5 sm:p-6 shadow-sm">
+    <section v-show="activeTab === 'users'" class="bg-white border border-gray-100 rounded-2xl p-5 sm:p-6 shadow-sm">
       <div class="flex items-start justify-between gap-3 mb-4">
         <div>
           <h1 class="text-xl sm:text-2xl font-semibold text-gray-900">Usuarios y Roles</h1>
@@ -110,6 +115,7 @@
         >
           Recargar
         </button>
+        <button type="button" class="px-3 py-2 text-sm font-medium rounded-lg bg-gray-900 text-white hover:bg-black" @click="openCompleteUserModal">Nuevo Registro</button>
       </div>
 
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -222,7 +228,7 @@
       </div>
     </section>
 
-    <section class="bg-white border border-gray-100 rounded-2xl p-5 sm:p-6 shadow-sm">
+    <section v-show="activeTab === 'users'" class="bg-white border border-gray-100 rounded-2xl p-5 sm:p-6 shadow-sm">
       <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
         <h2 class="text-base sm:text-lg font-semibold text-gray-900">Listado de Usuarios</h2>
         <input
@@ -291,6 +297,43 @@
         </table>
       </div>
     </section>
+
+    <section v-if="activeTab === 'roles'" class="bg-white border border-gray-100 rounded-2xl p-5 sm:p-6 shadow-sm">
+      <div class="flex items-center justify-between gap-3 mb-5">
+        <div><h1 class="text-xl font-semibold text-gray-900">Catálogo de roles</h1><p class="text-sm text-gray-500">Agrupa permisos por módulo y publícalos en un solo paso.</p></div>
+        <button type="button" class="px-3 py-2 text-sm font-medium rounded-lg bg-gray-900 text-white hover:bg-black" @click="saveRole">Crear rol</button>
+      </div>
+      <div class="grid grid-cols-1 lg:grid-cols-[240px_1fr] gap-5">
+        <div class="space-y-3">
+          <label class="block text-sm text-gray-700">Nombre técnico<input v-model="roleForm.name" class="mt-1 w-full px-3 py-2 rounded-lg border border-gray-200 text-sm" placeholder="records.manager" /></label>
+          <label class="block text-sm text-gray-700">Nombre visible<input v-model="roleForm.display_name" class="mt-1 w-full px-3 py-2 rounded-lg border border-gray-200 text-sm" /></label>
+          <label class="block text-sm text-gray-700">Descripción<textarea v-model="roleForm.description" class="mt-1 w-full px-3 py-2 rounded-lg border border-gray-200 text-sm" rows="3" /></label>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+          <fieldset v-for="(items, module) in permissionsByModule" :key="module" class="rounded-xl border border-gray-200 p-3">
+            <legend class="px-1 text-sm font-semibold text-gray-900 capitalize">{{ module }}</legend>
+            <label v-for="permission in items" :key="permission.id" class="flex items-center gap-2 mt-2 text-sm text-gray-700"><input v-model="roleForm.permissions" type="checkbox" :value="permission.id" />{{ permission.name }}</label>
+          </fieldset>
+        </div>
+      </div>
+    </section>
+
+    <Teleport to="body">
+      <div v-if="completeUserOpen" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/50 backdrop-blur-sm">
+        <form class="w-full max-w-2xl rounded-2xl bg-white shadow-2xl overflow-hidden" @submit.prevent="submitCompleteUser">
+          <div class="px-6 py-5 border-b border-gray-100 flex items-center justify-between"><div><p class="text-xs uppercase tracking-widest text-gray-400">Nuevo Registro</p><h2 class="text-lg font-bold text-gray-900">{{ completeStep === 1 ? 'Datos de la persona' : 'Datos de la cuenta' }}</h2></div><button type="button" class="text-gray-400" @click="completeUserOpen = false"><X class="w-5 h-5" /></button></div>
+          <div v-if="modalError" class="mx-6 mt-4 rounded-lg bg-red-50 border border-red-200 text-red-700 px-3 py-2 text-sm">{{ modalError }}</div>
+          <div v-if="completeStep === 1" class="grid grid-cols-1 sm:grid-cols-2 gap-3 p-6">
+            <input v-model="completeForm.document_type_id" required type="number" min="1" placeholder="Tipo de documento" class="px-3 py-2 rounded-lg border border-gray-200 text-sm" /><input v-model="completeForm.document_number" required placeholder="Número de documento" class="px-3 py-2 rounded-lg border border-gray-200 text-sm" />
+            <input v-model="completeForm.first_name" required placeholder="Primer nombre" class="px-3 py-2 rounded-lg border border-gray-200 text-sm" /><input v-model="completeForm.middle_name" placeholder="Segundo nombre" class="px-3 py-2 rounded-lg border border-gray-200 text-sm" />
+            <input v-model="completeForm.last_name" required placeholder="Primer apellido" class="px-3 py-2 rounded-lg border border-gray-200 text-sm" /><input v-model="completeForm.second_last_name" placeholder="Segundo apellido" class="px-3 py-2 rounded-lg border border-gray-200 text-sm" />
+            <select v-model="completeCommune" class="px-3 py-2 rounded-lg border border-gray-200 text-sm"><option value="">Comuna</option><option v-for="item in communes" :key="item.id" :value="String(item.id)">{{ item.name }}</option></select><select v-model="completeForm.neighborhood_id" :disabled="!completeCommune" class="px-3 py-2 rounded-lg border border-gray-200 text-sm"><option value="">Barrio</option><option v-for="item in completeNeighborhoods" :key="item.id" :value="item.id">{{ item.name }}</option></select>
+          </div>
+          <div v-else class="space-y-4 p-6"><input v-model="completeForm.username" required placeholder="Usuario" class="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm" /><input v-model="completeForm.email" required type="email" placeholder="Correo" class="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm" /><input v-model="completeForm.password" required type="password" minlength="8" placeholder="Contraseña" class="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm" /><input v-model="completeForm.password_confirmation" required type="password" minlength="8" placeholder="Confirmar contraseña" class="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm" /><div class="flex flex-wrap gap-2"><label v-for="role in roles" :key="role.id" class="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 text-sm"><input v-model="completeForm.roles" type="checkbox" :value="role.id" />{{ role.display_name }}</label></div></div>
+          <div class="px-6 py-4 bg-gray-50 flex justify-end gap-3"><button type="button" class="px-4 py-2 rounded-lg border border-gray-200 text-sm" @click="completeStep === 1 ? completeUserOpen = false : completeStep = 1">{{ completeStep === 1 ? 'Cancelar' : 'Atrás' }}</button><button type="submit" class="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm" :disabled="loading">{{ completeStep === 1 ? 'Continuar' : 'Crear cuenta' }}</button></div>
+        </form>
+      </div>
+    </Teleport>
 
     <Teleport to="body">
       <div v-if="editingUser" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/50 backdrop-blur-sm">
@@ -530,11 +573,12 @@
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import axios from '@/services/axios';
 import { Search, Loader2, X, Eye, EyeOff } from 'lucide-vue-next';
 
 const loading = ref(false);
+const activeTab = ref('users');
 const loadingNeighborhoods = ref(false);
 const errorMessage = ref('');
 
@@ -545,6 +589,13 @@ const communes = ref([]);
 const selectedCommune = ref('');
 const assignmentContext = ref([]);
 const neighborhoodsList = ref([]); // 🔥 VARIABLE LIGERA PARA EL SELECT 🔥
+const permissions = ref([]);
+const completeUserOpen = ref(false);
+const completeStep = ref(1);
+const completeCommune = ref('');
+const completeNeighborhoods = ref([]);
+const completeForm = ref({ document_type_id: '', document_number: '', first_name: '', middle_name: '', last_name: '', second_last_name: '', neighborhood_id: '', username: '', email: '', password: '', password_confirmation: '', roles: [] });
+const roleForm = ref({ name: '', display_name: '', description: '', permissions: [] });
 
 const formPerson = ref({
   document_type_id: '',
@@ -590,6 +641,11 @@ const showPassword = ref(false);
 const showPasswordConfirm = ref(false);
 const passwordTooShort = computed(() => passwordForm.value.password.length > 0 && passwordForm.value.password.length < 8);
 const passwordMismatch = computed(() => passwordForm.value.password_confirmation.length > 0 && passwordForm.value.password !== passwordForm.value.password_confirmation);
+const permissionsByModule = computed(() => permissions.value.reduce((groups, permission) => {
+  const module = permission.name.split('.')[0] || 'general';
+  (groups[module] ||= []).push(permission);
+  return groups;
+}, {}));
 
 // --- LÓGICA DE FILTRADO ---
 const filteredUsers = computed(() => {
@@ -605,6 +661,11 @@ const filteredUsers = computed(() => {
 const loadRoles = async () => {
   const { data } = await axios.get('/admin/roles', { skipGlobalLoading: true });
   roles.value = data.data ?? [];
+};
+
+const loadPermissions = async () => {
+  const { data } = await axios.get('/admin/permissions', { skipGlobalLoading: true });
+  permissions.value = data.data ?? [];
 };
 
 const loadUsers = async () => {
@@ -675,6 +736,7 @@ const loadAll = async () => {
         console.error('Error loading roles:', e?.response?.status, e?.message); 
         throw e; 
       }),
+      loadPermissions(),
       loadUsers().catch(e => { 
         console.error('Error loading users:', e?.response?.status, e?.message); 
         throw e; 
@@ -690,6 +752,59 @@ const loadAll = async () => {
   } catch (error) {
     console.error('Full error:', error);
     errorMessage.value = 'No fue posible cargar la información inicial.';
+  } finally {
+    loading.value = false;
+  }
+};
+
+const openCompleteUserModal = () => {
+  completeStep.value = 1;
+  completeUserOpen.value = true;
+  modalError.value = '';
+};
+
+watch(completeCommune, async (communeId) => {
+  completeForm.value.neighborhood_id = '';
+  if (!communeId) {
+    completeNeighborhoods.value = [];
+    return;
+  }
+  try {
+    const { data } = await axios.get('/admin/neighborhoods/list-for-forms', { params: { commune_id: communeId }, skipGlobalLoading: true });
+    completeNeighborhoods.value = data.data ?? [];
+  } catch {
+    modalError.value = 'No fue posible cargar los barrios.';
+  }
+});
+
+const submitCompleteUser = async () => {
+  if (completeStep.value === 1) {
+    completeStep.value = 2;
+    return;
+  }
+  loading.value = true;
+  modalError.value = '';
+  try {
+    await axios.post('/admin/users-complete', completeForm.value);
+    completeUserOpen.value = false;
+    await loadUsers();
+    completeForm.value = { document_type_id: '', document_number: '', first_name: '', middle_name: '', last_name: '', second_last_name: '', neighborhood_id: '', username: '', email: '', password: '', password_confirmation: '', roles: [] };
+  } catch (error) {
+    modalError.value = error?.response?.data?.message || 'No fue posible crear el registro.';
+  } finally {
+    loading.value = false;
+  }
+};
+
+const saveRole = async () => {
+  if (!roleForm.value.name || !roleForm.value.display_name) return;
+  loading.value = true;
+  try {
+    await axios.post('/admin/roles', roleForm.value);
+    roleForm.value = { name: '', display_name: '', description: '', permissions: [] };
+    await loadRoles();
+  } catch (error) {
+    errorMessage.value = error?.response?.data?.message || 'No fue posible crear el rol.';
   } finally {
     loading.value = false;
   }

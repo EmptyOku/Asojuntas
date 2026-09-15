@@ -20,6 +20,9 @@ export const useAuthStore = defineStore('auth', {
       this.loading = true;
       try {
         const response = await axios.post('/login', credentials);
+        if (response.data.token) {
+          window.localStorage.setItem('sanctum_token', response.data.token);
+        }
         this.user = response.data.user ?? null;
         this.roles = response.data.roles ?? [];
         this.permissions = response.data.permissions ?? [];
@@ -56,6 +59,7 @@ export const useAuthStore = defineStore('auth', {
       } catch (error) {
         // Ignore logout network errors and force local cleanup.
       }
+      window.localStorage.removeItem('sanctum_token');
       this.$reset();
       window.location.href = '/login';
     }

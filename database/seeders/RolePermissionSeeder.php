@@ -2,6 +2,8 @@
 
 namespace Database\Seeders;
 
+use App\Models\Permission;
+use App\Models\Role;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 
@@ -17,14 +19,14 @@ class RolePermissionSeeder extends Seeder
         $matrix = [
             'super_admin' => [
                 'users.view', 'users.create', 'users.update', 'users.delete',
-                'roles.view', 'roles.assign',
+                'roles.view', 'roles.manage', 'roles.assign',
                 'elections.view', 'elections.create', 'elections.update',
                 'records.upload', 'records.review', 'records.approve',
                 'reports.view', 'audit.view',
             ],
             'admin_electoral' => [
                 'users.view', 'users.create', 'users.update',
-                'roles.view', 'roles.assign',
+                'roles.view', 'roles.manage', 'roles.assign',
                 'elections.view', 'elections.create', 'elections.update',
                 'records.upload', 'records.review', 'records.approve',
                 'reports.view', 'audit.view',
@@ -62,6 +64,8 @@ class RolePermissionSeeder extends Seeder
                     'updated_at' => $now,
                 ];
             }
+
+            Role::find($roleId)?->syncPermissions(Permission::whereIn('name', $permissionNames)->get());
         }
 
         // Limpiar permisos heredados del rol reviewer (fuera del flujo actual).

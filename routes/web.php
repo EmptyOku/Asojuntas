@@ -56,7 +56,7 @@ Route::prefix('api')->name('api.')->group(function (): void {
     Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
     Route::get('/check', [AuthController::class, 'check'])->name('check');
 
-    Route::middleware('auth')->group(function (): void {
+    Route::middleware('auth:sanctum')->group(function (): void {
         Route::get('/user', [AuthController::class, 'user'])->name('user');
 
         Route::prefix('secretary')->middleware('api.permission:records.upload')->group(function (): void {

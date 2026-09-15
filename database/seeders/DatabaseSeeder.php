@@ -13,9 +13,7 @@ class DatabaseSeeder extends Seeder
         // - NO crean actas, extracciones OCR, resultados ni candidatos de prueba
         $this->call([
             DocumentTypeSeeder::class,
-            RoleSeeder::class,
-            PermissionSeeder::class,
-            RolePermissionSeeder::class,
+            RolesAndPermissionsSeeder::class,
             UserSeeder::class,
             StateSeeder::class,
             CitySeeder::class,

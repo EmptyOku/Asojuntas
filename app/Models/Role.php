@@ -3,16 +3,19 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Spatie\Permission\Models\Role as SpatieRole;
 
-class Role extends Model
+class Role extends SpatieRole
 {
     use HasFactory;
 
+    // Forzamos a Spatie a trabajar siempre bajo el guard 'web'
+    protected $guard_name = 'web';
+
     protected $fillable = [
         'name',
+        'guard_name',
         'display_name',
         'description',
         'is_active',
@@ -32,15 +35,7 @@ class Role extends Model
         return $this->hasMany(RolePermission::class);
     }
 
-    public function users(): BelongsToMany
-    {
-        return $this->belongsToMany(User::class, 'user_roles')
-            ->using(UserRole::class)
-            ->withPivot(['id', 'assigned_at', 'assigned_by'])
-            ->withTimestamps();
-    }
-
-    public function permissions(): BelongsToMany
+    public function legacyPermissions()
     {
         return $this->belongsToMany(Permission::class, 'role_permissions')
             ->using(RolePermission::class)

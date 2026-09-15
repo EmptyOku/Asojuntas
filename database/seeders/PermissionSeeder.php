@@ -18,6 +18,7 @@ class PermissionSeeder extends Seeder
             ['name' => 'users.delete', 'display_name' => 'Delete users', 'description' => 'Eliminar usuarios', 'is_active' => true, 'created_at' => $now, 'updated_at' => $now],
 
             ['name' => 'roles.view', 'display_name' => 'View roles', 'description' => 'Ver roles', 'is_active' => true, 'created_at' => $now, 'updated_at' => $now],
+            ['name' => 'roles.manage', 'display_name' => 'Manage roles', 'description' => 'Crear y editar roles', 'is_active' => true, 'created_at' => $now, 'updated_at' => $now],
             ['name' => 'roles.assign', 'display_name' => 'Assign roles', 'description' => 'Asignar roles', 'is_active' => true, 'created_at' => $now, 'updated_at' => $now],
 
             ['name' => 'elections.view', 'display_name' => 'View elections', 'description' => 'Ver elecciones', 'is_active' => true, 'created_at' => $now, 'updated_at' => $now],

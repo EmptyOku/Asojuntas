@@ -8,10 +8,12 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Laravel\Sanctum\HasApiTokens;
+use Spatie\Permission\Traits\HasRoles;
 
 class User extends Authenticatable
 {
-    use HasFactory, Notifiable;
+    use HasApiTokens, HasFactory, HasRoles, Notifiable;
 
     protected $fillable = [
         'person_id',
@@ -40,6 +42,11 @@ class User extends Authenticatable
         return $this->belongsTo(Person::class);
     }
 
+    public function persona(): BelongsTo
+    {
+        return $this->person();
+    }
+
     public function assignedUserRoles(): HasMany
     {
         return $this->hasMany(UserRole::class);
@@ -50,7 +57,7 @@ class User extends Authenticatable
         return $this->hasMany(UserRole::class, 'assigned_by');
     }
 
-    public function roles(): BelongsToMany
+    public function legacyRoles(): BelongsToMany
     {
         return $this->belongsToMany(Role::class, 'user_roles')
             ->using(UserRole::class)

@@ -16,6 +16,11 @@ const instance = axios.create({
 
 instance.interceptors.request.use(
     (config) => {
+        const token = window.localStorage.getItem('sanctum_token');
+        if (token && !config.headers.Authorization) {
+            config.headers.Authorization = `Bearer ${token}`;
+        }
+
         const skipGlobalLoading = config?.skipGlobalLoading === true;
         config.__loadingTracked = !skipGlobalLoading;
 

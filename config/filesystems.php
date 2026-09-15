@@ -68,8 +68,8 @@ return [
             'port' => (int) env('SFTP_PORT', 22),
             'root' => env('SFTP_ROOT', '/var/www/proyecto-jac/storage/app/private'),
             'visibility' => 'private',
-            'throw' => false,
-            'report' => false,
+            'throw' => true,
+            'report' => true,
         ],
 
     ],

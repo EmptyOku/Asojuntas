@@ -12,8 +12,10 @@ return Application::configure(basePath: dirname(__DIR__))
         api: __DIR__.'/../routes/api.php',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        $middleware->statefulApi();
         $middleware->alias([
             'api.permission' => \App\Http\Middleware\EnsureApiPermission::class,
+            'permission' => \Spatie\Permission\Middleware\PermissionMiddleware::class,
             'ingest.token' => \App\Http\Middleware\VerifyIngestToken::class,
         ]);
 

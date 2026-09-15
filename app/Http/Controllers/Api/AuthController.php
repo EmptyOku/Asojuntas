@@ -49,6 +49,7 @@ class AuthController extends Controller
         return response()->json([
             'success' => true,
             'user' => $user,
+            'token' => $user->createToken('api-login')->plainTextToken,
             'roles' => $user->roles->pluck('name')->values(),
             'permissions' => $permissions,
             'message' => 'Login exitoso'
@@ -87,11 +88,14 @@ class AuthController extends Controller
      */
     public function logout(Request $request)
     {
+        $accessToken = $request->user()?->currentAccessToken();
+
         app(AuditTrailLogger::class)->recordSystemEvent('logout', [
             'user_id' => Auth::id(),
         ]);
 
         Auth::logout();
+        $accessToken?->delete();
         $request->session()->invalidate();
         $request->session()->regenerateToken();
 
