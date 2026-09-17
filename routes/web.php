@@ -1,36 +1,26 @@
 <?php
 
-use Illuminate\Support\Facades\Route;
-
+use App\Http\Controllers\Admin\OcrCandidateController;
 // Controladores de Auditoría y Seguridad
-use App\Http\Controllers\Admin\AuditLogController;
-use App\Http\Controllers\Admin\RoleController;
-use App\Http\Controllers\Admin\PermissionController;
-use App\Http\Controllers\Admin\UserRoleController;
-use App\Http\Controllers\Admin\RolePermissionController;
-use App\Http\Controllers\Admin\UserController;
 
 // Controladores de la API SPA
-use App\Http\Controllers\Api\JuryIngestController;
-use App\Http\Controllers\Api\AuthController;
-use App\Http\Controllers\Api\Secretary\PlanchaDraftController;
+use App\Http\Controllers\Admin\PersonController;
+use App\Http\Controllers\Api\Admin\AuditLogController as SystemAuditLogController;
+use App\Http\Controllers\Api\Admin\AuditManagementController;
+use App\Http\Controllers\Api\Admin\CompleteUserManagementController;
+use App\Http\Controllers\Api\Admin\NeighborhoodDirectoryController;
 use App\Http\Controllers\Api\Admin\PermissionManagementController;
+use App\Http\Controllers\Api\Admin\PersonController as ApiPersonController;
 use App\Http\Controllers\Api\Admin\RoleManagementController;
 use App\Http\Controllers\Api\Admin\UserManagementController;
-use App\Http\Controllers\Api\Admin\AuditManagementController;
-use App\Http\Controllers\Api\Admin\AuditLogController as SystemAuditLogController;
-use App\Http\Controllers\Api\Admin\NeighborhoodController;
-use App\Http\Controllers\Api\Admin\PersonController as ApiPersonController;
-
+use App\Http\Controllers\Api\AuthController;
 // EL CONTROLADOR DE BARRIOS UNIFICADO
-use App\Http\Controllers\Api\Admin\rectoryController;
 
 // Controlador para la gestión de candidatos OCR
-use App\Http\Controllers\Admin\OcrCandidateController;
-
-//Controlador de personas físicas
-use App\Http\Controllers\Admin\PersonController;
-use App\Http\Controllers\Api\Admin\NeighborhoodDirectoryController;
+use App\Http\Controllers\Api\JuryIngestController;
+// Controlador de personas físicas
+use App\Http\Controllers\Api\Secretary\PlanchaDraftController;
+use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
     return view('welcome');
@@ -39,7 +29,6 @@ Route::get('/', function () {
 Route::get('/login', function () {
     return view('app');
 })->name('login');
-
 
 // Endpoints para jurados autenticados con sesión web (SPA)
 Route::middleware(['auth', 'api.permission:records.upload'])->prefix('api/jury')->name('api.jury.')->group(function (): void {
@@ -113,7 +102,7 @@ Route::prefix('api')->name('api.')->group(function (): void {
             Route::get('/neighborhoods/communes', [NeighborhoodDirectoryController::class, 'communes'])
                 ->name('admin.neighborhoods.communes');
 
-            Route::get('/neighborhoods/search-dropdown', [\App\Http\Controllers\Api\Admin\NeighborhoodDirectoryController::class, 'searchForDropdown'])
+            Route::get('/neighborhoods/search-dropdown', [NeighborhoodDirectoryController::class, 'searchForDropdown'])
                 ->name('admin.neighborhoods.search-dropdown');
 
             Route::get('/neighborhoods/{id}', [NeighborhoodDirectoryController::class, 'show'])
@@ -133,7 +122,7 @@ Route::prefix('api')->name('api.')->group(function (): void {
 
             Route::post('/neighborhoods/elections/close-all', [NeighborhoodDirectoryController::class, 'closeAllElections'])
                 ->name('admin.neighborhoods.elections.close-all');
-            
+
             Route::get('/planchas/by-neighborhood', [PlanchaDraftController::class, 'neighborhoodsWithSlates']);
             // =========================================================
             // RUTAS DE PERSONAS
@@ -160,10 +149,10 @@ Route::prefix('api')->name('api.')->group(function (): void {
             // =========================================================
 
             // Legacy route (web controller)
-            Route::post('/people', [\App\Http\Controllers\Admin\PersonController::class, 'store'])
+            Route::post('/people', [PersonController::class, 'store'])
                 ->name('admin.people.store');
 
-            Route::get('/people/without-users', [\App\Http\Controllers\Api\Admin\UserManagementController::class, 'getAvailablePersons'])
+            Route::get('/people/without-users', [UserManagementController::class, 'getAvailablePersons'])
                 ->name('admin.people.without-users');
 
             // =========================================================
@@ -189,6 +178,10 @@ Route::prefix('api')->name('api.')->group(function (): void {
                 ->middleware('api.permission:users.create')
                 ->name('admin.users.store');
 
+            Route::post('/users-complete', [CompleteUserManagementController::class, 'store'])
+                ->middleware('api.permission:users.create')
+                ->name('admin.users.complete.store');
+
             Route::put('/users/{user}', [UserManagementController::class, 'update'])
                 ->middleware('api.permission:users.update')
                 ->name('admin.users.update');
@@ -213,6 +206,14 @@ Route::prefix('api')->name('api.')->group(function (): void {
             Route::get('/roles', [RoleManagementController::class, 'index'])
                 ->middleware('api.permission:roles.view')
                 ->name('admin.roles.index');
+
+            Route::post('/roles', [RoleManagementController::class, 'store'])
+                ->middleware('api.permission:roles.manage')
+                ->name('admin.roles.store');
+
+            Route::put('/roles/{id}', [RoleManagementController::class, 'update'])
+                ->middleware('api.permission:roles.manage')
+                ->name('admin.roles.update');
 
             Route::get('/permissions', [PermissionManagementController::class, 'index'])
                 ->middleware('api.permission:roles.view')
