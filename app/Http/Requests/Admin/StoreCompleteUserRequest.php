@@ -21,6 +21,9 @@ class StoreCompleteUserRequest extends FormRequest
             'middle_name' => ['nullable', 'string', 'max:100'],
             'last_name' => ['required', 'string', 'max:100'],
             'second_last_name' => ['nullable', 'string', 'max:100'],
+            // La regla "barrio obligatorio para Jurado" NO vive aquí: con `nullable` en la mezcla,
+            // Laravel se salta cualquier closure cuando el valor llega vacío, que es justo el caso
+            // a bloquear. Se valida de forma imperativa en el controlador (ver store()).
             'commune_id' => ['nullable', 'exists:communes,id'],
             'neighborhood_id' => ['nullable', 'exists:neighborhoods,id'],
             'username' => ['required', 'string', 'max:50', 'unique:users,username'],

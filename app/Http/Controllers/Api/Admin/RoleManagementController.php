@@ -7,7 +7,9 @@ use App\Http\Requests\Admin\StoreRoleRequest;
 use App\Http\Requests\Admin\UpdateRoleRequest;
 use App\Models\Permission;
 use App\Models\Role;
+use App\Services\LegacyRbacAuditTrail;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
 class RoleManagementController extends Controller
@@ -32,7 +34,7 @@ class RoleManagementController extends Controller
 
             $permissions = Permission::where(function ($query) use ($rawPermissions) {
                 $query->whereIn('id', $rawPermissions)
-                      ->orWhereIn('name', $rawPermissions);
+                    ->orWhereIn('name', $rawPermissions);
             })->get();
 
             $guardName = $permissions->first()?->guard_name ?? 'web';
@@ -44,13 +46,14 @@ class RoleManagementController extends Controller
             if ($permissions->isNotEmpty()) {
                 $role->syncPermissions($permissions);
             }
+            LegacyRbacAuditTrail::syncRolePermissions($role->id, $permissions->pluck('id'), Auth::id());
 
             return $role;
         });
 
         return response()->json([
             'success' => true,
-            'data' => $role->load('permissions:id,name,display_name')
+            'data' => $role->load('permissions:id,name,display_name'),
         ], 201);
     }
 
@@ -64,17 +67,18 @@ class RoleManagementController extends Controller
 
             $permissions = Permission::where(function ($query) use ($rawPermissions) {
                 $query->whereIn('id', $rawPermissions)
-                      ->orWhereIn('name', $rawPermissions);
+                    ->orWhereIn('name', $rawPermissions);
             })->get();
 
             $role->syncPermissions($permissions);
+            LegacyRbacAuditTrail::syncRolePermissions($role->id, $permissions->pluck('id'), Auth::id());
 
             return $role;
         });
 
         return response()->json([
             'success' => true,
-            'data' => $role->load('permissions:id,name,display_name')
+            'data' => $role->load('permissions:id,name,display_name'),
         ]);
     }
 }
