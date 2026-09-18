@@ -1,0 +1,29 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    { "type": "Feature", "properties": { "commune_code": "COM-04", "code": "COM04-ALGARROBOS-IV-BRISAS",        "name": "Algarrobos IV Etapa Brisas de Girardot" }, "geometry": { "type": "Point", "coordinates": [-74.806586, 4.326158] } },
+    { "type": "Feature", "properties": { "commune_code": "COM-04", "code": "COM04-ALTOS-DEL-PENON",             "name": "Altos del Penon" },                       "geometry": { "type": "Point", "coordinates": [-74.794514, 4.314905] } },
+    { "type": "Feature", "properties": { "commune_code": "COM-04", "code": "COM04-BOSQUES-DE-VISCAYA",          "name": "Bosques de Viscaya" },                    "geometry": { "type": "Point", "coordinates": [-74.797569, 4.319076] } },
+    { "type": "Feature", "properties": { "commune_code": "COM-04", "code": "COM04-BOSQUES-DE-VIZCAYA-II",       "name": "Bosques de Vizcaya II" },                 "geometry": { "type": "Point", "coordinates": [-74.796419, 4.319828] } },
+    { "type": "Feature", "properties": { "commune_code": "COM-04", "code": "COM04-CIUDAD-MONTES",               "name": "Ciudad Montes" },                         "geometry": { "type": "Point", "coordinates": [-74.803990, 4.325207] } },
+    { "type": "Feature", "properties": { "commune_code": "COM-04", "code": "COM04-CORAZON-DE-CUNDINAMARCA",     "name": "Corazon de Cundinamarca" },               "geometry": { "type": "Point", "coordinates": [-74.807176, 4.324207] } },
+    { "type": "Feature", "properties": { "commune_code": "COM-04", "code": "COM04-EL-DIAMANTE",                 "name": "El Diamante" },                           "geometry": { "type": "Point", "coordinates": [-74.797944, 4.312691] } },
+    { "type": "Feature", "properties": { "commune_code": "COM-04", "code": "COM04-EL-DIAMANTE-V",               "name": "El Diamante V Etapa" },                   "geometry": { "type": "Point", "coordinates": [-74.803304, 4.304516] } },
+    { "type": "Feature", "properties": { "commune_code": "COM-04", "code": "COM04-EL-TALISMAN",                 "name": "El Talisman" },                           "geometry": { "type": "Point", "coordinates": [-74.809028, 4.342512] } },
+    { "type": "Feature", "properties": { "commune_code": "COM-04", "code": "COM04-ESMERALDA-III",               "name": "Esmeralda III Etapa" },                   "geometry": { "type": "Point", "coordinates": [-74.798124, 4.316014] } },
+    { "type": "Feature", "properties": { "commune_code": "COM-04", "code": "COM04-ESPERANZA-NORTE-PORTACHUELO", "name": "Esperanza Norte de Portachuelo" },        "geometry": { "type": "Point", "coordinates": [-74.799501, 4.326598] } },
+    { "type": "Feature", "properties": { "commune_code": "COM-04", "code": "COM04-JUAN-PABLO-II",               "name": "Juan Pablo II" },                         "geometry": { "type": "Point", "coordinates": [-74.804067, 4.312039] } },
+    { "type": "Feature", "properties": { "commune_code": "COM-04", "code": "COM04-LA-ESMERALDA",                "name": "La Esmeralda" },                          "geometry": { "type": "Point", "coordinates": [-74.800240, 4.316177] } },
+    { "type": "Feature", "properties": { "commune_code": "COM-04", "code": "COM04-LA-ESMERALDA-II",             "name": "La Esmeralda Segunda Etapa" },            "geometry": { "type": "Point", "coordinates": [-74.803495, 4.316697] } },
+    { "type": "Feature", "properties": { "commune_code": "COM-04", "code": "COM04-LOS-NARANJOS",                "name": "Los Naranjos" },                          "geometry": { "type": "Point", "coordinates": [-74.797795, 4.311132] } },
+    { "type": "Feature", "properties": { "commune_code": "COM-04", "code": "COM04-RAMON-BUENO",                 "name": "Ramon Bueno" },                           "geometry": { "type": "Point", "coordinates": [-74.807421, 4.327836] } },
+    { "type": "Feature", "properties": { "commune_code": "COM-04", "code": "COM04-ROSA-BLANCA",                 "name": "Rosa Blanca" },                           "geometry": { "type": "Point", "coordinates": [-74.802775, 4.312036] } },
+    { "type": "Feature", "properties": { "commune_code": "COM-04", "code": "COM04-SAN-FERNANDO",                "name": "San Fernando" },                          "geometry": { "type": "Point", "coordinates": [-74.799010, 4.317600] } },
+    { "type": "Feature", "properties": { "commune_code": "COM-04", "code": "COM04-SANTA-RITA",                  "name": "Santa Rita" },                            "geometry": { "type": "Point", "coordinates": [-74.798848, 4.309766] } },
+    { "type": "Feature", "properties": { "commune_code": "COM-04", "code": "COM04-SECTOR-NORORIENTAL-DIAMANTE", "name": "Sector Nororiental del Barrio Diamante" },"geometry": { "type": "Point", "coordinates": [-74.797692, 4.314642] } },
+    { "type": "Feature", "properties": { "commune_code": "COM-04", "code": "COM04-SOLARIS",                     "name": "Solaris" },                               "geometry": { "type": "Point", "coordinates": [-74.797860, 4.326396] } },
+    { "type": "Feature", "properties": { "commune_code": "COM-04", "code": "COM04-JVC-POPULAR-EL-DIAMANTE",     "name": "Urbanizacion Popular El Diamante" },      "geometry": { "type": "Point", "coordinates": [-74.799403, 4.314949] } },
+    { "type": "Feature", "properties": { "commune_code": "COM-04", "code": "COM04-VALLE-DEL-SOL",               "name": "Valle del Sol" },                         "geometry": { "type": "Point", "coordinates": [-74.804350, 4.324975] } },
+    { "type": "Feature", "properties": { "commune_code": "COM-04", "code": "COM04-ZULIA",                       "name": "Zulia" },                                 "geometry": { "type": "Point", "coordinates": [-74.802020, 4.318780] } }
+  ]
+}

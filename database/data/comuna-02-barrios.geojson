@@ -1,0 +1,19 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    { "type": "Feature", "properties": { "commune_code": "COM-02", "code": "COM02-10-DE-MAYO",             "name": "10 de Mayo" },              "geometry": { "type": "Point", "coordinates": [-74.802351, 4.287704] } },
+    { "type": "Feature", "properties": { "commune_code": "COM-02", "code": "COM02-JVC-ACACIAS-II",         "name": "Acacias II" },              "geometry": { "type": "Point", "coordinates": [-74.795281, 4.297896] } },
+    { "type": "Feature", "properties": { "commune_code": "COM-02", "code": "COM02-ALTO-DEL-ROSARIO",       "name": "Alto del Rosario" },        "geometry": { "type": "Point", "coordinates": [-74.802741, 4.292969] } },
+    { "type": "Feature", "properties": { "commune_code": "COM-02", "code": "COM02-BARBULA-PUERTO-MONTERO", "name": "Barbula Puerto Montero" },  "geometry": { "type": "Point", "coordinates": [-74.807149, 4.288100] } },
+    { "type": "Feature", "properties": { "commune_code": "COM-02", "code": "COM02-BOCAS-DEL-BOGOTA",       "name": "Bocas del Bogota" },        "geometry": { "type": "Point", "coordinates": [-74.798157, 4.289662] } },
+    { "type": "Feature", "properties": { "commune_code": "COM-02", "code": "COM02-DIVINO-NINO-I",          "name": "Divino Nino Primera Etapa" },"geometry": { "type": "Point", "coordinates": [-74.795552, 4.292157] } },
+    { "type": "Feature", "properties": { "commune_code": "COM-02", "code": "COM02-EL-PORVENIR",            "name": "El Porvenir" },             "geometry": { "type": "Point", "coordinates": [-74.799053, 4.296717] } },
+    { "type": "Feature", "properties": { "commune_code": "COM-02", "code": "COM02-LAS-ROSAS",              "name": "Alto de las Rosas" },       "geometry": { "type": "Point", "coordinates": [-74.798414, 4.293587] } },
+    { "type": "Feature", "properties": { "commune_code": "COM-02", "code": "COM02-OBRERO-ALTO-DE-LA-CRUZ", "name": "Obrero Alto de la Cruz" },  "geometry": { "type": "Point", "coordinates": [-74.804364, 4.289704] } },
+    { "type": "Feature", "properties": { "commune_code": "COM-02", "code": "COM02-PUERTO-CABRERA",         "name": "Puerto Cabrera" },          "geometry": { "type": "Point", "coordinates": [-74.804985, 4.287182] } },
+    { "type": "Feature", "properties": { "commune_code": "COM-02", "code": "COM02-PUERTO-MONGUI",          "name": "Puerto Mongui" },           "geometry": { "type": "Point", "coordinates": [-74.799843, 4.289798] } },
+    { "type": "Feature", "properties": { "commune_code": "COM-02", "code": "COM02-SANTA-MONICA",           "name": "Santa Monica" },            "geometry": { "type": "Point", "coordinates": [-74.797230, 4.296219] } },
+    { "type": "Feature", "properties": { "commune_code": "COM-02", "code": "COM02-VEINTE-DE-JULIO",        "name": "20 de Julio" },             "geometry": { "type": "Point", "coordinates": [-74.803803, 4.287406] } },
+    { "type": "Feature", "properties": { "commune_code": "COM-02", "code": "COM02-VILLA-DEL-RIO",          "name": "Villa del Rio" },           "geometry": { "type": "Point", "coordinates": [-74.794834, 4.294981] } }
+  ]
+}
