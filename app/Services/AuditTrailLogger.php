@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use App\Jobs\WriteAuditLogJob;
 use App\Models\AuditLog;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Arr;
@@ -43,13 +42,17 @@ class AuditTrailLogger
         ]);
     }
 
-    public function recordSystemEvent(string $action, array $metadata = []): void
-    {
+    public function recordSystemEvent(
+        string $action,
+        array $metadata = [],
+        ?string $auditableType = null,
+        int|string|null $auditableId = null
+    ): void {
         $this->write([
             'user_id' => Auth::id(),
             'action' => $action,
-            'auditable_type' => null,
-            'auditable_id' => null,
+            'auditable_type' => $auditableType,
+            'auditable_id' => $auditableId,
             'ip_address' => request()?->ip(),
             'user_agent' => request()?->userAgent(),
             'old_values' => null,
@@ -123,29 +126,9 @@ class AuditTrailLogger
     private function write(array $payload): void
     {
         try {
-            if (app()->runningUnitTests()) {
-                AuditLog::create($payload);
-                return;
-            }
-
-            $dispatch = (string) config('queue.default') === 'sync'
-                ? WriteAuditLogJob::dispatchAfterResponse($payload)
-                : WriteAuditLogJob::dispatch($payload);
-
-            $connection = config('queue.audit_log_connection');
-            if (is_string($connection) && $connection !== '') {
-                $dispatch->onConnection($connection);
-            }
-
-            $dispatch->onQueue((string) config('queue.audit_log_queue', 'default'));
+            AuditLog::create($payload);
         } catch (Throwable $exception) {
             report($exception);
-
-            try {
-                AuditLog::create($payload);
-            } catch (Throwable $fallbackException) {
-                report($fallbackException);
-            }
         }
     }
 }
