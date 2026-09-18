@@ -29,6 +29,9 @@
         <env name="MAIL_MAILER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
         <env name="SESSION_DRIVER" value="array"/>
+        <!-- Las pruebas no deben tocar el almacenamiento remoto del .env real. -->
+        <env name="FILESYSTEM_DISK" value="local"/>
+        <env name="EXTRACTOR_STORAGE_DISK" value="local"/>
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>

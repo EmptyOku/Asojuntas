@@ -45,9 +45,7 @@ class UserManagementController extends Controller
     }
 
     /**
-     * Tamaños de página permitidos para el listado de usuarios. Se valida contra esta lista
-     * en vez de aceptar cualquier `per_page` para no dejar pedir, por ejemplo, 5000 registros
-     * de una sola vez contra una base de datos remota con latencia alta.
+     * Tamaños de página permitidos para el listado de usuarios.
      */
     private const USERS_PER_PAGE_OPTIONS = [10, 20, 30, 50];
 
@@ -112,9 +110,6 @@ class UserManagementController extends Controller
         ]);
     }
 
-    /**
-     * Retorna las personas físicas activas que aún no tienen una cuenta de usuario.
-     */
     public function getAvailablePersons(Request $request): JsonResponse
     {
         $persons = Person::whereDoesntHave('user')
@@ -129,21 +124,16 @@ class UserManagementController extends Controller
         ]);
     }
 
-    /**
-     * Retorna el contexto de asignación para Vue (Barrios, mesas y si están ocupados).
-     */
     public function assignmentContext(Request $request): JsonResponse
     {
         $commune_id = $request->integer('commune_id', null);
 
-        // 1. Obtener barrios con sus elecciones activas
-        $query = Neighborhood::query()
-            ->select(['id', 'name', 'code', 'commune_id']);
+        $query = Neighborhood::query()->select(['id', 'name', 'code', 'commune_id']);
 
         if ($commune_id) {
             $query->where('commune_id', $commune_id);
         } else {
-            $query->limit(50); // Sin filtro de comuna, limita a 50
+            $query->limit(50);
         }
 
         $neighborhoods = $query
@@ -166,7 +156,6 @@ class UserManagementController extends Controller
             ->orderBy('name')
             ->get();
 
-        // 2. Obtener todos los barrios que ya tienen usuario asignado
         $assignedNeighborhoodIds = Person::query()
             ->whereNotNull('neighborhood_id')
             ->whereHas('user')
@@ -207,7 +196,6 @@ class UserManagementController extends Controller
                 'exists:persons,id',
                 'unique:users,person_id',
                 function ($attribute, $value, $fail) {
-                    // Validar que la persona exista y esté activa
                     $person = Person::find($value);
                     if (! $person || ! $person->is_active) {
                         $fail('La persona seleccionada no existe o no está activa.');
@@ -219,20 +207,10 @@ class UserManagementController extends Controller
             'password' => 'required|string|min:8|confirmed',
             'roles' => 'required|array|min:1',
             'roles.*' => 'exists:roles,id',
-            'neighborhood_id' => ['nullable', 'exists:neighborhoods,id'],
+            'neighborhood_id' => ['nullable', 'active_exists:neighborhoods,id'],
             'is_active' => 'sometimes|boolean',
         ]);
 
-        // NOTA: esta regla vive fuera del array de `rules()` a propósito. Un closure colgado
-        // del campo `neighborhood_id` con la regla `nullable` NUNCA se ejecuta cuando el valor
-        // llega vacío (Laravel corta la cadena de reglas ahí), que es justo el caso que hay que
-        // bloquear. Por eso se valida de forma imperativa, igual que en syncRoles().
-        //
-        // El formulario "Crear Usuario" (persona ya existente) no manda `neighborhood_id`: ese
-        // campo solo lo usa quien quiera reasignar el barrio en el mismo request. Por eso el
-        // barrio "real" a validar es el que llegó en el request, o si no, el que la persona ya
-        // tiene guardado — si solo miráramos el request, una persona con barrio asignado desde
-        // antes recibiría un falso "el barrio es obligatorio".
         $digitizerRole = Role::where('name', 'digitizer')->first();
         if ($digitizerRole && in_array($digitizerRole->id, $validated['roles'])) {
             $person = Person::find($validated['person_id']);
@@ -240,7 +218,6 @@ class UserManagementController extends Controller
 
             if (empty($effectiveNeighborhoodId)) {
                 $message = 'El barrio es obligatorio para asignar rol de Jurado.';
-
                 return response()->json([
                     'success' => false,
                     'message' => $message,
@@ -254,7 +231,6 @@ class UserManagementController extends Controller
 
             if ($alreadyAssigned) {
                 $message = 'Este barrio ya tiene un jurado asignado. Selecciona otro barrio.';
-
                 return response()->json([
                     'success' => false,
                     'message' => $message,
@@ -265,14 +241,11 @@ class UserManagementController extends Controller
 
         try {
             $user = DB::transaction(function () use ($validated) {
-
-                // Actualizar la persona con el barrio asignado
                 if (! empty($validated['neighborhood_id'])) {
                     Person::where('id', $validated['person_id'])
                         ->update(['neighborhood_id' => $validated['neighborhood_id']]);
                 }
 
-                // Crear el usuario
                 $user = User::create([
                     'person_id' => $validated['person_id'],
                     'username' => $validated['username'],
@@ -282,7 +255,6 @@ class UserManagementController extends Controller
                     'email_verified_at' => now(),
                 ]);
 
-                // Asignar roles (model_has_roles de Spatie) y reflejar la asignación en la bitácora legacy (user_roles)
                 $roles = Role::whereIn('id', $validated['roles'])->get();
                 $user->syncRoles($roles);
                 LegacyRbacAuditTrail::syncUserRoles($user->id, $validated['roles'], Auth::id());
@@ -300,14 +272,12 @@ class UserManagementController extends Controller
 
         } catch (QueryException $e) {
             \Log::error('Database error creating user', ['error' => $e->getMessage()]);
-
             return response()->json([
                 'success' => false,
                 'message' => 'Error en la base de datos al crear el usuario.',
             ], 500);
         } catch (\Exception $e) {
             \Log::error('Error creating user', ['error' => $e->getMessage()]);
-
             return response()->json([
                 'success' => false,
                 'message' => 'Error al crear el usuario: '.$e->getMessage(),
@@ -323,9 +293,7 @@ class UserManagementController extends Controller
         $validated = $request->validate([
             'document_type_id' => 'sometimes|exists:document_types,id',
             'document_number' => [
-                'sometimes',
-                'string',
-                'max:30',
+                'sometimes', 'string', 'max:30',
                 Rule::unique('persons')->where(function ($query) use ($request, $person) {
                     return $query->where('document_type_id', $request->document_type_id ?? $person?->document_type_id);
                 })->ignore($person?->id),
@@ -336,16 +304,12 @@ class UserManagementController extends Controller
             'second_last_name' => 'nullable|string|max:100',
             'neighborhood_id' => [
                 'nullable',
-                'exists:neighborhoods,id',
+                'active_exists:neighborhoods,id',
                 function ($attribute, $value, $fail) use ($user) {
-                    if (empty($value)) {
-                        return;
-                    }
+                    if (empty($value)) return;
 
                     $isDigitizer = $user->roles()->where('name', 'digitizer')->exists();
-                    if (! $isDigitizer) {
-                        return;
-                    }
+                    if (! $isDigitizer) return;
 
                     $alreadyAssigned = User::where('id', '!=', $user->id)
                         ->whereHas('person', function ($q) use ($value) {
@@ -384,11 +348,7 @@ class UserManagementController extends Controller
             ]);
         } catch (\Exception $e) {
             \Log::error('Error updating user', ['user_id' => $user->id, 'error' => $e->getMessage()]);
-
-            return response()->json([
-                'success' => false,
-                'message' => 'Error al actualizar el usuario.',
-            ], 500);
+            return response()->json(['success' => false, 'message' => 'Error al actualizar el usuario.'], 500);
         }
     }
 
@@ -405,11 +365,7 @@ class UserManagementController extends Controller
             ]);
         } catch (\Exception $e) {
             \Log::error('Error toggling user status', ['user_id' => $user->id, 'error' => $e->getMessage()]);
-
-            return response()->json([
-                'success' => false,
-                'message' => 'Error al cambiar el estado del usuario.',
-            ], 500);
+            return response()->json(['success' => false, 'message' => 'Error al cambiar el estado del usuario.'], 500);
         }
     }
 
@@ -420,21 +376,11 @@ class UserManagementController extends Controller
         ]);
 
         try {
-            $user->update([
-                'password' => Hash::make($validated['password']),
-            ]);
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Contraseña restablecida correctamente.',
-            ]);
+            $user->update(['password' => Hash::make($validated['password'])]);
+            return response()->json(['success' => true, 'message' => 'Contraseña restablecida correctamente.']);
         } catch (\Exception $e) {
             \Log::error('Error resetting password', ['user_id' => $user->id, 'error' => $e->getMessage()]);
-
-            return response()->json([
-                'success' => false,
-                'message' => 'Error al restablecer la contraseña.',
-            ], 500);
+            return response()->json(['success' => false, 'message' => 'Error al restablecer la contraseña.'], 500);
         }
     }
 
@@ -445,7 +391,6 @@ class UserManagementController extends Controller
             'roles.*' => 'exists:roles,id',
         ]);
 
-        // Validar que si se asigna el rol de jurado, la persona tenga barrio
         $digitizerRole = Role::where('name', 'digitizer')->first();
         if ($digitizerRole && in_array($digitizerRole->id, $validated['roles'])) {
             $user->loadMissing('person');
@@ -479,10 +424,9 @@ class UserManagementController extends Controller
         $validated = $request->validate([
             'neighborhood_id' => [
                 'nullable',
-                'exists:neighborhoods,id',
+                'active_exists:neighborhoods,id',
                 function ($attribute, $value, $fail) use ($user) {
                     if ($value) {
-                        // Verifica si otro usuario ya tiene asignada una persona de ese barrio
                         $isTaken = User::where('id', '!=', $user->id)
                             ->whereHas('person', function ($q) use ($value) {
                                 $q->where('neighborhood_id', $value);
@@ -504,10 +448,7 @@ class UserManagementController extends Controller
         }
 
         $user->loadMissing('person');
-
-        $user->person->update([
-            'neighborhood_id' => $validated['neighborhood_id'] ?? null,
-        ]);
+        $user->person->update(['neighborhood_id' => $validated['neighborhood_id'] ?? null]);
 
         $suggestedPollingTable = null;
         if (! empty($validated['neighborhood_id'])) {
@@ -538,13 +479,6 @@ class UserManagementController extends Controller
         ]);
     }
 
-    /**
-     * Obtiene el contexto completo para crear un usuario:
-     * - Roles disponibles
-     * - Personas sin usuario asignado
-     * - Barrios disponibles
-     * - Información del mandatario (usuario actual)
-     */
     public function creationContext(): JsonResponse
     {
         $roles = Role::select('id', 'name', 'display_name')
@@ -602,12 +536,6 @@ class UserManagementController extends Controller
         ]);
     }
 
-    /**
-     * =========================================================================
-     * NUEVO: Endpoint ligero para buscar personas físicas en el formulario de
-     * creación de usuarios.
-     * =========================================================================
-     */
     public function searchPersonsForDropdown(Request $request): JsonResponse
     {
         $term = $request->query('q');

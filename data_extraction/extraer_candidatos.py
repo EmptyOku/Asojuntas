@@ -20,10 +20,6 @@ except ImportError:
         return False
 
 def load_project_env() -> Path:
-    """
-    Busca el archivo .env de forma flexible. Primero en el directorio actual de ejecución,
-    luego subiendo niveles desde la ubicación del script.
-    """
     current_working_dir = Path.cwd()
     env_path_cwd = current_working_dir / ".env"
     if env_path_cwd.exists():
@@ -40,7 +36,6 @@ def load_project_env() -> Path:
         current_dir = current_dir.parent
     load_dotenv()
     return script_dir.parent
-
 
 load_project_env()
 
@@ -76,7 +71,7 @@ EXTRACTION_SCHEMA = {
                     "properties": {
                         "bloque_num":    {"type": "integer", "description": "Identificador numérico del bloque."},
                         "bloque_nombre": {"type": "string",  "description": "Etiqueta descriptiva del bloque orgánico."},
-                        "cargo":         {"type": "string",  "description": "Rol asignado exactamente como aparece en el documento (e.g., FISCAL, SUPLENTE FISCAL, CONCILIADOR 1, COMISION EMPRESARIAL)."},
+                        "cargo":         {"type": "string",  "description": "Rol asignado exactamente como aparece en el documento."},
                         "nombre":        {"type": "string"},
                         "identificacion":{"type": "string"},
                         "celular":       {"type": "string"},
@@ -109,9 +104,18 @@ SYSTEM_DIRECTIVE_CONFIG = "\n".join(CONTEXT_POLICIES)
 # CAPA DE NORMALIZACIÓN
 # ==========================================
 def normalize_text_string(text_input: str) -> str:
-    """Normaliza NFD y elimina acentos. Conserva espacios para matching exacto."""
+    """
+    Normaliza NFD y elimina acentos, PERO conserva la letra Ñ.
+    Conserva espacios para matching exacto.
+    """
     t = str(text_input).upper().strip()
+    # Preservar la Ñ sustituyéndola temporalmente
+    t = t.replace('Ñ', '##ENYE##')
+    # Quitar acentos
     t = ''.join(c for c in unicodedata.normalize('NFD', t) if unicodedata.category(c) != 'Mn')
+    # Restaurar la Ñ
+    t = t.replace('##ENYE##', 'Ñ')
+    
     t = re.sub(r'\bI\b',   '1', t)
     t = re.sub(r'\bII\b',  '2', t)
     t = re.sub(r'\bIII\b', '3', t)
@@ -125,133 +129,69 @@ def infer_media_type(image_path: Path) -> str:
         return guessed
     return "image/jpeg"
 
-
 def build_bedrock_error_message(exc: Exception, region: str, model_id: str) -> str:
     error_text = str(exc).strip()
-
-    if exc.__class__.__name__ == "EndpointConnectionError" or "Could not connect to the endpoint URL" in error_text:
-        return (
-            "No se pudo conectar a AWS Bedrock en la region "
-            f"{region} usando el modelo {model_id}. Verifica que haya salida a Internet, "
-            "que la region sea correcta y que el equipo tenga acceso de red al endpoint de AWS."
-        )
-
+    if exc.__class__.__name__ == "EndpointConnectionError" or "Could not connect" in error_text:
+        return f"No se pudo conectar a AWS Bedrock en la region {region} usando el modelo {model_id}."
     if exc.__class__.__name__ == "ClientError":
         response = getattr(exc, "response", {}) or {}
         error_data = response.get("Error", {}) if isinstance(response, dict) else {}
         code = str(error_data.get("Code", "")).strip()
         message = str(error_data.get("Message", error_text)).strip()
-
-        if code in {"AccessDeniedException", "UnrecognizedClientException"}:
-            return (
-                "Las credenciales AWS no tienen permiso para invocar Bedrock o son invalidas. "
-                "Verifica que la key pertenezca a la misma cuenta que tiene acceso al modelo y que "
-                "tenga permisos bedrock:InvokeModel."
-            )
-
-        if code == "ValidationException":
-            return (
-                "Bedrock rechazo la solicitud por validacion. "
-                f"Modelo: {model_id}. Region: {region}. Detalle: {message}"
-            )
-
-        if code == "ResourceNotFoundException":
-            return (
-                "No se encontro el modelo o el recurso en la region indicada. "
-                f"Modelo: {model_id}. Region: {region}. Detalle: {message}"
-            )
-
-        if code == "ModelNotReadyException":
-            return (
-                "El modelo de Bedrock aun no esta listo o no tiene acceso habilitado en esta cuenta. "
-                f"Modelo: {model_id}. Region: {region}. Detalle: {message}"
-            )
-
         return f"Bedrock rechazo la solicitud ({code or 'ClientError'}): {message}"
-
-    if exc.__class__.__name__ in {"NoCredentialsError", "PartialCredentialsError"}:
-        return (
-            "Faltan credenciales AWS validas para consultar Bedrock. "
-            "Revisa AWS_ACCESS_KEY_ID y AWS_SECRET_ACCESS_KEY en el .env."
-        )
-
     return error_text
-
 
 def is_retryable_bedrock_error(exc: Exception) -> bool:
     if exc.__class__.__name__ in {"EndpointConnectionError", "ConnectTimeoutError", "ReadTimeoutError"}:
         return True
-
     if exc.__class__.__name__ == "ClientError":
         response = getattr(exc, "response", {}) or {}
         error_data = response.get("Error", {}) if isinstance(response, dict) else {}
-        code = str(error_data.get("Code", "")).strip()
-
-        return code in {
-            "InternalServerException",
-            "ModelTimeoutException",
-            "ServiceUnavailableException",
-            "ThrottlingException",
-            "TooManyRequestsException",
+        return str(error_data.get("Code", "")).strip() in {
+            "InternalServerException", "ModelTimeoutException",
+            "ServiceUnavailableException", "ThrottlingException", "TooManyRequestsException",
         }
-
     return False
-
 
 def invoke_model_with_retry(client, model_id: str, payload: dict):
     max_attempts = max(1, int(os.getenv("BEDROCK_MAX_RETRIES", "3")))
     base_delay = max(0.2, float(os.getenv("BEDROCK_RETRY_BASE_SECONDS", "1.2")))
-
     for attempt in range(1, max_attempts + 1):
         try:
             return client.invoke_model(modelId=model_id, body=json.dumps(payload))
         except Exception as exc:
             if attempt >= max_attempts or not is_retryable_bedrock_error(exc):
                 raise
-
             time.sleep(base_delay * attempt)
-
 
 def create_bedrock_client():
     try:
         import boto3
         from botocore.config import Config
     except ImportError as exc:
-        raise RuntimeError("Falta dependencia boto3. Instala requirements con: pip install -r data_extraction/requirements.txt") from exc
+        raise RuntimeError("Falta dependencia boto3.") from exc
 
     aws_access_key = os.getenv("AWS_ACCESS_KEY_ID", "").strip()
     aws_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY", "").strip()
-    aws_session_token = os.getenv("AWS_SESSION_TOKEN", "").strip()
-
-    if not aws_access_key or not aws_secret_key:
-        raise RuntimeError("Faltan credenciales AWS (AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY) en .env")
-
-    if aws_access_key.upper().startswith("TU_") or aws_secret_key.upper().startswith("TU_"):
-        raise RuntimeError("Credenciales AWS de ejemplo detectadas en .env. Configura claves reales con acceso a Bedrock")
-
+    
     region = os.getenv("AWS_REGION", os.getenv("AWS_DEFAULT_REGION", "us-east-1"))
-    model_id = os.getenv("BEDROCK_MODEL_ID", "anthropic.claude-3-haiku-20240307-v1:0")
+    # AQUI ESTÁ EL CAMBIO PARA SONNET 4.6
+    model_id = os.getenv("BEDROCK_MODEL_ID", "anthropic.claude-sonnet-4-6")
 
     session = boto3.Session(
         aws_access_key_id=aws_access_key,
         aws_secret_access_key=aws_secret_key,
-        aws_session_token=aws_session_token or None,
         region_name=region,
     )
-
     client = session.client(
         service_name="bedrock-runtime",
         region_name=region,
         config=Config(
             connect_timeout=int(os.getenv("BEDROCK_CONNECT_TIMEOUT_SECONDS", "10")),
-            read_timeout=int(os.getenv("BEDROCK_READ_TIMEOUT_SECONDS", "180")),
-            retries={
-                "max_attempts": max(1, int(os.getenv("BEDROCK_MAX_RETRIES", "3"))),
-                "mode": "standard",
-            },
+            read_timeout=int(os.getenv("EXTRACTOR_REQUEST_TIMEOUT_SECONDS", "180")),
+            retries={"max_attempts": 0} # Manejado manualmente en invoke_model_with_retry
         ),
     )
-
     return client, region, model_id
 
 # ==========================================
@@ -278,11 +218,9 @@ ROUTING_TABLE = {
     "CONCILIADOR 3":           (3, 2, "Conciliador 3"),
     "CONCILIADOR":             (3, 99, "Conciliador (revisar índice)"),
 }
-
 SORTED_ROUTING_KEYS = sorted(ROUTING_TABLE.keys(), key=len, reverse=True)
 
 def process_classification_engine(raw_candidates: list) -> list:
-    """Clasifica, deduplica mediante Hash MD5 y ordena candidatos."""
     structured_output = [
         {"bloque_num": 1, "bloque_nombre": "Bloque 1 - Directiva",                              "candidatos": []},
         {"bloque_num": 2, "bloque_nombre": "Bloque 2 - Delegados Asojuntas",                    "candidatos": []},
@@ -290,11 +228,8 @@ def process_classification_engine(raw_candidates: list) -> list:
         {"bloque_num": 4, "bloque_nombre": "Bloque 4 - Comisión de convivencia y conciliación", "candidatos": []},
         {"bloque_num": 99,"bloque_nombre": "Cargos No Reconocidos",                             "candidatos": []},
     ]
-
     seen_fingerprints = set()
-
     for cand in raw_candidates:
-        # Prevencion de duplicados
         nombre = cand.get('nombre', '').strip()
         identificacion = cand.get('identificacion', '').strip()
         cargo = cand.get('cargo', '').strip()
@@ -304,8 +239,7 @@ def process_classification_engine(raw_candidates: list) -> list:
             continue
         seen_fingerprints.add(fingerprint)
 
-        raw_cargo       = cand.get("cargo", "")
-        normalized_cargo = normalize_text_string(raw_cargo)
+        normalized_cargo = normalize_text_string(cargo)
         is_assigned     = False
 
         for key in SORTED_ROUTING_KEYS:
@@ -314,8 +248,8 @@ def process_classification_engine(raw_candidates: list) -> list:
                 block_idx, order_idx, official_label = ROUTING_TABLE[key]
                 structured_output[block_idx]["candidatos"].append({
                     "cargo":          official_label,
-                    "nombre":         cand.get("nombre", "").strip(),
-                    "identificacion": cand.get("identificacion", "").strip(),
+                    "nombre":         nombre,
+                    "identificacion": identificacion,
                     "celular":        cand.get("celular", "").strip(),
                     "correo":         cand.get("correo", "").strip(),
                     "foto_origen":    cand.get("foto_origen", ""),
@@ -335,12 +269,9 @@ def process_classification_engine(raw_candidates: list) -> list:
 
     if not structured_output[4]["candidatos"]:
         structured_output.pop()
-
     return structured_output
 
-
 def normalize_plancha_payload(structured_blocks: list) -> dict:
-    """Convierte la salida clasificada a un payload homogéneo para Laravel/Vue."""
     plancha_blocks = []
     elected_people = []
 
@@ -352,8 +283,6 @@ def normalize_plancha_payload(structured_blocks: list) -> dict:
             cargo = str(cand.get("cargo", "")).strip()
             nombre = str(cand.get("nombre", "")).strip()
             identificacion = str(cand.get("identificacion", "")).strip()
-            celular = str(cand.get("celular", "")).strip()
-            correo = str(cand.get("correo", "")).strip()
 
             if not cargo and not nombre:
                 continue
@@ -362,8 +291,8 @@ def normalize_plancha_payload(structured_blocks: list) -> dict:
                 "puesto": cargo,
                 "nombre": nombre,
                 "identificacion": identificacion,
-                "celular": celular,
-                "correo": correo,
+                "celular": str(cand.get("celular", "")).strip(),
+                "correo": str(cand.get("correo", "")).strip(),
             })
 
             if nombre:
@@ -375,17 +304,14 @@ def normalize_plancha_payload(structured_blocks: list) -> dict:
                     "first_name": first_name,
                     "last_name": last_name,
                     "document_number": identificacion or None,
-                    "phone": celular or None,
-                    "email": correo or None,
+                    "phone": cand.get("celular") or None,
+                    "email": cand.get("correo") or None,
                     "notes": f"Cargo OCR: {cargo or 'SIN_CARGO'}",
                     "review_status": "pending",
                 })
 
         if block_candidates:
-            plancha_blocks.append({
-                "titulo": f"Bloque - {block_name}",
-                "cargos": block_candidates,
-            })
+            plancha_blocks.append({"titulo": f"Bloque - {block_name}", "cargos": block_candidates})
 
     return {
         "block_results": [],
@@ -398,14 +324,10 @@ def normalize_plancha_payload(structured_blocks: list) -> dict:
 # INVOCACIÓN AWS BEDROCK
 # ==========================================
 def invoke_bedrock_parsing(image_path: Path):
-    sys.stderr.write(f"[INFO] Initializing parsing routine for: {image_path.name}\n")
-
     try:
         aws_client, region, bedrock_model_id = create_bedrock_client()
     except RuntimeError as exc:
-        message = str(exc)
-        sys.stderr.write(f"[ERROR] {message}\n")
-        return [], {"status": "EXCEPTION", "confidence_score": 0, "anomaly_flag": message}
+        return [], {"status": "EXCEPTION", "confidence_score": 0, "anomaly_flag": str(exc)}
 
     with image_path.open("rb") as f:
         encoded_image = base64.b64encode(f.read()).decode("utf-8")
@@ -454,85 +376,44 @@ def invoke_bedrock_parsing(image_path: Path):
                 candidates_list = parsed_data.get("candidatos_detectados", [])
                 audit_data = parsed_data.get("auditoria", {})
                 
-                sys.stderr.write(f"[SUCCESS] Entities detected: {len(candidates_list)}\n")
                 for c in candidates_list:
                     c["foto_origen"] = image_path.name
                     
                 audit_data["status"] = "SUCCESS"
                 return candidates_list, audit_data
 
-        sys.stderr.write(f"[WARN] Schema binding failed for {image_path.name}\n")
         return [], {"status": "SCHEMA_BINDING_FAILURE", "confidence_score": 0, "anomaly_flag": "Schema missing"}
 
     except Exception as e:
         message = build_bedrock_error_message(e, region, bedrock_model_id)
-        sys.stderr.write(f"[ERROR] Exception on {image_path.name}: {message}\n")
         return [], {"status": "EXCEPTION", "confidence_score": 0, "anomaly_flag": message}
 
 # ==========================================
 # FLUJO PRINCIPAL BATCH
 # ==========================================
-def batch_process_directory(target_directory: str):
-    target_path = Path(target_directory).resolve()
-    
-    if not target_path.exists() or not target_path.is_dir():
-        sys.stderr.write(f"[ERROR] Invalid directory: {target_path}\n")
-        sys.exit(1)
-
-    # Identificación universal de imágenes
-    valid_extensions = {".jpg", ".jpeg", ".png", ".webp"}
-    image_files = sorted(
-        [f for f in target_path.iterdir() if f.is_file() and f.suffix.lower() in valid_extensions],
-        key=lambda x: x.name
-    )
-
-    if not image_files:
-        sys.stderr.write(f"[ERROR] Target queue is empty. No valid images found in {target_path}\n")
-        sys.exit(1)
-
-    sys.stdout.write(f"[INFO] Batch queue: {len(image_files)} image(s).\n\n")
-
-    global_pool    = []
-    execution_logs = []
-
-    for file in image_files:
-        candidates, audit_info = invoke_bedrock_parsing(file)
-        global_pool.extend(candidates)
-        
-        execution_logs.append({
-            "source_file":      file.name,
-            "operation_status": audit_info.get("status", "UNKNOWN"),
-            "confidence_score": audit_info.get("confidence_score", 0),
-            "anomaly_flag":     audit_info.get("anomaly_flag", "None")
-        })
-
-    consolidated = process_classification_engine(global_pool)
-
-    final_response = {
-        "status":         "200_OK",
-        "execution_logs": execution_logs,
-        "payload":        consolidated,
-    }
-
-    sys.stdout.write("\n" + "=" * 80 + "\n")
-    sys.stdout.write("                    FINAL SERIALIZED OUTPUT\n")
-    sys.stdout.write("=" * 80 + "\n")
-    sys.stdout.write(json.dumps(final_response, indent=2, ensure_ascii=False) + "\n")
-    sys.stdout.write("=" * 80 + "\n")
-
+FAILURE_STATUSES = {"EXCEPTION", "SCHEMA_BINDING_FAILURE"}
 
 def process_single_image(image_path: str, dry_run: bool):
     image = Path(image_path).resolve()
     if not image.exists() or not image.is_file():
-        sys.stderr.write(json.dumps({"error": f"Imagen invalida: {image}"}))
+        sys.stdout.write(json.dumps({"error": f"Imagen invalida: {image}"}))
         sys.exit(1)
 
     candidates, audit_info = invoke_bedrock_parsing(image)
+
+    if audit_info.get("status") in FAILURE_STATUSES:
+        sys.stdout.write(json.dumps({
+            "error": audit_info.get("anomaly_flag") or "Fallo desconocido en la extraccion OCR",
+            "status": audit_info.get("status"),
+            "source_file": image.name,
+        }, ensure_ascii=False))
+        sys.exit(1)
+
     structured = process_classification_engine(candidates)
     normalized_payload = normalize_plancha_payload(structured)
 
     if dry_run:
-        sys.stdout.write(json.dumps({"normalized_payload": normalized_payload}, ensure_ascii=True, indent=2))
+        sys.stdout.write(json.dumps({"normalized_payload": normalized_payload}, ensure_ascii=False, indent=2))
         return
 
     response = {
@@ -548,11 +429,10 @@ def process_single_image(image_path: str, dry_run: bool):
         "payload": structured,
         "normalized_payload": normalized_payload,
     }
-    sys.stdout.write(json.dumps(response, ensure_ascii=False, indent=2))
+    sys.stdout.write(json.dumps(response, ensure_ascii=False))
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Extractor OCR de candidatos (planchas)")
-    parser.add_argument("source_directory", nargs="?", help="Directorio con imagenes (modo batch)")
     parser.add_argument("--image", type=str, help="Ruta de una imagen individual")
     parser.add_argument("--dry-run", action="store_true", help="Imprime solo normalized_payload")
     args = parser.parse_args()
@@ -561,11 +441,5 @@ if __name__ == "__main__":
         process_single_image(args.image, args.dry_run)
         sys.exit(0)
 
-    if args.source_directory:
-        batch_process_directory(args.source_directory)
-        sys.exit(0)
-
-    sys.stderr.write(
-        "[ERROR] Debes indicar <source_directory> o --image <ruta_imagen>.\n"
-    )
+    sys.stdout.write(json.dumps({"error": "Debes indicar --image <ruta_imagen>."}))
     sys.exit(1)

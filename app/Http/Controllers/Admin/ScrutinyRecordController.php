@@ -10,6 +10,7 @@ use Illuminate\Http\Request;
 use Illuminate\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\Rule;
 
 class ScrutinyRecordController extends Controller
 {
@@ -59,7 +60,18 @@ class ScrutinyRecordController extends Controller
         $validated = $request->validate([
             'election_id'      => 'required|exists:elections,id',
             'polling_table_id' => 'required|exists:polling_tables,id',
-            'record_number'    => 'required|string|max:50',
+            // El indice unico solo cubre las actas vivas: se valida igual para
+            // devolver un mensaje de formulario en vez de un choque de la base.
+            'record_number'    => [
+                'required',
+                'string',
+                'max:50',
+                Rule::unique('scrutiny_records')->where(
+                    fn ($query) => $query
+                        ->where('election_id', $request->input('election_id'))
+                        ->whereNull('deleted_at')
+                ),
+            ],
             'record_date'      => 'required|date|before_or_equal:today',
             'record_time'      => 'required|date_format:H:i',
             'source_type'      => 'required|in:manual,ai,api',

@@ -58,7 +58,7 @@ class ScrutinyExtractionController extends Controller
     public function store(Request $request): RedirectResponse
     {
         $validated = $request->validate([
-            'scrutiny_record_id'      => 'required|exists:scrutiny_records,id',
+            'scrutiny_record_id'      => 'required|active_exists:scrutiny_records,id',
             'scrutiny_record_file_id' => 'required|exists:scrutiny_record_files,id',
             'source_type'             => 'required|in:ai,manual,api',
             'raw_payload'             => 'required|array',

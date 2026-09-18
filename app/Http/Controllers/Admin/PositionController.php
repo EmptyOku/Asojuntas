@@ -26,8 +26,8 @@ class PositionController extends Controller
         }
 
         if ($request->filled('search')) {
-            $query->where('name', 'ilike', "%{$request->search}%")
-                  ->orWhere('code', 'ilike', "%{$request->search}%");
+            $query->whereLike('name', "%{$request->search}%")
+                  ->orWhereLike('code', "%{$request->search}%");
         }
 
         // Ordenamos primero por bloque y luego por el número de orden asignado

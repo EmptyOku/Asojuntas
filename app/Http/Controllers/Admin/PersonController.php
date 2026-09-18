@@ -25,10 +25,10 @@ class PersonController extends Controller
         if ($request->filled('search')) {
             $search = $request->search;
             $query->where(function($q) use ($search) {
-                $q->where('document_number', 'ilike', "%{$search}%")
-                  ->orWhere('first_name', 'ilike', "%{$search}%")
-                  ->orWhere('last_name', 'ilike', "%{$search}%")
-                  ->orWhere('email', 'ilike', "%{$search}%");
+                $q->whereLike('document_number', "%{$search}%")
+                  ->orWhereLike('first_name', "%{$search}%")
+                  ->orWhereLike('last_name', "%{$search}%")
+                  ->orWhereLike('email', "%{$search}%");
             });
         }
 
@@ -62,7 +62,7 @@ class PersonController extends Controller
                     return $query->where('document_type_id', $request->document_type_id);
                 }),
             ],
-            'neighborhood_id'  => 'required|exists:neighborhoods,id',
+            'neighborhood_id'  => 'required|active_exists:neighborhoods,id',
             'first_name'       => 'required|string|max:100',
             'middle_name'      => 'nullable|string|max:100',
             'last_name'        => 'required|string|max:100',
@@ -104,7 +104,7 @@ class PersonController extends Controller
                     return $query->where('document_type_id', $request->document_type_id);
                 })->ignore($person->id),
             ],
-            'neighborhood_id'  => 'required|exists:neighborhoods,id',
+            'neighborhood_id'  => 'required|active_exists:neighborhoods,id',
             'first_name'       => 'required|string|max:100',
             'last_name'        => 'required|string|max:100',
             'email'            => 'nullable|email|max:150|unique:persons,email,' . $person->id,

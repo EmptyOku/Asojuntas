@@ -224,8 +224,9 @@ def resolve_bedrock_model_candidates() -> list[str]:
             if model:
                 candidates.append(model)
 
-    # Safe defaults commonly available in Bedrock (ordered by quality/cost preference).
+    # Añadimos el modelo de tu compañero como prioridad #1 de los defaults
     candidates.extend([
+        "us.anthropic.claude-sonnet-4-6",
         "anthropic.claude-3-5-sonnet-20241022-v2:0",
         "anthropic.claude-3-5-haiku-20241022-v1:0",
         "anthropic.claude-3-haiku-20240307-v1:0",

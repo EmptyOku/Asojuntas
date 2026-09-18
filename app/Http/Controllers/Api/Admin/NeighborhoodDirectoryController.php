@@ -17,6 +17,8 @@ use App\Models\Candidate;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 class NeighborhoodDirectoryController extends Controller
 {
@@ -282,10 +284,13 @@ class NeighborhoodDirectoryController extends Controller
 
         if ($request->filled('search')) {
             $search = trim((string) $request->input('search'));
+            $likeTerm = '%'.mb_strtolower($search).'%';
 
-            $query->where(function ($q) use ($search): void {
-                $q->where('name', 'ilike', "%{$search}%")
-                    ->orWhere('code', 'ilike', "%{$search}%");
+            // whereRaw + LOWER() en vez de 'ilike': 'ilike' es exclusivo de
+            // PostgreSQL y rompe en SQLite (entorno local).
+            $query->where(function ($q) use ($likeTerm): void {
+                $q->whereRaw('LOWER(name) LIKE ?', [$likeTerm])
+                    ->orWhereRaw('LOWER(code) LIKE ?', [$likeTerm]);
             });
         }
 
@@ -1099,10 +1104,488 @@ class NeighborhoodDirectoryController extends Controller
         ]);
     }
 
+    /**
+     * Devuelve las comunas como FeatureCollection GeoJSON para pintarlas
+     * e interactuar con ellas en el mapa electoral.
+     */
+    /**
+     * Estados de scrutiny_records que cuentan como "acta recibida" (cualquier
+     * punto del flujo, desde que se sube hasta que se consolida).
+     */
+    private const ACTA_RECIBIDA_ESTADOS = ['draft', 'pending', 'pending_review', 'reviewed', 'approved', 'consolidated'];
+
+    public function communesGeo(): JsonResponse
+    {
+        $progress = $this->actaProgressByCommune();
+
+        $features = Commune::query()
+            ->whereNotNull('boundary')
+            ->withCount('neighborhoods')
+            ->orderBy('name')
+            ->get()
+            ->map(function (Commune $commune) use ($progress) {
+                $mesasTotal = $progress[$commune->id]['total'] ?? 0;
+                $mesasRecibidas = $progress[$commune->id]['recibidas'] ?? 0;
+                $mesasAtrasadas = $progress[$commune->id]['atrasadas'] ?? 0;
+                $pct = $mesasTotal > 0 ? (int) round($mesasRecibidas / $mesasTotal * 100) : 0;
+
+                return [
+                    'type' => 'Feature',
+                    'properties' => [
+                        'id' => $commune->id,
+                        'name' => $commune->name,
+                        'code' => $commune->code,
+                        'neighborhoods_count' => $commune->neighborhoods_count,
+                        'mesas_total' => $mesasTotal,
+                        'mesas_recibidas' => $mesasRecibidas,
+                        'mesas_atrasadas' => $mesasAtrasadas,
+                        'actas_pct' => $pct,
+                        'semaforo' => $this->semaforo($pct),
+                    ],
+                    'geometry' => $commune->boundary,
+                ];
+            })
+            ->values()
+            ->all();
+
+        return response()->json([
+            'type' => 'FeatureCollection',
+            'features' => $features,
+        ]);
+    }
+
+    /**
+     * Mesas totales, con acta recibida y atrasadas (elección vencida o de
+     * hoy pasada la hora de corte, sin acta), agrupadas por comuna.
+     *
+     * @return array<int, array{total: int, recibidas: int, atrasadas: int}>
+     */
+    private function actaProgressByCommune(): array
+    {
+        $today = now()->toDateString();
+        $cutoffReached = now()->hour >= (int) config('electoral.acta_cutoff_hour', 16);
+
+        $totales = DB::table('polling_tables as pt')
+            ->join('elections as e', 'e.id', '=', 'pt.election_id')
+            ->join('neighborhoods as n', 'n.id', '=', 'e.neighborhood_id')
+            ->where('e.is_active', true)
+            ->whereNull('n.deleted_at')
+            ->selectRaw('n.commune_id as commune_id, count(distinct pt.id) as total')
+            ->groupBy('n.commune_id')
+            ->pluck('total', 'commune_id');
+
+        $recibidas = DB::table('polling_tables as pt')
+            ->join('elections as e', 'e.id', '=', 'pt.election_id')
+            ->join('neighborhoods as n', 'n.id', '=', 'e.neighborhood_id')
+            ->join('scrutiny_records as sr', function ($join) {
+                $join->on('sr.polling_table_id', '=', 'pt.id')->whereNull('sr.deleted_at');
+            })
+            ->where('e.is_active', true)
+            ->whereNull('n.deleted_at')
+            ->whereIn('sr.status', self::ACTA_RECIBIDA_ESTADOS)
+            ->selectRaw('n.commune_id as commune_id, count(distinct pt.id) as recibidas')
+            ->groupBy('n.commune_id')
+            ->pluck('recibidas', 'commune_id');
+
+        $atrasadas = DB::table('polling_tables as pt')
+            ->join('elections as e', 'e.id', '=', 'pt.election_id')
+            ->join('neighborhoods as n', 'n.id', '=', 'e.neighborhood_id')
+            ->where('e.is_active', true)
+            ->whereNull('n.deleted_at')
+            ->where(function ($q) use ($today, $cutoffReached) {
+                $q->where('e.election_date', '<', $today);
+                if ($cutoffReached) {
+                    $q->orWhere('e.election_date', '=', $today);
+                }
+            })
+            ->whereNotExists(function ($q) {
+                $q->selectRaw('1')
+                    ->from('scrutiny_records as sr')
+                    ->whereColumn('sr.polling_table_id', 'pt.id')
+                    ->whereNull('sr.deleted_at')
+                    ->whereIn('sr.status', self::ACTA_RECIBIDA_ESTADOS);
+            })
+            ->selectRaw('n.commune_id as commune_id, count(distinct pt.id) as atrasadas')
+            ->groupBy('n.commune_id')
+            ->pluck('atrasadas', 'commune_id');
+
+        $communeIds = $totales->keys()->merge($recibidas->keys())->merge($atrasadas->keys())->unique();
+
+        return $communeIds->mapWithKeys(fn ($id) => [
+            $id => [
+                'total' => (int) ($totales[$id] ?? 0),
+                'recibidas' => (int) ($recibidas[$id] ?? 0),
+                'atrasadas' => (int) ($atrasadas[$id] ?? 0),
+            ],
+        ])->all();
+    }
+
+    /**
+     * Rojo: sin actas. Amarillo: recepcion parcial. Verde: completa.
+     */
+    private function semaforo(int $pct): string
+    {
+        if ($pct >= 100) {
+            return 'verde';
+        }
+
+        return $pct > 0 ? 'amarillo' : 'rojo';
+    }
+
+    /**
+     * Devuelve un punto por cada barrio / JAC que ya tiene coordenadas,
+     * como FeatureCollection GeoJSON, agrupable por comuna en el mapa.
+     * Incluye si tiene acta recibida, si esta atrasada, y el ganador de
+     * la presidencia cuando ya hay resultados escrutados.
+     */
+    public function neighborhoodsGeo(): JsonResponse
+    {
+        $barrios = Neighborhood::query()
+            ->whereNotNull('latitude')
+            ->whereNotNull('longitude')
+            ->with('commune:id,name,code')
+            ->orderBy('commune_id')
+            ->orderBy('map_order')
+            ->get();
+
+        $neighborhoodIds = $barrios->pluck('id');
+
+        $elections = Election::query()
+            ->whereIn('neighborhood_id', $neighborhoodIds)
+            ->where('is_active', true)
+            ->get(['id', 'neighborhood_id', 'election_date'])
+            ->keyBy('neighborhood_id');
+
+        $electionIds = $elections->pluck('id');
+
+        $pollingTableIdsByElection = PollingTable::query()
+            ->whereIn('election_id', $electionIds)
+            ->where('is_active', true)
+            ->get(['id', 'election_id'])
+            ->groupBy('election_id')
+            ->map(fn ($rows) => $rows->pluck('id'));
+
+        $allPollingTableIds = $pollingTableIdsByElection->flatten();
+
+        $pollingTablesConActa = DB::table('scrutiny_records')
+            ->whereIn('polling_table_id', $allPollingTableIds)
+            ->whereNull('deleted_at')
+            ->whereIn('status', self::ACTA_RECIBIDA_ESTADOS)
+            ->distinct()
+            ->pluck('polling_table_id')
+            ->flip();
+
+        $electionIdsConResultados = DB::table('scrutiny_block_results')
+            ->whereIn('election_id', $electionIds)
+            ->distinct()
+            ->pluck('election_id')
+            ->flip();
+
+        $today = now()->toDateString();
+        $cutoffReached = now()->hour >= (int) config('electoral.acta_cutoff_hour', 16);
+        $winnersCache = [];
+
+        $features = $barrios->map(function (Neighborhood $barrio) use (
+            $elections,
+            $pollingTableIdsByElection,
+            $pollingTablesConActa,
+            $electionIdsConResultados,
+            $today,
+            $cutoffReached,
+            &$winnersCache
+        ) {
+            $election = $elections->get($barrio->id);
+            $hasActa = false;
+            $atrasada = false;
+            $winner = null;
+
+            if ($election) {
+                $tableIds = $pollingTableIdsByElection->get($election->id, collect());
+                $hasActa = $tableIds->contains(fn ($id) => $pollingTablesConActa->has($id));
+
+                $electionDate = $election->election_date instanceof \DateTimeInterface
+                    ? $election->election_date->format('Y-m-d')
+                    : (string) $election->election_date;
+
+                $venceHoy = $electionDate === $today && $cutoffReached;
+                $atrasada = ! $hasActa && ($electionDate < $today || $venceHoy);
+
+                if ($electionIdsConResultados->has($election->id)) {
+                    $winnersCache[$election->id] ??= $this->winningPresident($election->id);
+                    $winner = $winnersCache[$election->id];
+                }
+            }
+
+            return [
+                'type' => 'Feature',
+                'properties' => [
+                    'id' => $barrio->id,
+                    'name' => $barrio->name,
+                    'code' => $barrio->code,
+                    'commune_id' => $barrio->commune_id,
+                    'commune_name' => $barrio->commune?->name,
+                    'commune_code' => $barrio->commune?->code,
+                    'map_order' => $barrio->map_order,
+                    'has_acta' => $hasActa,
+                    'atrasada' => $atrasada,
+                    'winner' => $winner,
+                ],
+                'geometry' => [
+                    'type' => 'Point',
+                    'coordinates' => [(float) $barrio->longitude, (float) $barrio->latitude],
+                ],
+            ];
+        })->values()->all();
+
+        return response()->json([
+            'type' => 'FeatureCollection',
+            'features' => $features,
+        ]);
+    }
+
+    /**
+     * Nombre del presidente de la plancha ganadora (mas votos en el bloque
+     * Directiva) para una elección dada, o null si aun no se puede
+     * determinar.
+     */
+    private function winningPresident(int $electionId): ?string
+    {
+        $winningResult = ScrutinyBlockResult::where('election_id', $electionId)
+            ->whereHas('electionBlock.block', fn ($q) => $q->where('code', 'DIR'))
+            ->orderByDesc('votes')
+            ->first();
+
+        if (! $winningResult || ! $winningResult->slate_block_id) {
+            return null;
+        }
+
+        $winner = Candidate::where('election_id', $electionId)
+            ->where('slate_block_id', $winningResult->slate_block_id)
+            ->whereHas('electionBlockPosition.position', fn ($q) => $q->where('code', 'DIR_PRES'))
+            ->with('person')
+            ->first();
+
+        if (! $winner || ! $winner->person) {
+            return null;
+        }
+
+        return trim($winner->person->first_name.' '.$winner->person->last_name);
+    }
+
+    /**
+     * Ubica (o reubica) manualmente un barrio en el mapa: se ingresa la
+     * coordenada a mano desde el panel de administracion, sin depender de
+     * un archivo GeoJSON. Si es la primera vez que se ubica, se le asigna
+     * el siguiente orden dentro de su comuna.
+     */
+    public function updateLocation(Request $request, int $id): JsonResponse
+    {
+        $barrio = Neighborhood::with('commune')->find($id);
+
+        if (! $barrio) {
+            return response()->json(['success' => false, 'message' => 'Barrio no encontrado.'], 404);
+        }
+
+        $validated = $request->validate([
+            'latitude' => ['required', 'numeric', 'between:-90,90'],
+            'longitude' => ['required', 'numeric', 'between:-180,180'],
+        ]);
+
+        // La coordenada solo se acepta si cae dentro del contorno de la
+        // comuna a la que pertenece el barrio; evita ubicar por error un
+        // barrio de una comuna dentro del territorio de otra.
+        $ring = $barrio->commune?->boundary['coordinates'][0] ?? null;
+
+        if ($ring && ! $this->pointInPolygon((float) $validated['latitude'], (float) $validated['longitude'], $ring)) {
+            throw ValidationException::withMessages([
+                'latitude' => "La coordenada debe estar dentro del contorno de {$barrio->commune->name}.",
+            ]);
+        }
+
+        if ($barrio->map_order === null) {
+            $maxOrder = Neighborhood::where('commune_id', $barrio->commune_id)->max('map_order');
+            $validated['map_order'] = $maxOrder === null ? 0 : $maxOrder + 1;
+        }
+
+        $barrio->update($validated);
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'id' => $barrio->id,
+                'name' => $barrio->name,
+                'latitude' => (float) $barrio->latitude,
+                'longitude' => (float) $barrio->longitude,
+                'map_order' => $barrio->map_order,
+            ],
+        ]);
+    }
+
+    /**
+     * Quita la ubicacion de un barrio (por si se ingreso por error).
+     */
+    public function clearLocation(int $id): JsonResponse
+    {
+        $barrio = Neighborhood::find($id);
+
+        if (! $barrio) {
+            return response()->json(['success' => false, 'message' => 'Barrio no encontrado.'], 404);
+        }
+
+        $barrio->update(['latitude' => null, 'longitude' => null]);
+
+        return response()->json(['success' => true]);
+    }
+
+    /**
+     * Crea un barrio nuevo a mano (sin depender de un GeoJSON), directamente
+     * desde el panel del mapa. El codigo se genera a partir del nombre.
+     */
+    public function store(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'commune_id' => ['required', 'integer', 'exists:communes,id'],
+            'name' => ['required', 'string', 'max:120'],
+        ]);
+
+        $commune = Commune::find($validated['commune_id']);
+        $name = trim($validated['name']);
+
+        $this->assertNameAvailable($commune->id, $name);
+
+        $barrio = Neighborhood::create([
+            'commune_id' => $commune->id,
+            'name' => $name,
+            'code' => $this->generateNeighborhoodCode($commune, $name),
+            'type' => 'barrio',
+            'source_name' => 'Ingreso manual',
+            'is_verified' => false,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'id' => $barrio->id,
+                'name' => $barrio->name,
+                'code' => $barrio->code,
+                'commune_id' => $barrio->commune_id,
+                'has_coordinates' => false,
+            ],
+        ], 201);
+    }
+
+    /**
+     * Renombra un barrio existente.
+     */
+    public function update(Request $request, int $id): JsonResponse
+    {
+        $barrio = Neighborhood::find($id);
+
+        if (! $barrio) {
+            return response()->json(['success' => false, 'message' => 'Barrio no encontrado.'], 404);
+        }
+
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:120'],
+        ]);
+
+        $name = trim($validated['name']);
+        $this->assertNameAvailable($barrio->commune_id, $name, excludeId: $barrio->id);
+
+        $barrio->update(['name' => $name]);
+
+        return response()->json([
+            'success' => true,
+            'data' => ['id' => $barrio->id, 'name' => $barrio->name],
+        ]);
+    }
+
+    /**
+     * Elimina (borrado suave) un barrio ingresado manualmente. Se bloquea si
+     * ya tiene actas registradas, para no perder evidencia electoral real.
+     */
+    public function destroy(int $id): JsonResponse
+    {
+        $barrio = Neighborhood::find($id);
+
+        if (! $barrio) {
+            return response()->json(['success' => false, 'message' => 'Barrio no encontrado.'], 404);
+        }
+
+        $tieneActas = ScrutinyRecord::whereHas('election', fn ($q) => $q->where('neighborhood_id', $barrio->id))
+            ->whereIn('status', self::ACTA_RECIBIDA_ESTADOS)
+            ->exists();
+
+        if ($tieneActas) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No se puede eliminar: este barrio ya tiene actas registradas.',
+            ], 422);
+        }
+
+        $barrio->delete();
+
+        return response()->json(['success' => true]);
+    }
+
+    private function assertNameAvailable(int $communeId, string $name, ?int $excludeId = null): void
+    {
+        $exists = Neighborhood::where('commune_id', $communeId)
+            ->where('name', $name)
+            ->when($excludeId, fn ($q) => $q->where('id', '!=', $excludeId))
+            ->exists();
+
+        if ($exists) {
+            throw ValidationException::withMessages([
+                'name' => 'Ya existe un barrio con ese nombre en esta comuna.',
+            ]);
+        }
+    }
+
+    private function generateNeighborhoodCode(Commune $commune, string $name): string
+    {
+        $slug = strtoupper(Str::of($name)->ascii()->slug('-'));
+        $base = $commune->code.'-'.$slug;
+        $code = $base;
+        $suffix = 1;
+
+        while (Neighborhood::where('commune_id', $commune->id)->where('code', $code)->exists()) {
+            $code = $base.'-'.(++$suffix);
+        }
+
+        return $code;
+    }
+
+    /**
+     * Ray casting estandar: true si (lat, lng) cae dentro del anillo de un
+     * Polygon GeoJSON (coordenadas en [lng, lat], como las guarda Commune::boundary).
+     *
+     * @param  list<array{0: float, 1: float}>  $ring
+     */
+    private function pointInPolygon(float $lat, float $lng, array $ring): bool
+    {
+        $inside = false;
+        $count = count($ring);
+
+        for ($i = 0, $j = $count - 1; $i < $count; $j = $i++) {
+            [$xi, $yi] = $ring[$i];
+            [$xj, $yj] = $ring[$j];
+
+            $intersects = (($yi > $lat) !== ($yj > $lat))
+                && ($lng < ($xj - $xi) * ($lat - $yi) / (($yj - $yi) ?: 1e-12) + $xi);
+
+            if ($intersects) {
+                $inside = ! $inside;
+            }
+        }
+
+        return $inside;
+    }
+
     public function listForForms(Request $request): JsonResponse
     {
         $query = Neighborhood::query()
-            ->select('id', 'name', 'commune_id')
+            ->select('id', 'name', 'commune_id', 'latitude', 'longitude')
             ->orderBy('name', 'asc');
 
         // Filtrar por comuna si se proporciona
@@ -1116,6 +1599,9 @@ class NeighborhoodDirectoryController extends Controller
             ->map(fn($neighborhood) => [
                 'id' => $neighborhood->id,
                 'name' => $neighborhood->name,
+                'has_coordinates' => $neighborhood->latitude !== null && $neighborhood->longitude !== null,
+                'latitude' => $neighborhood->latitude,
+                'longitude' => $neighborhood->longitude,
             ])
             ->toArray();
 
@@ -1373,8 +1859,12 @@ class NeighborhoodDirectoryController extends Controller
             ->with('commune:id,name');
 
         if (!empty($term)) {
-            $query->where('name', 'ilike', "%{$term}%")
-                  ->orWhere('code', 'ilike', "%{$term}%");
+            $likeTerm = '%'.mb_strtolower((string) $term).'%';
+
+            $query->where(function ($q) use ($likeTerm): void {
+                $q->whereRaw('LOWER(name) LIKE ?', [$likeTerm])
+                    ->orWhereRaw('LOWER(code) LIKE ?', [$likeTerm]);
+            });
         }
 
         $neighborhoods = $query->orderBy('name')->limit(15)->get();

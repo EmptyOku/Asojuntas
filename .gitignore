@@ -4,6 +4,7 @@ Thumbs.db
 
 .env
 .env.backup
+.env.backup*
 .env.production
 
 .phpactor.json
@@ -43,3 +44,10 @@ public_html/hot
 
 Homestead.yaml
 Homestead.json
+
+# Imagenes de prueba y entorno virtual de Python
+IMG/
+.venv/
+
+# Archivo vacio generado por error
+/python

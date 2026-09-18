@@ -122,7 +122,7 @@
 <script setup>
 import { ref } from 'vue';
 import { useRouter } from 'vue-router';
-import axios from '@/services/axios';
+import axios, { extractorInstance } from '@/services/axios';
 import { useDocumentStore } from '@/stores/document';
 import { ArrowLeft, ScanLine, Camera, Send, Loader2, Plus, X, Search, MapPin } from 'lucide-vue-next';
 
@@ -177,13 +177,11 @@ const selectNeighborhood = (neighborhood) => {
 };
 
 // --- LÓGICA DE CAPTURA ORIGINAL ---
-// --- LÓGICA DE CAPTURA ORIGINAL ---
 const handleImageUpload = (event) => {
   const files = event.target.files;
   if (!files) return;
 
   for (let i = 0; i < files.length; i += 1) {
-    // Validamos el límite antes de insertar
     if (capturedImages.value.length >= MAX_PLANCHA_PAGES) {
       console.warn("Límite máximo de páginas de plancha alcanzado");
       break; 
@@ -287,9 +285,9 @@ const extractPlanchas = async () => {
         form.append('election_id', selectedNeighborhood.value.active_election.id);
 
         try {
-          const { data } = await axios.post('/secretary/planchas/extract-preview', form, {
+          // Usamos extractorInstance para respetar el timeout extendido de 4 minutos
+          const { data } = await extractorInstance.post('/secretary/planchas/extract-preview', form, {
             headers: { 'Content-Type': 'multipart/form-data' },
-            timeout: 240000,
           });
 
           const pageData = data?.data?.review_page_data;

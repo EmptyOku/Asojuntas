@@ -15,6 +15,11 @@ class Commune extends Model
         'city_id',
         'name',
         'code',
+        'boundary',
+    ];
+
+    protected $casts = [
+        'boundary' => 'array',
     ];
 
     public function city(): BelongsTo

@@ -4,7 +4,11 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
+<<<<<<< HEAD
     "content-hash": "e154bcd1fe0bcf7a09a78c868accbb43",
+=======
+    "content-hash": "7bc55b62964cd7116e5da59fef6e5cfd",
+>>>>>>> sonnet4
     "packages": [
         {
             "name": "brick/math",
@@ -8791,8 +8795,15 @@
     "prefer-stable": true,
     "prefer-lowest": false,
     "platform": {
-        "php": "^8.3"
+        "php": "^8.4"
     },
     "platform-dev": {},
+<<<<<<< HEAD
     "plugin-api-version": "2.9.0"
+=======
+    "platform-overrides": {
+        "php": "8.4.4"
+    },
+    "plugin-api-version": "2.6.0"
+>>>>>>> sonnet4
 }

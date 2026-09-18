@@ -50,7 +50,7 @@ class ScrutinyReviewController extends Controller
     public function store(Request $request): RedirectResponse
     {
         $validated = $request->validate([
-            'scrutiny_record_id'     => 'required|exists:scrutiny_records,id',
+            'scrutiny_record_id'     => 'required|active_exists:scrutiny_records,id',
             'scrutiny_extraction_id' => 'required|exists:scrutiny_extractions,id',
             'decision'               => 'required|in:approved,rejected,modified',
             'comments'               => 'required|string|max:1000', // Justificación obligatoria

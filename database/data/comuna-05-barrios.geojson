@@ -1,0 +1,23 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    { "type": "Feature", "properties": { "commune_code": "COM-05", "code": "COM05-BRISAS-DEL-BOGOTA",     "name": "Brisas del Bogota" },      "geometry": { "type": "Point", "coordinates": [-74.795106, 4.302889] } },
+    { "type": "Feature", "properties": { "commune_code": "COM-05", "code": "COM05-CEDRO-VILLAOLARTE",     "name": "Cedro Villaolarte" },      "geometry": { "type": "Point", "coordinates": [-74.787610, 4.314937] } },
+    { "type": "Feature", "properties": { "commune_code": "COM-05", "code": "COM05-EL-COROZO",              "name": "El Corozo" },              "geometry": { "type": "Point", "coordinates": [-74.791603, 4.309510] } },
+    { "type": "Feature", "properties": { "commune_code": "COM-05", "code": "COM05-EL-TRIUNFO",             "name": "El Triunfo" },             "geometry": { "type": "Point", "coordinates": [-74.792068, 4.313007] } },
+    { "type": "Feature", "properties": { "commune_code": "COM-05", "code": "COM05-KENNEDY-II",             "name": "Kennedy II Sector" },      "geometry": { "type": "Point", "coordinates": [-74.789030, 4.316918] } },
+    { "type": "Feature", "properties": { "commune_code": "COM-05", "code": "COM05-KENNEDY-III",            "name": "Kennedy III Sector" },     "geometry": { "type": "Point", "coordinates": [-74.786579, 4.315598] } },
+    { "type": "Feature", "properties": { "commune_code": "COM-05", "code": "COM05-KENNEDY-IV",             "name": "Kennedy IV Sector" },      "geometry": { "type": "Point", "coordinates": [-74.787705, 4.312880] } },
+    { "type": "Feature", "properties": { "commune_code": "COM-05", "code": "COM05-KENNEDY-I",              "name": "Kennedy Sector I" },       "geometry": { "type": "Point", "coordinates": [-74.788685, 4.313913] } },
+    { "type": "Feature", "properties": { "commune_code": "COM-05", "code": "COM05-LA-CAROLINA-AYB",        "name": "La Carolina A y B" },      "geometry": { "type": "Point", "coordinates": [-74.785007, 4.316185] } },
+    { "type": "Feature", "properties": { "commune_code": "COM-05", "code": "COM05-MAGDALENA-III",          "name": "Magdalena III" },          "geometry": { "type": "Point", "coordinates": [-74.794072, 4.312015] } },
+    { "type": "Feature", "properties": { "commune_code": "COM-05", "code": "COM05-OBRERO",                 "name": "Obrero" },                 "geometry": { "type": "Point", "coordinates": [-74.797164, 4.299135] } },
+    { "type": "Feature", "properties": { "commune_code": "COM-05", "code": "COM05-PORTACHUELO",            "name": "Portachuelo" },            "geometry": { "type": "Point", "coordinates": [-74.786819, 4.321292] } },
+    { "type": "Feature", "properties": { "commune_code": "COM-05", "code": "COM05-PRIMERO-DE-ENERO",       "name": "Primero de Enero" },       "geometry": { "type": "Point", "coordinates": [-74.784420, 4.315177] } },
+    { "type": "Feature", "properties": { "commune_code": "COM-05", "code": "COM05-SALSIPUEDES",            "name": "Salsipuedes" },            "geometry": { "type": "Point", "coordinates": [-74.796133, 4.301405] } },
+    { "type": "Feature", "properties": { "commune_code": "COM-05", "code": "COM05-SAN-JORGE",              "name": "San Jorge" },              "geometry": { "type": "Point", "coordinates": [-74.796645, 4.305783] } },
+    { "type": "Feature", "properties": { "commune_code": "COM-05", "code": "COM05-SANTA-FE",               "name": "Santa Fe" },               "geometry": { "type": "Point", "coordinates": [-74.797093, 4.304124] } },
+    { "type": "Feature", "properties": { "commune_code": "COM-05", "code": "COM05-SUBNORMAL-LA-VICTORIA",  "name": "Subnormal La Victoria" },  "geometry": { "type": "Point", "coordinates": [-74.791524, 4.307179] } },
+    { "type": "Feature", "properties": { "commune_code": "COM-05", "code": "COM05-VILLA-KENNEDY",          "name": "Villa Kennedy" },          "geometry": { "type": "Point", "coordinates": [-74.785623, 4.317601] } }
+  ]
+}

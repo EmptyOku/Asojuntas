@@ -21,8 +21,8 @@ class CityController extends Controller
         $query = City::with('state');
 
         if ($request->filled('search')) {
-            $query->where('name', 'ilike', "%{$request->search}%")
-                  ->orWhere('code', 'ilike', "%{$request->search}%");
+            $query->whereLike('name', "%{$request->search}%")
+                  ->orWhereLike('code', "%{$request->search}%");
         }
 
         if ($request->filled('state_id')) {

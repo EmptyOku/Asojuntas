@@ -8,6 +8,7 @@ use App\Models\PollingTable;
 use App\Models\ScrutinyExtraction;
 use App\Models\ScrutinyRecord;
 use App\Models\ScrutinyRecordFile;
+use App\Services\ElectoralAccessGuard;
 use App\Services\ScrutinyExtractionImporter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -16,6 +17,7 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use RuntimeException;
+use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 use Symfony\Component\Process\Process;
 use Throwable;
 
@@ -176,7 +178,7 @@ class JuryIngestController extends Controller
         $maxFileSizeKb = (int) config('services.extractor.max_upload_kb', 10240);
 
         $validated = $request->validate([
-            'scrutiny_record_id' => 'nullable|exists:scrutiny_records,id',
+            'scrutiny_record_id' => 'nullable|active_exists:scrutiny_records,id',
             'polling_table_id' => 'nullable|exists:polling_tables,id',
             'document_file' => 'required|file|mimes:jpeg,png,jpg,pdf|max:'.$maxFileSizeKb,
             'page_number' => 'required|integer|min:1',
@@ -438,8 +440,10 @@ class JuryIngestController extends Controller
         }
     }
 
-    public function showFile(ScrutinyRecordFile $scrutinyRecordFile)
+    public function showFile(Request $request, ScrutinyRecordFile $scrutinyRecordFile)
     {
+        $this->assertFileAccess($request, $scrutinyRecordFile);
+
         $storageDisk = $this->resolveStorageDisk($scrutinyRecordFile->storage_path);
 
         if ($storageDisk === null) {
@@ -450,6 +454,26 @@ class JuryIngestController extends Controller
             $scrutinyRecordFile->storage_path,
             $scrutinyRecordFile->original_name ?? ('acta_'.$scrutinyRecordFile->id)
         );
+    }
+
+    /**
+     * Un jurado solo accede a los archivos de las actas que él mismo creó.
+     * Los revisores usan el módulo de auditoría, que sí abarca todos los barrios.
+     */
+    private function assertFileAccess(Request $request, ScrutinyRecordFile $file): void
+    {
+        $user = $request->user();
+        $guard = app(ElectoralAccessGuard::class);
+
+        if ($guard->isReviewer($user)) {
+            return;
+        }
+
+        $record = $file->scrutinyRecord()->withTrashed()->first();
+
+        if (! $record || (int) $record->created_by_user_id !== (int) $user->id) {
+            throw new AccessDeniedHttpException('No tienes acceso a este archivo.');
+        }
     }
 
     private function storageDisk(): string
@@ -478,8 +502,18 @@ class JuryIngestController extends Controller
         ]));
 
         foreach ($disks as $disk) {
-            if (Storage::disk($disk)->exists($path)) {
-                return $disk;
+            try {
+                if (Storage::disk($disk)->exists($path)) {
+                    return $disk;
+                }
+            } catch (Throwable $exception) {
+                // Un disco remoto inalcanzable no debe tumbar la descarga:
+                // se registra y se intenta con el siguiente.
+                Log::warning('No se pudo consultar el disco de almacenamiento.', [
+                    'disk' => $disk,
+                    'path' => $path,
+                    'error' => $exception->getMessage(),
+                ]);
             }
         }
 
@@ -550,16 +584,23 @@ class JuryIngestController extends Controller
 
     private function assertPollingTableAccess(Request $request, PollingTable $pollingTable): void
     {
-        $userNeighborhoodId = (int) ($request->user()?->person?->neighborhood_id ?? 0);
-        if ($userNeighborhoodId <= 0) {
+        $guard = app(ElectoralAccessGuard::class);
+        $user = $request->user();
+
+        if ($guard->isReviewer($user)) {
             return;
         }
 
-        $tableNeighborhoodId = (int) Election::query()
-            ->where('id', $pollingTable->election_id)
-            ->value('neighborhood_id');
+        // Falla en cerrado: sin barrio asignado no hay mesa habilitada.
+        if ($guard->neighborhoodIdFor($user) === null) {
+            throw ValidationException::withMessages([
+                'polling_table_id' => 'Tu usuario no tiene un barrio asignado. Solicita la asignación antes de cargar actas.',
+            ]);
+        }
 
-        if ($tableNeighborhoodId !== $userNeighborhoodId) {
+        $tableNeighborhoodId = $guard->neighborhoodIdForElection($pollingTable->election_id);
+
+        if (! $guard->canReachNeighborhood($user, $tableNeighborhoodId)) {
             throw ValidationException::withMessages([
                 'polling_table_id' => 'Solo puedes cargar actas en la mesa asignada a tu barrio.',
             ]);

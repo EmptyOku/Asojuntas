@@ -36,9 +36,9 @@ class CandidateController extends Controller
         if ($request->filled('search')) {
             $search = $request->search;
             $query->whereHas('person', function ($q) use ($search) {
-                $q->where('first_name', 'ilike', "%{$search}%")
-                  ->orWhere('last_name', 'ilike', "%{$search}%")
-                  ->orWhere('document_number', 'ilike', "%{$search}%");
+                $q->whereLike('first_name', "%{$search}%")
+                  ->orWhereLike('last_name', "%{$search}%")
+                  ->orWhereLike('document_number', "%{$search}%");
             });
         }
 

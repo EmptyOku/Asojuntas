@@ -34,6 +34,11 @@
           Geografía Electoral
         </router-link>
 
+        <router-link to="/admin/map" @click="isMobileMenuOpen = false" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200" active-class="bg-aso-primary text-white shadow-md shadow-aso-primary/20" :class="[$route.path.includes('/map') ? 'bg-aso-primary text-white shadow-md shadow-aso-primary/20' : 'text-gray-700 hover:bg-gray-100']">
+          <MapPin class="w-5 h-5" :class="[$route.path.includes('/map') ? 'text-white' : 'text-gray-400']" />
+          Mapa Interactivo
+        </router-link>
+
         <router-link to="/admin/candidates" @click="isMobileMenuOpen = false" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200" active-class="bg-aso-primary text-white shadow-md shadow-aso-primary/20" :class="[$route.path.includes('/candidates') ? 'bg-aso-primary text-white shadow-md shadow-aso-primary/20' : 'text-gray-700 hover:bg-gray-100']">
           <Users class="w-5 h-5" :class="[$route.path.includes('/candidates') ? 'text-white' : 'text-gray-400']" />
           Directorio JAC
@@ -128,7 +133,7 @@ import { useRouter, useRoute } from 'vue-router';
 import { useAuthStore } from '@/stores/auth';
 
 // Añadimos Menu y X de Lucide para la versión móvil
-import { LayoutDashboard, Map, Users, FileCheck, ShieldAlert, Bell, Settings, LogOut, Menu, X, ClipboardList } from 'lucide-vue-next';
+import { LayoutDashboard, Map, MapPin, Users, FileCheck, ShieldAlert, Bell, Settings, LogOut, Menu, X, ClipboardList } from 'lucide-vue-next';
 
 const router = useRouter();
 const route = useRoute();

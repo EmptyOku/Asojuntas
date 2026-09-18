@@ -24,10 +24,10 @@ class PersonController extends Controller
         if ($request->filled('search')) {
             $search = $request->string('search')->toString();
             $query->where(function ($q) use ($search) {
-                $q->where('document_number', 'ilike', "%{$search}%")
-                    ->orWhere('first_name', 'ilike', "%{$search}%")
-                    ->orWhere('last_name', 'ilike', "%{$search}%")
-                    ->orWhere('email', 'ilike', "%{$search}%")
+                $q->whereLike('document_number', "%{$search}%")
+                    ->orWhereLike('first_name', "%{$search}%")
+                    ->orWhereLike('last_name', "%{$search}%")
+                    ->orWhereLike('email', "%{$search}%")
                     ->orWhereRaw(
                         "CONCAT(first_name, ' ', COALESCE(middle_name, ''), ' ', last_name, ' ', COALESCE(second_last_name, '')) ILIKE ?",
                         ["%{$search}%"]
@@ -101,7 +101,7 @@ class PersonController extends Controller
             'phone' => 'nullable|string|max:20',
             'email' => 'nullable|email|max:150|unique:persons,email',
             'address' => 'nullable|string|max:255',
-            'neighborhood_id' => 'nullable|exists:neighborhoods,id',
+            'neighborhood_id' => 'nullable|active_exists:neighborhoods,id',
             'is_active' => 'sometimes|boolean',
         ]);
 
@@ -157,7 +157,7 @@ class PersonController extends Controller
             'phone' => 'nullable|string|max:20',
             'email' => 'nullable|email|max:150|unique:persons,email,' . $person->id,
             'address' => 'nullable|string|max:255',
-            'neighborhood_id' => 'nullable|exists:neighborhoods,id',
+            'neighborhood_id' => 'nullable|active_exists:neighborhoods,id',
             'is_active' => 'sometimes|boolean',
         ]);
 
@@ -192,9 +192,9 @@ class PersonController extends Controller
 
         if (!empty($search)) {
             $query->where(function ($q) use ($search) {
-                $q->where('first_name', 'ilike', "%{$search}%")
-                    ->orWhere('last_name', 'ilike', "%{$search}%")
-                    ->orWhere('document_number', 'ilike', "%{$search}%");
+                $q->whereLike('first_name', "%{$search}%")
+                    ->orWhereLike('last_name', "%{$search}%")
+                    ->orWhereLike('document_number', "%{$search}%");
             });
         }
 

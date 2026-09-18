@@ -9,6 +9,8 @@ use Illuminate\Http\Request;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 class ScrutinyRecordFileController extends Controller
 {
@@ -19,7 +21,7 @@ class ScrutinyRecordFileController extends Controller
     {
         $storageDisk = $this->storageDisk();
         $validated = $request->validate([
-            'scrutiny_record_id' => 'required|exists:scrutiny_records,id',
+            'scrutiny_record_id' => 'required|active_exists:scrutiny_records,id',
             'document_file'      => 'required|file|mimes:jpeg,png,jpg,pdf|max:10240', // Máx 10MB
             'page_number'        => 'required|integer|min:1',
             'is_primary'         => 'boolean',
@@ -111,8 +113,18 @@ class ScrutinyRecordFileController extends Controller
         ]));
 
         foreach ($disks as $disk) {
-            if (Storage::disk($disk)->exists($path)) {
-                return $disk;
+            try {
+                if (Storage::disk($disk)->exists($path)) {
+                    return $disk;
+                }
+            } catch (Throwable $exception) {
+                // Un disco remoto inalcanzable no debe tumbar la descarga:
+                // se registra y se intenta con el siguiente.
+                Log::warning('No se pudo consultar el disco de almacenamiento.', [
+                    'disk' => $disk,
+                    'path' => $path,
+                    'error' => $exception->getMessage(),
+                ]);
             }
         }
 
