@@ -10,6 +10,7 @@ use App\Models\Role;
 use App\Services\AuditTrailLogger;
 use App\Services\LegacyRbacAuditTrail;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
@@ -38,16 +39,43 @@ class RoleManagementController extends Controller
         ], Role::class, $role->id);
     }
 
-    public function index(): JsonResponse
+    /**
+     * Registra en la bitácora la pérdida de un rol para un usuario puntual, con el mismo
+     * tipo de evento ('role_assignment') que ya usa UserManagementController::syncRoles,
+     * para que se vea igual en el historial sin importar desde dónde se originó el cambio.
+     */
+    private function logRoleAssignment($user, array $rolesBefore, array $rolesAfter): void
     {
-        $roles = Role::with(['permissions:id,name,display_name,description'])
-            ->where('is_active', true)
-            ->orderBy('display_name')
-            ->get();
+        $before = $rolesBefore;
+        $after = $rolesAfter;
+        sort($before);
+        sort($after);
+
+        if ($before === $after) {
+            return;
+        }
+
+        app(AuditTrailLogger::class)->recordSystemEvent('role_assignment', [
+            'target_user_id' => $user->id,
+            'target_username' => $user->username,
+            'roles_before' => $rolesBefore,
+            'roles_after' => $rolesAfter,
+        ], get_class($user), $user->id);
+    }
+
+    public function index(Request $request): JsonResponse
+    {
+        $query = Role::with(['permissions:id,name,display_name,description'])
+            ->withCount('users')
+            ->orderBy('display_name');
+
+        if (! $request->boolean('include_inactive')) {
+            $query->where('is_active', true);
+        }
 
         return response()->json([
             'success' => true,
-            'data' => $roles,
+            'data' => $query->get(),
         ]);
     }
 
@@ -109,6 +137,50 @@ class RoleManagementController extends Controller
         return response()->json([
             'success' => true,
             'data' => $role->load('permissions:id,name,display_name,description'),
+        ]);
+    }
+
+    public function toggleActive(int $id): JsonResponse
+    {
+        $affectedUsersCount = 0;
+
+        $role = DB::transaction(function () use ($id, &$affectedUsersCount) {
+            $role = Role::findOrFail($id);
+            $isActiveBefore = $role->is_active;
+            $activating = ! $isActiveBefore;
+
+            if (! $activating) {
+                // Desactivar también revoca el rol a quien ya lo tenga: is_active no se
+                // consulta en ningún chequeo de permisos, así que ocultarlo del catálogo
+                // sin quitarlo dejaría el acceso intacto para quien ya lo tuviera.
+                foreach ($role->users()->get() as $user) {
+                    $rolesBefore = $user->roles()->pluck('display_name')->values()->all();
+                    $user->removeRole($role);
+                    $rolesAfter = $user->roles()->pluck('display_name')->values()->all();
+
+                    LegacyRbacAuditTrail::syncUserRoles($user->id, $user->roles()->pluck('id'), Auth::id());
+                    $this->logRoleAssignment($user, $rolesBefore, $rolesAfter);
+                    $affectedUsersCount++;
+                }
+            }
+
+            $role->update(['is_active' => $activating]);
+
+            app(AuditTrailLogger::class)->recordSystemEvent('role_status_change', [
+                'role_id' => $role->id,
+                'role_name' => $role->display_name,
+                'is_active_before' => $isActiveBefore,
+                'is_active_after' => $activating,
+                'affected_users_count' => $affectedUsersCount,
+            ], Role::class, $role->id);
+
+            return $role;
+        });
+
+        return response()->json([
+            'success' => true,
+            'data' => $role->fresh()->loadCount('users')->load('permissions:id,name,display_name,description'),
+            'affected_users_count' => $affectedUsersCount,
         ]);
     }
 }

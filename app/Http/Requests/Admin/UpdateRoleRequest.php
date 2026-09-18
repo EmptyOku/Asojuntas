@@ -3,8 +3,9 @@
 namespace App\Http\Requests\Admin;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
-class StoreRoleRequest extends FormRequest
+class UpdateRoleRequest extends FormRequest
 {
     public function authorize(): bool
     {
@@ -25,17 +26,17 @@ class StoreRoleRequest extends FormRequest
     {
         return [
             'name' => [
-                'required', 
-                'string', 
-                'max:50', 
-                'regex:/^[a-z0-9._-]+$/', 
-                'unique:roles,name'
+                'required',
+                'string',
+                'max:50',
+                'regex:/^[a-z0-9._-]+$/',
+                Rule::unique('roles', 'name')->ignore($this->route('id')),
             ],
             'display_name' => ['required', 'string', 'max:100'],
             'description' => ['nullable', 'string', 'max:255'],
             'permissions' => ['nullable', 'array'],
             // Permite validar si lo que llega del frontend son IDs numéricos O los nombres de los permisos
-            'permissions.*' => ['required'], 
+            'permissions.*' => ['required'],
         ];
     }
 

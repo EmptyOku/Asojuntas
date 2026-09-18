@@ -22,6 +22,7 @@ class AuditLogController extends Controller
         'review_decision' => 'Decisión de revisión',
         'role_assignment' => 'Asignación de rol',
         'permission_assignment' => 'Asignación de permiso',
+        'role_status_change' => 'Cambio de estado de rol',
     ];
 
     /**
@@ -205,6 +206,29 @@ class AuditLogController extends Controller
 
         if ($action === 'permission_assignment') {
             return self::describeListDiff('Permisos', $metadata['permissions_before'] ?? [], $metadata['permissions_after'] ?? []);
+        }
+
+        if ($action === 'role_status_change') {
+            $changes = [];
+
+            if (array_key_exists('is_active_before', $metadata ?? []) && array_key_exists('is_active_after', $metadata ?? [])) {
+                $changes[] = [
+                    'field' => 'is_active',
+                    'label' => 'Estado',
+                    'from' => $metadata['is_active_before'] ? 'Activo' : 'Inactivo',
+                    'to' => $metadata['is_active_after'] ? 'Activo' : 'Inactivo',
+                ];
+            }
+
+            if (isset($metadata['affected_users_count'])) {
+                $changes[] = [
+                    'field' => 'affected_users_count',
+                    'label' => 'Usuarios afectados',
+                    'to' => $metadata['affected_users_count'],
+                ];
+            }
+
+            return $changes;
         }
 
         $oldValues ??= [];

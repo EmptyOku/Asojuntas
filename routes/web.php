@@ -215,6 +215,10 @@ Route::prefix('api')->name('api.')->group(function (): void {
                 ->middleware('api.permission:roles.manage')
                 ->name('admin.roles.update');
 
+            Route::patch('/roles/{id}/toggle-active', [RoleManagementController::class, 'toggleActive'])
+                ->middleware('api.permission:roles.manage')
+                ->name('admin.roles.toggle-active');
+
             Route::get('/permissions', [PermissionManagementController::class, 'index'])
                 ->middleware('api.permission:roles.view')
                 ->name('admin.permissions.index');
