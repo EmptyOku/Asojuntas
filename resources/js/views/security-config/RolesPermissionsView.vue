@@ -25,11 +25,12 @@
         {{ errorMessage }}
       </div>
 
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div class="rounded-xl border border-gray-100 bg-gray-50 p-4">
-          <h2 class="text-base font-semibold text-gray-900 mb-3">Crear Persona</h2>
-          <form class="space-y-4" @submit.prevent="submitPerson">
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div class="rounded-xl border border-gray-100 bg-gray-50 p-5 sm:p-6">
+        <h2 class="text-base font-semibold text-gray-900 mb-5">Crear Persona</h2>
+        <form class="space-y-6" @submit.prevent="submitPerson">
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">Identificación</p>
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <div>
                 <label class="block text-sm text-gray-700 mb-1">Tipo de Doc.</label>
                 <select v-model="formPerson.document_type_id" required class="w-full px-3 py-2 rounded-lg border bg-white text-sm" :class="personErrors.document_type_id ? 'border-red-400 ring-1 ring-red-300' : 'border-gray-200'">
@@ -54,6 +55,12 @@
                 />
                 <p v-if="personErrors.document_number" class="text-xs text-red-600 mt-1">{{ personErrors.document_number }}</p>
               </div>
+            </div>
+          </div>
+
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">Nombre completo</p>
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <div>
                 <label class="block text-sm text-gray-700 mb-1">Primer Nombre</label>
                 <input
@@ -110,8 +117,13 @@
                 />
                 <p v-if="personErrors.second_last_name" class="text-xs text-red-600 mt-1">{{ personErrors.second_last_name }}</p>
               </div>
+            </div>
+          </div>
 
-              <div class="sm:col-span-2">
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">Ubicación</p>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
                 <label class="block text-sm text-gray-700 mb-1">Comuna</label>
                 <select
                   v-model="selectedCommune"
@@ -125,7 +137,7 @@
                 </select>
               </div>
 
-              <div class="sm:col-span-2">
+              <div>
                 <label class="block text-sm text-gray-700 mb-1">Barrio de Residencia</label>
                 <select
                   v-model="formPerson.neighborhood_id"
@@ -142,15 +154,18 @@
                 <p v-if="personErrors.neighborhood_id" class="text-xs text-red-600 mt-1">{{ personErrors.neighborhood_id }}</p>
               </div>
             </div>
+          </div>
+
+          <div class="flex justify-end pt-4 border-t border-gray-200">
             <button
               type="submit"
-              class="w-full py-2.5 rounded-lg bg-gray-900 text-white text-sm font-medium hover:bg-black transition-colors disabled:opacity-60"
+              class="w-full sm:w-auto px-8 py-2.5 rounded-lg bg-gray-900 text-white text-sm font-medium hover:bg-black transition-colors disabled:opacity-60"
               :disabled="loading"
             >
               Registrar Persona
             </button>
-          </form>
-        </div>
+          </div>
+        </form>
       </div>
     </section>
 
@@ -171,8 +186,8 @@
         <button type="button" class="px-3 py-2 text-sm font-medium rounded-lg bg-gray-900 text-white hover:bg-black" @click="openCompleteUserModal">Nuevo Registro</button>
       </div>
 
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div class="rounded-xl border border-gray-100 bg-gray-50 p-4">
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
+        <div class="rounded-xl border border-gray-100 bg-gray-50 p-4 flex flex-col">
           <h2 class="text-base font-semibold text-gray-900 mb-3">Crear Usuario</h2>
           <form class="space-y-3" @submit.prevent="createUser">
             
@@ -231,7 +246,7 @@
                 type="text"
                 minlength="4"
                 maxlength="50"
-                pattern="[A-Za-z0-9_.-]{4,50}"
+                pattern="[A-Za-z0-9_.\-]{4,50}"
                 title="Entre 4 y 50 caracteres: letras, números, punto, guion o guion bajo."
                 class="w-full px-3 py-2 rounded-lg border bg-white text-sm"
                 :class="createErrors.username ? 'border-red-400 ring-1 ring-red-300' : 'border-gray-200'"
@@ -327,21 +342,28 @@
           </form>
         </div>
 
-        <div class="rounded-xl border border-gray-100 bg-gray-50 p-4">
-          <h2 class="text-base font-semibold text-gray-900 mb-3">Catálogo de Roles</h2>
-          <div class="max-h-80 overflow-auto space-y-3 pr-1">
-            <div v-for="role in roles" :key="role.id" class="rounded-lg border border-gray-200 bg-white p-3">
-              <p class="font-medium text-gray-900">{{ role.display_name }}</p>
-              <p class="text-xs text-gray-500">{{ role.name }}</p>
-              <div class="mt-2 flex flex-wrap gap-1.5">
-                <span
-                  v-for="perm in role.permissions || []"
-                  :key="perm.id"
-                  class="text-xs px-2 py-1 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200"
-                >
-                  {{ perm.name }}
+        <div class="rounded-xl border border-gray-100 bg-gray-50 p-4 flex flex-col">
+          <h2 class="text-base font-semibold text-gray-900 mb-3 shrink-0">Catálogo de Roles</h2>
+          <div class="flex-1 max-h-[34rem] overflow-y-auto pr-1 space-y-2">
+            <div v-for="role in roles" :key="role.id" class="rounded-lg border border-gray-200 bg-white overflow-hidden">
+              <button
+                type="button"
+                class="w-full flex items-center justify-between gap-3 px-3 py-2.5 text-left hover:bg-gray-50 transition-colors"
+                @click="toggleRoleExpanded(role.id)"
+              >
+                <span>
+                  <span class="block font-medium text-gray-900">{{ role.display_name }}</span>
+                  <span class="block text-xs text-gray-500">{{ role.name }} · {{ (role.permissions || []).length }} permiso(s)</span>
                 </span>
-              </div>
+                <ChevronDown class="w-4 h-4 text-gray-400 transition-transform shrink-0" :class="isRoleExpanded(role.id) ? 'rotate-180' : ''" />
+              </button>
+              <ul v-if="isRoleExpanded(role.id)" class="px-3 pb-3 pt-1 border-t border-gray-100 space-y-1.5">
+                <li v-for="perm in role.permissions || []" :key="perm.id" class="flex items-start gap-2 text-sm text-gray-700">
+                  <span class="mt-1.5 w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0"></span>
+                  {{ perm.description || perm.display_name || perm.name }}
+                </li>
+                <li v-if="!(role.permissions || []).length" class="text-sm text-gray-400 italic">Sin permisos asignados.</li>
+              </ul>
             </div>
           </div>
         </div>
@@ -353,8 +375,9 @@
         <h2 class="text-base sm:text-lg font-semibold text-gray-900">Listado de Usuarios</h2>
         <input
           v-model.trim="search"
-          class="w-full sm:w-72 px-3 py-2 rounded-lg border border-gray-200 text-sm"
-          placeholder="Buscar por usuario/correo"
+          @input="handleUsersSearchInput"
+          class="w-full sm:w-80 px-3 py-2 rounded-lg border border-gray-200 text-sm"
+          placeholder="Buscar por usuario, correo, documento, barrio o comuna..."
         />
       </div>
 
@@ -372,7 +395,7 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="user in filteredUsers" :key="user.id" class="border-t border-gray-100">
+            <tr v-for="user in users" :key="user.id" class="border-t border-gray-100">
               <td class="px-3 py-2.5 text-gray-900">{{ user.username }}</td>
               <td class="px-3 py-2.5 text-gray-700">{{ user.email }}</td>
               <td class="px-3 py-2.5 text-gray-700">
@@ -413,8 +436,50 @@
                 </div>
               </td>
             </tr>
+            <tr v-if="!users.length">
+              <td colspan="7" class="px-3 py-8 text-center text-sm text-gray-400">
+                No se encontraron usuarios{{ search ? ' para "' + search + '"' : '' }}.
+              </td>
+            </tr>
           </tbody>
         </table>
+      </div>
+
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-4">
+        <p class="text-sm text-gray-500">
+          <template v-if="usersTotal > 0">Mostrando {{ usersFrom }}–{{ usersTo }} de {{ usersTotal }}</template>
+          <template v-else>Sin resultados</template>
+        </p>
+        <div class="flex items-center gap-3">
+          <label class="flex items-center gap-2 text-sm text-gray-600">
+            Mostrar
+            <select v-model.number="usersPerPage" @change="changeUsersPerPage" class="px-2 py-1.5 rounded-lg border border-gray-200 bg-white text-sm">
+              <option :value="10">10</option>
+              <option :value="20">20</option>
+              <option :value="30">30</option>
+              <option :value="50">50</option>
+            </select>
+          </label>
+          <div class="flex items-center gap-1">
+            <button
+              type="button"
+              @click="goToUsersPage(usersCurrentPage - 1)"
+              :disabled="usersCurrentPage <= 1"
+              class="px-3 py-1.5 rounded-lg border border-gray-200 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+            >
+              Anterior
+            </button>
+            <span class="px-2 text-sm text-gray-600 whitespace-nowrap">Página {{ usersCurrentPage }} de {{ usersLastPage }}</span>
+            <button
+              type="button"
+              @click="goToUsersPage(usersCurrentPage + 1)"
+              :disabled="usersCurrentPage >= usersLastPage"
+              class="px-3 py-1.5 rounded-lg border border-gray-200 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+            >
+              Siguiente
+            </button>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -432,7 +497,7 @@
         <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
           <fieldset v-for="(items, module) in permissionsByModule" :key="module" class="rounded-xl border border-gray-200 p-3">
             <legend class="px-1 text-sm font-semibold text-gray-900 capitalize">{{ module }}</legend>
-            <label v-for="permission in items" :key="permission.id" class="flex items-center gap-2 mt-2 text-sm text-gray-700"><input v-model="roleForm.permissions" type="checkbox" :value="permission.id" />{{ permission.name }}</label>
+            <label v-for="permission in items" :key="permission.id" class="flex items-center gap-2 mt-2 text-sm text-gray-700"><input v-model="roleForm.permissions" type="checkbox" :value="permission.id" />{{ permission.description || permission.display_name || permission.name }}</label>
           </fieldset>
         </div>
       </div>
@@ -476,7 +541,7 @@
           </div>
           <div v-else class="space-y-1 p-6">
             <div>
-              <input v-model="completeForm.username" required minlength="4" maxlength="50" pattern="[A-Za-z0-9_.-]{4,50}" title="Entre 4 y 50 caracteres: letras, números, punto, guion o guion bajo." placeholder="Usuario" class="w-full px-3 py-2 rounded-lg border text-sm" :class="completeErrors.username ? 'border-red-400 ring-1 ring-red-300' : 'border-gray-200'" />
+              <input v-model="completeForm.username" required minlength="4" maxlength="50" pattern="[A-Za-z0-9_.\-]{4,50}" title="Entre 4 y 50 caracteres: letras, números, punto, guion o guion bajo." placeholder="Usuario" class="w-full px-3 py-2 rounded-lg border text-sm" :class="completeErrors.username ? 'border-red-400 ring-1 ring-red-300' : 'border-gray-200'" />
               <p v-if="completeErrors.username" class="text-xs text-red-600 mt-1 mb-2">{{ completeErrors.username }}</p>
             </div>
             <div>
@@ -795,7 +860,7 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import axios from '@/services/axios';
-import { Search, Loader2, X, Eye, EyeOff, CheckCircle2, XCircle } from 'lucide-vue-next';
+import { Search, Loader2, X, Eye, EyeOff, CheckCircle2, XCircle, ChevronDown } from 'lucide-vue-next';
 
 const loading = ref(false);
 const activeTab = ref('users');
@@ -804,7 +869,21 @@ const errorMessage = ref('');
 
 const users = ref([]);
 const roles = ref([]);
+const expandedRoleIds = ref([]);
+const toggleRoleExpanded = (id) => {
+  const idx = expandedRoleIds.value.indexOf(id);
+  if (idx === -1) expandedRoleIds.value.push(id);
+  else expandedRoleIds.value.splice(idx, 1);
+};
+const isRoleExpanded = (id) => expandedRoleIds.value.includes(id);
 const search = ref('');
+const usersPerPage = ref(20);
+const usersCurrentPage = ref(1);
+const usersLastPage = ref(1);
+const usersTotal = ref(0);
+const usersFrom = ref(0);
+const usersTo = ref(0);
+let usersSearchTimeout = null;
 const communes = ref([]);
 const selectedCommune = ref('');
 const assignmentContext = ref([]);
@@ -913,16 +992,6 @@ const permissionsByModule = computed(() => permissions.value.reduce((groups, per
   return groups;
 }, {}));
 
-// --- LÓGICA DE FILTRADO ---
-const filteredUsers = computed(() => {
-  if (!search.value) return users.value;
-  const term = search.value.toLowerCase();
-  return users.value.filter((u) =>
-    (u.username || '').toLowerCase().includes(term) ||
-    (u.email || '').toLowerCase().includes(term)
-  );
-});
-
 // --- LÓGICA DE CARGA DE DATOS ---
 const loadRoles = async () => {
   const { data } = await axios.get('/admin/roles', { skipGlobalLoading: true });
@@ -934,9 +1003,43 @@ const loadPermissions = async () => {
   permissions.value = data.data ?? [];
 };
 
+// El listado se pagina y se filtra en el backend (usuario/correo/documento/nombre/barrio/comuna),
+// para no traer de golpe todos los registros contra una DB que puede tener latencia alta.
 const loadUsers = async () => {
-  const { data } = await axios.get('/admin/users', { skipGlobalLoading: true });
-  users.value = data.data?.data ?? data.data ?? [];
+  const { data } = await axios.get('/admin/users', {
+    params: {
+      search: search.value || undefined,
+      per_page: usersPerPage.value,
+      page: usersCurrentPage.value,
+    },
+    skipGlobalLoading: true,
+  });
+  const payload = data.data;
+  users.value = payload?.data ?? [];
+  usersCurrentPage.value = payload?.current_page ?? 1;
+  usersLastPage.value = payload?.last_page ?? 1;
+  usersTotal.value = payload?.total ?? users.value.length;
+  usersFrom.value = payload?.from ?? 0;
+  usersTo.value = payload?.to ?? 0;
+};
+
+const handleUsersSearchInput = () => {
+  clearTimeout(usersSearchTimeout);
+  usersSearchTimeout = setTimeout(() => {
+    usersCurrentPage.value = 1;
+    loadUsers();
+  }, 400);
+};
+
+const changeUsersPerPage = () => {
+  usersCurrentPage.value = 1;
+  loadUsers();
+};
+
+const goToUsersPage = (page) => {
+  if (page < 1 || page > usersLastPage.value || page === usersCurrentPage.value) return;
+  usersCurrentPage.value = page;
+  loadUsers();
 };
 
 const loadCommunes = async () => {
