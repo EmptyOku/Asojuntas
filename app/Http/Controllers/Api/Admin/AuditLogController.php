@@ -17,7 +17,7 @@ class AuditLogController extends Controller
             ]);
 
         if ($request->filled('action')) {
-            $query->where('action', 'ilike', '%'.$request->string('action')->toString().'%');
+            $query->whereLike('action', '%'.$request->string('action')->toString().'%');
         }
 
         if ($request->filled('auditable_type')) {

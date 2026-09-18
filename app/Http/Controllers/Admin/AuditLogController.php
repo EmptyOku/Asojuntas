@@ -22,7 +22,7 @@ class AuditLogController extends Controller
         // FILTRO: Por tipo de acción (Created, Updated, Deleted, Login, etc.)
         if ($request->filled('action')) {
             // Usamos ILIKE para PostgreSQL para que la búsqueda no distinga mayúsculas.
-            $query->where('action', 'ilike', "%{$request->action}%");
+            $query->whereLike('action', "%{$request->action}%");
         }
 
         // FILTRO: Por entidad afectada (Ej: App\Models\Candidate o App\Models\Person)

@@ -25,10 +25,10 @@ class PersonController extends Controller
         if ($request->filled('search')) {
             $search = $request->search;
             $query->where(function($q) use ($search) {
-                $q->where('document_number', 'ilike', "%{$search}%")
-                  ->orWhere('first_name', 'ilike', "%{$search}%")
-                  ->orWhere('last_name', 'ilike', "%{$search}%")
-                  ->orWhere('email', 'ilike', "%{$search}%");
+                $q->whereLike('document_number', "%{$search}%")
+                  ->orWhereLike('first_name', "%{$search}%")
+                  ->orWhereLike('last_name', "%{$search}%")
+                  ->orWhereLike('email', "%{$search}%");
             });
         }
 

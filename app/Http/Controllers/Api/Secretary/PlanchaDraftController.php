@@ -461,12 +461,12 @@ class PlanchaDraftController extends Controller
         if ($request->filled('search')) {
             $term = trim((string) $request->input('search'));
             $query->where(function ($q) use ($term): void {
-                $q->where('candidate_drafts.first_name', 'ilike', "%{$term}%")
-                    ->orWhere('candidate_drafts.last_name', 'ilike', "%{$term}%")
-                    ->orWhere('candidate_drafts.document_number', 'ilike', "%{$term}%");
+                $q->whereLike('candidate_drafts.first_name', "%{$term}%")
+                    ->orWhereLike('candidate_drafts.last_name', "%{$term}%")
+                    ->orWhereLike('candidate_drafts.document_number', "%{$term}%");
 
                 if (! $isDetailedRequest) {
-                    $q->orWhere('neighborhoods.name', 'ilike', "%{$term}%");
+                    $q->orWhereLike('neighborhoods.name', "%{$term}%");
                 }
             });
         }
@@ -503,8 +503,8 @@ class PlanchaDraftController extends Controller
         if (! empty($validated['search'])) {
             $term = trim((string) $validated['search']);
             $neighborhoodQuery->where(function ($query) use ($term): void {
-                $query->where('name', 'ilike', "%{$term}%")
-                    ->orWhere('code', 'ilike', "%{$term}%");
+                $query->whereLike('name', "%{$term}%")
+                    ->orWhereLike('code', "%{$term}%");
             });
         }
 
@@ -635,11 +635,11 @@ class PlanchaDraftController extends Controller
             $term = trim((string) $validated['q']);
             $query->where(function ($q) use ($term): void {
                 $q->whereHas('neighborhood', function ($sub) use ($term): void {
-                    $sub->where('name', 'ilike', "%{$term}%");
+                    $sub->whereLike('name', "%{$term}%");
                 })->orWhereHas('candidateDrafts', function ($sub) use ($term): void {
-                    $sub->where('first_name', 'ilike', "%{$term}%")
-                        ->orWhere('last_name', 'ilike', "%{$term}%")
-                        ->orWhere('document_number', 'ilike', "%{$term}%");
+                    $sub->whereLike('first_name', "%{$term}%")
+                        ->orWhereLike('last_name', "%{$term}%")
+                        ->orWhereLike('document_number', "%{$term}%");
                 });
             });
         }

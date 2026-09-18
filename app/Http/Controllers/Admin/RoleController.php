@@ -22,8 +22,8 @@ class RoleController extends Controller
         $query = Role::withCount(['users', 'permissions']);
 
         if ($request->filled('search')) {
-            $query->where('name', 'ilike', "%{$request->search}%")
-                  ->orWhere('display_name', 'ilike', "%{$request->search}%");
+            $query->whereLike('name', "%{$request->search}%")
+                  ->orWhereLike('display_name', "%{$request->search}%");
         }
 
         $roles = $query->orderBy('name')->paginate(15);

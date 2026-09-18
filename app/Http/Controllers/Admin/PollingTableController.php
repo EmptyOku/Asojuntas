@@ -26,8 +26,8 @@ class PollingTableController extends Controller
         }
 
         if ($request->filled('search')) {
-            $query->where('name', 'ilike', "%{$request->search}%")
-                  ->orWhere('code', 'ilike', "%{$request->search}%");
+            $query->whereLike('name', "%{$request->search}%")
+                  ->orWhereLike('code', "%{$request->search}%");
         }
 
         $tables = $query->orderBy('code')->paginate(30)->withQueryString();

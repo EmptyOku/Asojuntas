@@ -6,7 +6,9 @@ use App\Models\AuditLog;
 use Illuminate\Support\Facades\URL;
 use App\Services\AuditTrailLogger;
 use App\Services\ElectoralAccessGuard;
+use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Validator;
@@ -28,6 +30,23 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(AuditTrailLogger $auditTrailLogger): void
     {
+        // Busqueda "LIKE" case-insensitive portable entre PostgreSQL (VPS) y
+        // SQLite (local). Sustituye el operador 'ilike', exclusivo de Postgres,
+        // que rompia con "syntax error" en SQLite.
+        $whereLike = function (string $column, string $value) {
+            /** @var EloquentBuilder|QueryBuilder $this */
+            return $this->whereRaw('LOWER('.$column.') LIKE ?', [mb_strtolower($value)]);
+        };
+        $orWhereLike = function (string $column, string $value) {
+            /** @var EloquentBuilder|QueryBuilder $this */
+            return $this->orWhereRaw('LOWER('.$column.') LIKE ?', [mb_strtolower($value)]);
+        };
+
+        EloquentBuilder::macro('whereLike', $whereLike);
+        EloquentBuilder::macro('orWhereLike', $orWhereLike);
+        QueryBuilder::macro('whereLike', $whereLike);
+        QueryBuilder::macro('orWhereLike', $orWhereLike);
+
         // `exists` consulta la tabla en crudo y acepta filas borradas en blando.
         // `active_exists` es su equivalente para las tablas con SoftDeletes.
         Validator::extend('active_exists', function (string $attribute, $value, array $parameters): bool {

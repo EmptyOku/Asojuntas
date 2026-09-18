@@ -35,8 +35,8 @@ class NeighborhoodController extends Controller
         $query = Neighborhood::with(['commune.city']);
 
         if ($request->filled('search')) {
-            $query->where('name', 'ilike', "%{$request->search}%")
-                  ->orWhere('code', 'ilike', "%{$request->search}%");
+            $query->whereLike('name', "%{$request->search}%")
+                  ->orWhereLike('code', "%{$request->search}%");
         }
 
         if ($request->filled('commune_id')) {
@@ -241,8 +241,8 @@ class NeighborhoodController extends Controller
         }
 
         $neighborhoods = Neighborhood::with(['commune'])
-            ->where('name', 'ilike', "%{$term}%")
-            ->orWhere('code', 'ilike', "%{$term}%")
+            ->whereLike('name', "%{$term}%")
+            ->orWhereLike('code', "%{$term}%")
             ->orderBy('name')
             ->get()
             ->map(function ($neighborhood) {

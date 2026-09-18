@@ -21,8 +21,8 @@ class PermissionController extends Controller
         $query = Permission::withCount('roles');
 
         if ($request->filled('search')) {
-            $query->where('name', 'ilike', "%{$request->search}%")
-                  ->orWhere('display_name', 'ilike', "%{$request->search}%");
+            $query->whereLike('name', "%{$request->search}%")
+                  ->orWhereLike('display_name', "%{$request->search}%");
         }
 
         if ($request->filled('status')) {

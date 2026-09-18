@@ -24,12 +24,12 @@ class UserManagementController extends Controller
         if ($request->filled('search')) {
             $search = $request->string('search')->toString();
             $query->where(function ($q) use ($search): void {
-                $q->where('username', 'ilike', "%{$search}%")
-                    ->orWhere('email', 'ilike', "%{$search}%")
+                $q->whereLike('username', "%{$search}%")
+                    ->orWhereLike('email', "%{$search}%")
                     ->orWhereHas('person', function ($personQuery) use ($search): void {
-                        $personQuery->where('document_number', 'ilike', "%{$search}%")
-                            ->orWhere('first_name', 'ilike', "%{$search}%")
-                            ->orWhere('last_name', 'ilike', "%{$search}%");
+                        $personQuery->whereLike('document_number', "%{$search}%")
+                            ->orWhereLike('first_name', "%{$search}%")
+                            ->orWhereLike('last_name', "%{$search}%");
                     });
             });
         }
@@ -447,9 +447,9 @@ class UserManagementController extends Controller
 
         if (!empty($term)) {
             $query->where(function ($q) use ($term) {
-                $q->where('first_name', 'ilike', "%{$term}%")
-                  ->orWhere('last_name', 'ilike', "%{$term}%")
-                  ->orWhere('document_number', 'ilike', "%{$term}%")
+                $q->whereLike('first_name', "%{$term}%")
+                  ->orWhereLike('last_name', "%{$term}%")
+                  ->orWhereLike('document_number', "%{$term}%")
                   ->orWhereRaw("first_name || ' ' || last_name ILIKE ?", ["%{$term}%"]);
             });
         }

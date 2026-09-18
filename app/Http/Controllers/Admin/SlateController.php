@@ -26,8 +26,8 @@ class SlateController extends Controller
 
         if ($request->filled('search')) {
             $query->where(function($q) use ($request) {
-                $q->where('name', 'ilike', "%{$request->search}%")
-                  ->orWhere('code', 'ilike', "%{$request->search}%");
+                $q->whereLike('name', "%{$request->search}%")
+                  ->orWhereLike('code', "%{$request->search}%");
             });
         }
 

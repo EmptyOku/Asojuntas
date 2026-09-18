@@ -38,17 +38,17 @@ class AuditManagementController extends Controller
             $search = $request->string('search')->toString();
             $query->where(function ($q) use ($search): void {
                 $q->whereHas('pollingTable', function ($tableQuery) use ($search): void {
-                    $tableQuery->where('name', 'ilike', "%{$search}%")
-                        ->orWhere('code', 'ilike', "%{$search}%")
-                        ->orWhere('location', 'ilike', "%{$search}%");
+                    $tableQuery->whereLike('name', "%{$search}%")
+                        ->orWhereLike('code', "%{$search}%")
+                        ->orWhereLike('location', "%{$search}%");
                 })->orWhereHas('createdByUser', function ($userQuery) use ($search): void {
-                    $userQuery->where('username', 'ilike', "%{$search}%")
+                    $userQuery->whereLike('username', "%{$search}%")
                         ->orWhereHas('person', function ($personQuery) use ($search): void {
-                            $personQuery->where('first_name', 'ilike', "%{$search}%")
-                                ->orWhere('last_name', 'ilike', "%{$search}%");
+                            $personQuery->whereLike('first_name', "%{$search}%")
+                                ->orWhereLike('last_name', "%{$search}%");
                         });
                 })->orWhereHas('election.neighborhood.commune', function ($communeQuery) use ($search): void {
-                    $communeQuery->where('name', 'ilike', "%{$search}%");
+                    $communeQuery->whereLike('name', "%{$search}%");
                 });
             });
         }

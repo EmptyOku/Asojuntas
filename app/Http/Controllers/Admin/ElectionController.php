@@ -21,8 +21,8 @@ class ElectionController extends Controller
         $query = Election::with('neighborhood');
 
         if ($request->filled('search')) {
-            $query->where('name', 'ilike', "%{$request->search}%")
-                  ->orWhere('code', 'ilike', "%{$request->search}%");
+            $query->whereLike('name', "%{$request->search}%")
+                  ->orWhereLike('code', "%{$request->search}%");
         }
 
         if ($request->filled('period_year')) {
