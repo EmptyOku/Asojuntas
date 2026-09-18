@@ -119,6 +119,30 @@ Route::prefix('api')->name('api.')->group(function (): void {
                 ->middleware('api.permission:elections.view')
                 ->name('admin.neighborhoods.geo');
 
+            Route::put('/neighborhoods/{id}/location', [NeighborhoodDirectoryController::class, 'updateLocation'])
+                ->whereNumber('id')
+                ->middleware('api.permission:elections.update')
+                ->name('admin.neighborhoods.location.update');
+
+            Route::delete('/neighborhoods/{id}/location', [NeighborhoodDirectoryController::class, 'clearLocation'])
+                ->whereNumber('id')
+                ->middleware('api.permission:elections.update')
+                ->name('admin.neighborhoods.location.clear');
+
+            Route::post('/neighborhoods', [NeighborhoodDirectoryController::class, 'store'])
+                ->middleware('api.permission:elections.create')
+                ->name('admin.neighborhoods.store');
+
+            Route::put('/neighborhoods/{id}', [NeighborhoodDirectoryController::class, 'update'])
+                ->whereNumber('id')
+                ->middleware('api.permission:elections.update')
+                ->name('admin.neighborhoods.update');
+
+            Route::delete('/neighborhoods/{id}', [NeighborhoodDirectoryController::class, 'destroy'])
+                ->whereNumber('id')
+                ->middleware('api.permission:elections.update')
+                ->name('admin.neighborhoods.destroy');
+
             Route::get('/neighborhoods/search-dropdown', [NeighborhoodDirectoryController::class, 'searchForDropdown'])
                 ->middleware('api.permission:elections.view')
                 ->name('admin.neighborhoods.search-dropdown');

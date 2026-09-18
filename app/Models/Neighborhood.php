@@ -24,11 +24,13 @@ class Neighborhood extends Model
         'notes',
         'latitude',
         'longitude',
+        'map_order',
     ];
 
     protected $casts = [
         'latitude' => 'float',
         'longitude' => 'float',
+        'map_order' => 'integer',
     ];
 
     /**

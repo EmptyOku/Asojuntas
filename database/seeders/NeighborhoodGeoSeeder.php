@@ -16,11 +16,16 @@ class NeighborhoodGeoSeeder extends Seeder
     {
         foreach (glob(database_path('data/comuna-*-barrios.geojson')) as $file) {
             $geojson = json_decode((string) file_get_contents($file), true);
+            $order = 0;
 
             foreach ($geojson['features'] ?? [] as $feature) {
                 if (($feature['geometry']['type'] ?? null) !== 'Point') {
                     continue;
                 }
+
+                // El orden dentro del archivo es el mismo en que se entregaron
+                // los barrios; se conserva para listarlos igual en el mapa.
+                $mapOrder = $order++;
 
                 [$lng, $lat] = $feature['geometry']['coordinates'];
                 $props = $feature['properties'] ?? [];
@@ -42,6 +47,7 @@ class NeighborhoodGeoSeeder extends Seeder
                 $barrio->update([
                     'latitude' => (float) $lat,
                     'longitude' => (float) $lng,
+                    'map_order' => $mapOrder,
                 ]);
             }
         }
