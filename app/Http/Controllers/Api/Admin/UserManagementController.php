@@ -9,6 +9,7 @@ use App\Models\Person;
 use App\Models\PollingTable;
 use App\Models\Role;
 use App\Models\User;
+use App\Services\AuditTrailLogger;
 use App\Services\LegacyRbacAuditTrail;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
@@ -20,6 +21,36 @@ use Illuminate\Validation\Rule;
 
 class UserManagementController extends Controller
 {
+    /**
+     * Registra en la bitácora el detalle de roles de un usuario, solo cuando de verdad
+     * cambió algo (evita filas vacías cada vez que se reenvía el mismo conjunto de roles).
+     */
+    private function logRoleAssignment(User $user, array $rolesBefore, array $rolesAfter): void
+    {
+        $before = $rolesBefore;
+        $after = $rolesAfter;
+        sort($before);
+        sort($after);
+
+        if ($before === $after) {
+            return;
+        }
+
+        app(AuditTrailLogger::class)->recordSystemEvent('role_assignment', [
+            'target_user_id' => $user->id,
+            'target_username' => $user->username,
+            'roles_before' => $rolesBefore,
+            'roles_after' => $rolesAfter,
+        ], User::class, $user->id);
+    }
+
+    /**
+     * Tamaños de página permitidos para el listado de usuarios. Se valida contra esta lista
+     * en vez de aceptar cualquier `per_page` para no dejar pedir, por ejemplo, 5000 registros
+     * de una sola vez contra una base de datos remota con latencia alta.
+     */
+    private const USERS_PER_PAGE_OPTIONS = [10, 20, 30, 50];
+
     public function index(Request $request): JsonResponse
     {
         $query = User::with(['person.neighborhood:id,name,code,commune_id', 'roles:id,name,display_name']);
@@ -33,6 +64,12 @@ class UserManagementController extends Controller
                         $personQuery->where('document_number', 'ilike', "%{$search}%")
                             ->orWhere('first_name', 'ilike', "%{$search}%")
                             ->orWhere('last_name', 'ilike', "%{$search}%");
+                    })
+                    ->orWhereHas('person.neighborhood', function ($neighborhoodQuery) use ($search): void {
+                        $neighborhoodQuery->where('name', 'ilike', "%{$search}%");
+                    })
+                    ->orWhereHas('person.neighborhood.commune', function ($communeQuery) use ($search): void {
+                        $communeQuery->where('name', 'ilike', "%{$search}%");
                     });
             });
         }
@@ -41,37 +78,37 @@ class UserManagementController extends Controller
             $query->where('is_active', $request->string('status')->toString() === 'active');
         }
 
-        // Limitar a 50 registros máximo para rapidez
-        $users = $query->latest()
-            ->limit(50)
-            ->get()
-            ->map(fn ($user) => [
-                'id' => $user->id,
-                'username' => $user->username,
-                'email' => $user->email,
-                'is_active' => $user->is_active,
-                'created_at' => $user->created_at,
-                'person' => $user->person ? [
-                    'id' => $user->person->id,
-                    'document_type_id' => $user->person->document_type_id,
-                    'document_number' => $user->person->document_number,
-                    'first_name' => $user->person->first_name,
-                    'middle_name' => $user->person->middle_name,
-                    'last_name' => $user->person->last_name,
-                    'second_last_name' => $user->person->second_last_name,
-                    'neighborhood' => $user->person->neighborhood,
-                ] : null,
-                'roles' => $user->roles->map(fn ($role) => [
-                    'id' => $role->id,
-                    'name' => $role->name,
-                    'display_name' => $role->display_name,
-                ])->toArray(),
-            ])
-            ->toArray();
+        $perPage = $request->integer('per_page', 20);
+        $perPage = in_array($perPage, self::USERS_PER_PAGE_OPTIONS, true) ? $perPage : 20;
+
+        $paginator = $query->latest()->paginate($perPage)->withQueryString();
+
+        $paginator->getCollection()->transform(fn ($user) => [
+            'id' => $user->id,
+            'username' => $user->username,
+            'email' => $user->email,
+            'is_active' => $user->is_active,
+            'created_at' => $user->created_at,
+            'person' => $user->person ? [
+                'id' => $user->person->id,
+                'document_type_id' => $user->person->document_type_id,
+                'document_number' => $user->person->document_number,
+                'first_name' => $user->person->first_name,
+                'middle_name' => $user->person->middle_name,
+                'last_name' => $user->person->last_name,
+                'second_last_name' => $user->person->second_last_name,
+                'neighborhood' => $user->person->neighborhood,
+            ] : null,
+            'roles' => $user->roles->map(fn ($role) => [
+                'id' => $role->id,
+                'name' => $role->name,
+                'display_name' => $role->display_name,
+            ])->toArray(),
+        ]);
 
         return response()->json([
             'success' => true,
-            'data' => $users,
+            'data' => $paginator,
         ]);
     }
 
@@ -190,9 +227,18 @@ class UserManagementController extends Controller
         // del campo `neighborhood_id` con la regla `nullable` NUNCA se ejecuta cuando el valor
         // llega vacío (Laravel corta la cadena de reglas ahí), que es justo el caso que hay que
         // bloquear. Por eso se valida de forma imperativa, igual que en syncRoles().
+        //
+        // El formulario "Crear Usuario" (persona ya existente) no manda `neighborhood_id`: ese
+        // campo solo lo usa quien quiera reasignar el barrio en el mismo request. Por eso el
+        // barrio "real" a validar es el que llegó en el request, o si no, el que la persona ya
+        // tiene guardado — si solo miráramos el request, una persona con barrio asignado desde
+        // antes recibiría un falso "el barrio es obligatorio".
         $digitizerRole = Role::where('name', 'digitizer')->first();
         if ($digitizerRole && in_array($digitizerRole->id, $validated['roles'])) {
-            if (empty($validated['neighborhood_id'])) {
+            $person = Person::find($validated['person_id']);
+            $effectiveNeighborhoodId = ($validated['neighborhood_id'] ?? null) ?: $person?->neighborhood_id;
+
+            if (empty($effectiveNeighborhoodId)) {
                 $message = 'El barrio es obligatorio para asignar rol de Jurado.';
 
                 return response()->json([
@@ -202,8 +248,8 @@ class UserManagementController extends Controller
                 ], 422);
             }
 
-            $alreadyAssigned = User::whereHas('person', function ($q) use ($validated) {
-                $q->where('neighborhood_id', $validated['neighborhood_id']);
+            $alreadyAssigned = User::whereHas('person', function ($q) use ($effectiveNeighborhoodId) {
+                $q->where('neighborhood_id', $effectiveNeighborhoodId);
             })->exists();
 
             if ($alreadyAssigned) {
@@ -237,8 +283,11 @@ class UserManagementController extends Controller
                 ]);
 
                 // Asignar roles (model_has_roles de Spatie) y reflejar la asignación en la bitácora legacy (user_roles)
-                $user->syncRoles(Role::whereIn('id', $validated['roles'])->get());
+                $roles = Role::whereIn('id', $validated['roles'])->get();
+                $user->syncRoles($roles);
                 LegacyRbacAuditTrail::syncUserRoles($user->id, $validated['roles'], Auth::id());
+
+                $this->logRoleAssignment($user, [], $roles->pluck('display_name')->values()->all());
 
                 return $user->load(['person.neighborhood', 'roles:id,name,display_name']);
             });
@@ -408,8 +457,14 @@ class UserManagementController extends Controller
             }
         }
 
-        $user->syncRoles(Role::whereIn('id', $validated['roles'])->get());
+        $rolesBefore = $user->roles()->pluck('display_name')->values()->all();
+        $roles = Role::whereIn('id', $validated['roles'])->get();
+
+        $user->syncRoles($roles);
         LegacyRbacAuditTrail::syncUserRoles($user->id, $validated['roles'], Auth::id());
+
+        $this->logRoleAssignment($user, $rolesBefore, $roles->pluck('display_name')->values()->all());
+
         $user->load(['person.neighborhood', 'roles:id,name,display_name']);
 
         return response()->json([
