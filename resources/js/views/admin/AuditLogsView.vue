@@ -37,24 +37,56 @@
             <tr v-else-if="records.length === 0">
               <td colspan="5" class="px-6 py-8 text-center text-gray-500">No hay registros para los filtros aplicados.</td>
             </tr>
-            <tr v-for="log in records" :key="log.id" class="hover:bg-gray-50/50 transition-colors">
-              <td class="px-6 py-4">
-                <p class="font-medium text-gray-900">{{ log.created_at_human || log.created_at || 'Sin fecha' }}</p>
-                <p class="text-xs text-gray-400">ID {{ log.id }}</p>
-              </td>
-              <td class="px-6 py-4">
-                <p class="font-medium text-gray-900">{{ log.user?.name || 'Sin usuario' }}</p>
-                <p class="text-xs text-gray-400">{{ log.user?.username || '-' }}</p>
-              </td>
-              <td class="px-6 py-4">
-                <span class="inline-flex px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700">{{ log.action }}</span>
-              </td>
-              <td class="px-6 py-4">
-                <p class="font-medium text-gray-900 break-all">{{ log.auditable_type || 'N/A' }}</p>
-                <p class="text-xs text-gray-400">{{ log.auditable_id || '-' }}</p>
-              </td>
-              <td class="px-6 py-4 text-gray-700">{{ log.ip_address || '-' }}</td>
-            </tr>
+            <template v-for="log in records" :key="log.id">
+              <tr
+                class="transition-colors"
+                :class="log.changes?.length ? 'hover:bg-gray-50/50 cursor-pointer' : 'hover:bg-gray-50/50'"
+                @click="log.changes?.length && toggleLogExpanded(log.id)"
+              >
+                <td class="px-6 py-4">
+                  <p class="font-medium text-gray-900">{{ log.created_at_human || log.created_at || 'Sin fecha' }}</p>
+                  <p class="text-xs text-gray-400">ID {{ log.id }}</p>
+                </td>
+                <td class="px-6 py-4">
+                  <p class="font-medium text-gray-900">{{ log.user?.name || 'Sin usuario' }}</p>
+                  <p class="text-xs text-gray-400">{{ log.user?.username || '-' }}</p>
+                </td>
+                <td class="px-6 py-4">
+                  <span class="inline-flex px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700">{{ log.action_label || log.action }}</span>
+                </td>
+                <td class="px-6 py-4">
+                  <p class="font-medium text-gray-900">{{ log.entity_label || 'Evento del sistema' }}</p>
+                  <p v-if="log.auditable_id" class="text-xs text-gray-400">ID {{ log.auditable_id }}</p>
+                </td>
+                <td class="px-6 py-4 text-gray-700">
+                  <div class="flex items-center gap-1.5">
+                    {{ log.ip_address || '-' }}
+                    <ChevronDown
+                      v-if="log.changes?.length"
+                      class="w-4 h-4 text-gray-400 transition-transform shrink-0"
+                      :class="isLogExpanded(log.id) ? 'rotate-180' : ''"
+                    />
+                  </div>
+                </td>
+              </tr>
+              <tr v-if="log.changes?.length && isLogExpanded(log.id)" class="bg-gray-50/60">
+                <td colspan="5" class="px-6 py-3">
+                  <p class="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">Qué cambió</p>
+                  <ul class="space-y-1.5">
+                    <li v-for="change in log.changes" :key="change.field" class="flex flex-wrap items-baseline gap-x-2 text-sm">
+                      <span class="font-medium text-gray-700">{{ change.label }}:</span>
+                      <template v-if="'from' in change && 'to' in change">
+                        <span class="text-gray-500">{{ formatValue(change.from) }}</span>
+                        <span class="text-gray-400">→</span>
+                        <span class="text-gray-900">{{ formatValue(change.to) }}</span>
+                      </template>
+                      <span v-else-if="'to' in change" class="text-gray-900">{{ formatValue(change.to) }}</span>
+                      <span v-else class="text-gray-500">{{ formatValue(change.from) }}</span>
+                    </li>
+                  </ul>
+                </td>
+              </tr>
+            </template>
           </tbody>
         </table>
       </div>
@@ -74,9 +106,23 @@
 <script setup>
 import { onMounted, reactive, ref, watch } from 'vue';
 import axios from '@/services/axios';
+import { ChevronDown } from 'lucide-vue-next';
 
 const isLoading = ref(false);
 const records = ref([]);
+const expandedLogIds = ref([]);
+const toggleLogExpanded = (id) => {
+  const idx = expandedLogIds.value.indexOf(id);
+  if (idx === -1) expandedLogIds.value.push(id);
+  else expandedLogIds.value.splice(idx, 1);
+};
+const isLogExpanded = (id) => expandedLogIds.value.includes(id);
+
+const formatValue = (value) => {
+  if (value === null || value === undefined || value === '') return '—';
+  if (typeof value === 'boolean') return value ? 'Sí' : 'No';
+  return String(value);
+};
 const pagination = ref({
   current_page: 1,
   last_page: 1,
