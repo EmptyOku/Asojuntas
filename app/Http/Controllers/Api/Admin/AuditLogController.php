@@ -21,6 +21,7 @@ class AuditLogController extends Controller
         'logout' => 'Cierre de sesión',
         'review_decision' => 'Decisión de revisión',
         'role_assignment' => 'Asignación de rol',
+        'password_reset' => 'Restablecimiento de contraseña',
         'permission_assignment' => 'Asignación de permiso',
         'role_status_change' => 'Cambio de estado de rol',
     ];
@@ -202,6 +203,14 @@ class AuditLogController extends Controller
 
         if ($action === 'role_assignment') {
             return self::describeListDiff('Roles', $metadata['roles_before'] ?? [], $metadata['roles_after'] ?? []);
+        }
+
+        if ($action === 'password_reset') {
+            return [[
+                'field' => 'target_username',
+                'label' => 'Usuario objetivo',
+                'to' => $metadata['target_username'] ?? null,
+            ]];
         }
 
         if ($action === 'permission_assignment') {

@@ -386,6 +386,12 @@ class UserManagementController extends Controller
 
         try {
             $user->update(['password' => Hash::make($validated['password'])]);
+
+            app(AuditTrailLogger::class)->recordSystemEvent('password_reset', [
+                'target_user_id' => $user->id,
+                'target_username' => $user->username,
+            ], User::class, $user->id);
+
             return response()->json(['success' => true, 'message' => 'Contraseña restablecida correctamente.']);
         } catch (\Exception $e) {
             \Log::error('Error resetting password', ['user_id' => $user->id, 'error' => $e->getMessage()]);
