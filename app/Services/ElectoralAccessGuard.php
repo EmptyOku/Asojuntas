@@ -25,11 +25,10 @@ class ElectoralAccessGuard
     public function permissionsFor(User $user): Collection
     {
         if (! isset($this->permissionCache[$user->id])) {
-            $this->permissionCache[$user->id] = $user->roles()
-                ->with('permissions:id,name')
-                ->get()
-                ->flatMap(fn ($role) => $role->permissions->pluck('name'))
-                ->unique()
+            // getAllPermissions() usa el cache de Spatie (24h, ver config/permission.php)
+            // en vez de consultar roles/permisos directo a la BD en cada request.
+            $this->permissionCache[$user->id] = $user->getAllPermissions()
+                ->pluck('name')
                 ->values();
         }
 
