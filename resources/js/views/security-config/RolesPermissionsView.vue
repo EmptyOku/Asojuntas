@@ -1,104 +1,124 @@
 <template>
   <div class="space-y-6">
-    <nav class="flex items-center gap-2 border-b border-gray-200" aria-label="Administración">
-      <button type="button" class="px-4 py-3 text-sm font-semibold border-b-2" :class="activeTab === 'users' ? 'border-aso-primary text-aso-primary' : 'border-transparent text-gray-500'" @click="activeTab = 'users'">Usuarios y Personas</button>
-      <button type="button" class="px-4 py-3 text-sm font-semibold border-b-2" :class="activeTab === 'roles' ? 'border-aso-primary text-aso-primary' : 'border-transparent text-gray-500'" @click="activeTab = 'roles'">Roles y Permisos</button>
+    <nav class="flex items-center gap-2 border-b border-gray-200 overflow-x-auto" aria-label="Administración">
+      <button type="button" class="px-4 py-3 text-sm font-semibold border-b-2 whitespace-nowrap" :class="activeTab === 'create' ? 'border-aso-primary text-aso-primary' : 'border-transparent text-gray-500'" @click="activeTab = 'create'">Creación de usuarios</button>
+      <button type="button" class="px-4 py-3 text-sm font-semibold border-b-2 whitespace-nowrap" :class="activeTab === 'roles' ? 'border-aso-primary text-aso-primary' : 'border-transparent text-gray-500'" @click="activeTab = 'roles'">Gestión de roles y permisos</button>
+      <button type="button" class="px-4 py-3 text-sm font-semibold border-b-2 whitespace-nowrap" :class="activeTab === 'persons' ? 'border-aso-primary text-aso-primary' : 'border-transparent text-gray-500'" @click="activeTab = 'persons'">Gestión de personas</button>
+      <button type="button" class="px-4 py-3 text-sm font-semibold border-b-2 whitespace-nowrap" :class="activeTab === 'users' ? 'border-aso-primary text-aso-primary' : 'border-transparent text-gray-500'" @click="activeTab = 'users'">Gestión de usuarios</button>
     </nav>
 
-    <div v-if="errorMessage" v-show="activeTab === 'users'" class="rounded-xl bg-red-50 border border-red-200 text-red-700 px-4 py-3 text-sm">
+    <div v-if="errorMessage" class="rounded-xl bg-red-50 border border-red-200 text-red-700 px-4 py-3 text-sm">
       {{ errorMessage }}
     </div>
 
-    <PersonCreateForm
-      v-show="activeTab === 'users'"
-      :communes="communes"
-      @reload="loadAll"
-      @show-result="showResult"
-      @assignment-context-change="(list) => (assignmentContext = list)"
-    />
-
-    <PersonsTable
-      v-show="activeTab === 'users'"
-      :persons="persons"
-      :persons-per-page="personsPerPage"
-      :persons-current-page="personsCurrentPage"
-      :persons-last-page="personsLastPage"
-      :persons-total="personsTotal"
-      :persons-from="personsFrom"
-      :persons-to="personsTo"
-      @search-change="onPersonsSearchChange"
-      @per-page-change="onPersonsPerPageChange"
-      @page-change="onPersonsPageChange"
-      @edit-person="(person) => (editingPerson = person)"
-    />
-
-    <section v-show="activeTab === 'users'" class="bg-white border border-gray-100 rounded-2xl p-5 sm:p-6 shadow-sm">
-      <div class="flex items-start justify-between gap-3 mb-4">
-        <div>
-          <h1 class="text-xl sm:text-2xl font-semibold text-gray-900">Usuarios y Roles</h1>
-          <p class="text-sm text-gray-500 mt-1">Gestiona cuentas y asignaciones de rol desde la API.</p>
-        </div>
-        <button
-          type="button"
-          class="px-3 py-2 text-sm font-medium rounded-lg bg-aso-primary text-white hover:bg-aso-primary-dark transition-colors"
-          @click="loadAll"
-          :disabled="loading"
-        >
-          Recargar
-        </button>
-        <button type="button" class="px-3 py-2 text-sm font-medium rounded-lg bg-gray-900 text-white hover:bg-black" @click="completeUserOpen = true">Nuevo Registro</button>
-      </div>
-
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
-        <UserCreateForm :roles="roles" @reload="loadUsers" @show-result="showResult" />
-        <RoleSummaryList :roles="roles" />
-      </div>
-    </section>
-
-    <UsersTable
-      v-show="activeTab === 'users'"
-      :users="users"
-      :users-per-page="usersPerPage"
-      :users-current-page="usersCurrentPage"
-      :users-last-page="usersLastPage"
-      :users-total="usersTotal"
-      :users-from="usersFrom"
-      :users-to="usersTo"
-      :assignment-context="assignmentContext"
-      @search-change="onUsersSearchChange"
-      @per-page-change="onUsersPerPageChange"
-      @page-change="onUsersPageChange"
-      @edit-roles="(user) => (editingUser = user)"
-      @edit-user="(user) => (editingUserData = user)"
-      @reset-password="(user) => (resettingUser = user)"
-      @reload="loadUsers"
-      @show-result="showResult"
-    />
-
-    <RoleCatalogEditor
-      v-if="activeTab === 'roles'"
-      :permissions="permissions"
-      @reload="loadRoles"
-      @reload-users="loadUsers"
-      @show-result="showResult"
-    />
-
-    <CompleteUserModal
-      :open="completeUserOpen"
+    <UserCreationWizard
+      v-show="activeTab === 'create'"
       :communes="communes"
       :roles="roles"
-      @close="completeUserOpen = false"
       @reload="loadAll"
       @show-result="showResult"
+      @created="activeTab = 'users'"
     />
 
-    <RoleEditorModal :user="editingUser" :roles="roles" @close="editingUser = null" @reload="loadUsers" />
+    <template v-if="activeTab === 'roles'">
+      <RoleCatalogEditor
+        :permissions="permissions"
+        @reload="loadRoles"
+        @reload-users="loadUsers"
+        @show-result="showResult"
+      />
+    </template>
 
-    <UserEditorModal :user="editingUserData" :communes="communes" @close="editingUserData = null" @reload="loadUsers" />
+    <template v-if="activeTab === 'persons'">
+      <section class="bg-white border border-gray-100 rounded-2xl p-5 sm:p-6 shadow-sm">
+        <div class="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 class="text-xl sm:text-2xl font-semibold text-gray-900">Gestión de Personas</h1>
+            <p class="text-sm text-gray-500 mt-1">Consulta y edita las personas registradas.</p>
+          </div>
+          <button
+            type="button"
+            class="px-3 py-2 text-sm font-medium rounded-lg bg-aso-primary text-white hover:bg-aso-primary-dark transition-colors"
+            @click="creatingPersonOpen = true"
+          >
+            Crear Persona
+          </button>
+        </div>
+      </section>
 
-    <PasswordResetModal :user="resettingUser" @close="resettingUser = null" />
+      <PersonsTable
+        :persons="persons"
+        :persons-per-page="personsPerPage"
+        :persons-current-page="personsCurrentPage"
+        :persons-last-page="personsLastPage"
+        :persons-total="personsTotal"
+        :persons-from="personsFrom"
+        :persons-to="personsTo"
+        @search-change="onPersonsSearchChange"
+        @per-page-change="onPersonsPerPageChange"
+        @page-change="onPersonsPageChange"
+        @edit-person="(person) => (editingPerson = person)"
+      />
+    </template>
 
-    <PersonEditorModal :person="editingPerson" :communes="communes" @close="editingPerson = null" @reload="loadPersons" />
+    <template v-if="activeTab === 'users'">
+      <section class="bg-white border border-gray-100 rounded-2xl p-5 sm:p-6 shadow-sm">
+        <div class="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 class="text-xl sm:text-2xl font-semibold text-gray-900">Gestión de Usuarios</h1>
+            <p class="text-sm text-gray-500 mt-1">Administra cuentas, roles y estado de acceso.</p>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              class="px-3 py-2 text-sm font-medium rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 transition-colors"
+              @click="loadAll"
+              :disabled="loading"
+            >
+              Recargar
+            </button>
+            <button
+              type="button"
+              class="px-3 py-2 text-sm font-medium rounded-lg bg-aso-primary text-white hover:bg-aso-primary-dark transition-colors"
+              @click="creatingUserOpen = true"
+            >
+              Crear Usuario
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <UsersTable
+        :users="users"
+        :users-per-page="usersPerPage"
+        :users-current-page="usersCurrentPage"
+        :users-last-page="usersLastPage"
+        :users-total="usersTotal"
+        :users-from="usersFrom"
+        :users-to="usersTo"
+        :assignment-context="assignmentContext"
+        @search-change="onUsersSearchChange"
+        @per-page-change="onUsersPerPageChange"
+        @page-change="onUsersPageChange"
+        @edit-roles="(user) => (editingUser = user)"
+        @edit-user="(user) => (editingUserData = user)"
+        @reset-password="(user) => (resettingUser = user)"
+        @reload="loadUsers"
+        @show-result="showResult"
+      />
+    </template>
+
+    <RoleEditorModal :user="editingUser" :roles="roles" @close="editingUser = null" @reload="loadUsers" @show-result="showResult" />
+
+    <UserEditorModal :user="editingUserData" :communes="communes" @close="editingUserData = null" @reload="loadUsers" @show-result="showResult" />
+
+    <PasswordResetModal :user="resettingUser" @close="resettingUser = null" @show-result="showResult" />
+
+    <PersonEditorModal :person="editingPerson" :communes="communes" @close="editingPerson = null" @reload="loadPersons" @show-result="showResult" />
+
+    <PersonCreateModal :open="creatingPersonOpen" :communes="communes" @close="creatingPersonOpen = false" @reload="loadPersons" @show-result="showResult" />
+
+    <UserCreateModal :open="creatingUserOpen" :roles="roles" @close="creatingUserOpen = false" @reload="loadUsers" @show-result="showResult" />
 
     <ResultModal
       :open="resultModal.open"
@@ -113,21 +133,20 @@
 <script setup>
 import { onMounted, ref } from 'vue';
 import axios from '@/services/axios';
-import PersonCreateForm from '@/components/security-config/PersonCreateForm.vue';
+import UserCreationWizard from '@/components/security-config/UserCreationWizard.vue';
 import PersonsTable from '@/components/security-config/PersonsTable.vue';
 import PersonEditorModal from '@/components/security-config/PersonEditorModal.vue';
-import UserCreateForm from '@/components/security-config/UserCreateForm.vue';
-import RoleSummaryList from '@/components/security-config/RoleSummaryList.vue';
+import PersonCreateModal from '@/components/security-config/PersonCreateModal.vue';
+import UserCreateModal from '@/components/security-config/UserCreateModal.vue';
 import UsersTable from '@/components/security-config/UsersTable.vue';
 import RoleCatalogEditor from '@/components/security-config/RoleCatalogEditor.vue';
-import CompleteUserModal from '@/components/security-config/CompleteUserModal.vue';
 import RoleEditorModal from '@/components/security-config/RoleEditorModal.vue';
 import UserEditorModal from '@/components/security-config/UserEditorModal.vue';
 import PasswordResetModal from '@/components/security-config/PasswordResetModal.vue';
 import ResultModal from '@/components/ResultModal.vue';
 
 const loading = ref(false);
-const activeTab = ref('users');
+const activeTab = ref('create');
 const errorMessage = ref('');
 
 const users = ref([]);
@@ -153,11 +172,12 @@ const personsTotal = ref(0);
 const personsFrom = ref(0);
 const personsTo = ref(0);
 
-const completeUserOpen = ref(false);
 const editingUser = ref(null);
 const editingUserData = ref(null);
 const resettingUser = ref(null);
 const editingPerson = ref(null);
+const creatingPersonOpen = ref(false);
+const creatingUserOpen = ref(false);
 
 const resultModal = ref({ open: false, success: true, title: '', message: '' });
 const showResult = (success, title, message) => {
@@ -254,6 +274,13 @@ const loadCommunes = async () => {
   communes.value = data.data ?? [];
 };
 
+// Usada por UsersTable para la columna "Mesa Sugerida". Se carga aparte (sin comuna)
+// para no depender de que se haya elegido una comuna en el wizard de creación.
+const loadAssignmentContext = async () => {
+  const { data } = await axios.get('/admin/users/assignment-context', { skipGlobalLoading: true });
+  assignmentContext.value = Array.isArray(data.data) ? data.data : [];
+};
+
 const loadAll = async () => {
   loading.value = true;
   errorMessage.value = '';
@@ -269,6 +296,9 @@ const loadAll = async () => {
         console.error('Error loading users:', e?.response?.status, e?.message);
         throw e;
       }),
+      loadAssignmentContext().catch((e) => {
+        console.error('Error loading assignment context:', e?.response?.status, e?.message);
+      }),
     ]);
   } catch (error) {
     console.error('Full error:', error);
@@ -276,7 +306,7 @@ const loadAll = async () => {
   }
 
   // Se carga después del bloque anterior (no dentro del mismo Promise.all) para no sumar
-  // una quinta petición concurrente: en este entorno de desarrollo el servidor PHP es de
+  // una petición concurrente adicional: en este entorno de desarrollo el servidor PHP es de
   // un solo hilo y eso ya provocaba timeouts de 30s incluso antes de agregar este listado.
   try {
     await loadPersons();

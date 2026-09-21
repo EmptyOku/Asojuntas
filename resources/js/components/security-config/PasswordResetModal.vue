@@ -90,7 +90,7 @@ const props = defineProps({
   user: { type: Object, default: null },
 });
 
-const emit = defineEmits(['close']);
+const emit = defineEmits(['close', 'show-result']);
 
 const loading = ref(false);
 const modalError = ref('');
@@ -114,10 +114,12 @@ const saveNewPassword = async () => {
   modalError.value = '';
   try {
     await axios.post(`/admin/users/${props.user.id}/reset-password`, passwordForm.value);
-    alert('Contraseña restablecida con éxito.');
     emit('close');
+    emit('show-result', true, 'Contraseña restablecida', 'La contraseña se restableció con éxito.');
   } catch (error) {
-    modalError.value = error?.response?.data?.message || 'Error al restablecer la contraseña.';
+    const message = error?.response?.data?.message || 'Error al restablecer la contraseña.';
+    modalError.value = message;
+    emit('show-result', false, 'No se pudo restablecer la contraseña', message);
   } finally {
     loading.value = false;
   }

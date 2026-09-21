@@ -123,7 +123,7 @@ const props = defineProps({
   communes: { type: Array, default: () => [] },
 });
 
-const emit = defineEmits(['close', 'reload']);
+const emit = defineEmits(['close', 'reload', 'show-result']);
 
 const loading = ref(false);
 const modalError = ref('');
@@ -216,9 +216,12 @@ const savePerson = async () => {
     });
     emit('reload');
     emit('close');
+    emit('show-result', true, 'Persona actualizada', 'Los datos de la persona se actualizaron con éxito.');
   } catch (error) {
     fieldErrors.value = extractFieldErrors(error);
-    modalError.value = buildErrorMessage(error, 'Error al actualizar persona.');
+    const message = buildErrorMessage(error, 'Error al actualizar persona.');
+    modalError.value = message;
+    emit('show-result', false, 'No se pudo actualizar la persona', message);
   } finally {
     loading.value = false;
   }

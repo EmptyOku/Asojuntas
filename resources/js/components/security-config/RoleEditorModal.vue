@@ -53,7 +53,7 @@ const props = defineProps({
   roles: { type: Array, default: () => [] },
 });
 
-const emit = defineEmits(['close', 'reload']);
+const emit = defineEmits(['close', 'reload', 'show-result']);
 
 const loading = ref(false);
 const modalError = ref('');
@@ -72,8 +72,11 @@ const saveRoles = async () => {
     await axios.put(`/admin/users/${props.user.id}/roles`, { roles: editingRoles.value });
     emit('reload');
     emit('close');
+    emit('show-result', true, 'Roles actualizados', 'Los roles del usuario se actualizaron con éxito.');
   } catch (error) {
-    modalError.value = error?.response?.data?.message || 'Error al actualizar roles.';
+    const message = error?.response?.data?.message || 'Error al actualizar roles.';
+    modalError.value = message;
+    emit('show-result', false, 'No se pudieron actualizar los roles', message);
   } finally {
     loading.value = false;
   }
