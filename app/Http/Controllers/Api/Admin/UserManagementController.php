@@ -95,7 +95,16 @@ class UserManagementController extends Controller
                 'middle_name' => $user->person->middle_name,
                 'last_name' => $user->person->last_name,
                 'second_last_name' => $user->person->second_last_name,
-                'neighborhood' => $user->person->neighborhood,
+                // Se listan los campos explícitamente (en vez de pasar el modelo)
+                // para no serializar los accessors president_name/vicepresident_name
+                // de Neighborhood, que disparan queries de escrutinio no relacionadas
+                // con este listado (ver app/Models/Neighborhood.php $appends).
+                'neighborhood' => $user->person->neighborhood ? [
+                    'id' => $user->person->neighborhood->id,
+                    'name' => $user->person->neighborhood->name,
+                    'code' => $user->person->neighborhood->code,
+                    'commune_id' => $user->person->neighborhood->commune_id,
+                ] : null,
             ] : null,
             'roles' => $user->roles->map(fn ($role) => [
                 'id' => $role->id,
