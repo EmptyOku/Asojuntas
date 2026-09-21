@@ -300,6 +300,14 @@
         </div>
       </aside>
     </div>
+
+    <ResultModal
+      :open="resultModal.open"
+      :success="resultModal.success"
+      :title="resultModal.title"
+      :message="resultModal.message"
+      @close="resultModal.open = false"
+    />
   </div>
 </template>
 
@@ -388,6 +396,12 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import axios from '@/services/axios';
 import { useAuthStore } from '@/stores/auth';
+import ResultModal from '@/components/ResultModal.vue';
+
+const resultModal = ref({ open: false, success: true, title: '', message: '' });
+const showResult = (success, title, message) => {
+  resultModal.value = { open: true, success, title, message };
+};
 
 const router = useRouter();
 const authStore = useAuthStore();
@@ -545,9 +559,10 @@ async function createBarrio() {
     creatingBarrio.value = false;
     await refreshNeighborhoodOptions();
     locateNeighborhoodId.value = data.data.id;
-    locateMessage.value = 'Barrio creado. Ahora asígnale una ubicación.';
+    showResult(true, 'Barrio creado', 'El barrio se creó correctamente. Ahora asígnale una ubicación.');
   } catch (e) {
-    locateMessage.value = e?.response?.data?.errors?.name?.[0] || e?.response?.data?.message || 'No se pudo crear el barrio.';
+    const message = e?.response?.data?.errors?.name?.[0] || e?.response?.data?.message || 'No se pudo crear el barrio.';
+    showResult(false, 'No se pudo crear el barrio', message);
   } finally {
     locateSaving.value = false;
   }
@@ -561,11 +576,12 @@ async function renameBarrio() {
 
   try {
     await axios.put(`/admin/neighborhoods/${locateNeighborhoodId.value}`, { name: renameValue.value.trim() });
-    locateMessage.value = 'Barrio renombrado.';
     await refreshNeighborhoodOptions();
     await loadBarrios();
+    showResult(true, 'Barrio renombrado', 'El nombre del barrio se actualizó con éxito.');
   } catch (e) {
-    locateMessage.value = e?.response?.data?.errors?.name?.[0] || e?.response?.data?.message || 'No se pudo renombrar el barrio.';
+    const message = e?.response?.data?.errors?.name?.[0] || e?.response?.data?.message || 'No se pudo renombrar el barrio.';
+    showResult(false, 'No se pudo renombrar el barrio', message);
   } finally {
     locateSaving.value = false;
   }
@@ -585,11 +601,12 @@ async function deleteBarrio() {
   try {
     await axios.delete(`/admin/neighborhoods/${locateNeighborhoodId.value}`);
     locateNeighborhoodId.value = null;
-    locateMessage.value = 'Barrio eliminado.';
     await refreshNeighborhoodOptions();
     await loadBarrios();
+    showResult(true, 'Barrio eliminado', 'El barrio se eliminó con éxito.');
   } catch (e) {
-    locateMessage.value = e?.response?.data?.message || 'No se pudo eliminar el barrio.';
+    const message = e?.response?.data?.message || 'No se pudo eliminar el barrio.';
+    showResult(false, 'No se pudo eliminar el barrio', message);
   } finally {
     locateSaving.value = false;
   }
@@ -655,11 +672,12 @@ async function saveLocation() {
       latitude: lat,
       longitude: lng,
     });
-    locateMessage.value = 'Ubicación guardada.';
     await refreshNeighborhoodOptions();
     await loadBarrios();
+    showResult(true, 'Ubicación guardada', 'La ubicación del barrio se guardó con éxito.');
   } catch (e) {
-    locateMessage.value = e?.response?.data?.message || 'No se pudo guardar la ubicación.';
+    const message = e?.response?.data?.message || 'No se pudo guardar la ubicación.';
+    showResult(false, 'No se pudo guardar la ubicación', message);
   } finally {
     locateSaving.value = false;
   }
@@ -673,13 +691,14 @@ async function removeLocation() {
 
   try {
     await axios.delete(`/admin/neighborhoods/${locateNeighborhoodId.value}/location`);
-    locateMessage.value = 'Ubicación eliminada.';
     locateLat.value = '';
     locateLng.value = '';
     await refreshNeighborhoodOptions();
     await loadBarrios();
+    showResult(true, 'Ubicación eliminada', 'La ubicación del barrio se eliminó con éxito.');
   } catch (e) {
-    locateMessage.value = e?.response?.data?.message || 'No se pudo eliminar la ubicación.';
+    const message = e?.response?.data?.message || 'No se pudo eliminar la ubicación.';
+    showResult(false, 'No se pudo eliminar la ubicación', message);
   } finally {
     locateSaving.value = false;
   }
