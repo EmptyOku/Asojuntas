@@ -1221,15 +1221,18 @@ class NeighborhoodDirectoryController extends Controller
     }
 
     /**
-     * Rojo: sin actas. Amarillo: recepcion parcial. Verde: completa.
+     * Umbral de avance de recepcion de actas, pensado para lectura a
+     * distancia en el mapa (sin ver los puntos individuales): por debajo de
+     * 30% se considera critico (rojo), entre 30% y 79% en progreso
+     * (amarillo), y de 80% en adelante practicamente completo (verde).
      */
     private function semaforo(int $pct): string
     {
-        if ($pct >= 100) {
+        if ($pct >= 80) {
             return 'verde';
         }
 
-        return $pct > 0 ? 'amarillo' : 'rojo';
+        return $pct >= 30 ? 'amarillo' : 'rojo';
     }
 
     /**
