@@ -3,10 +3,10 @@
 
     <!-- ── Header ── -->
     <div class="results-header">
-      <router-link to="/admin/candidates" class="back-btn">
+      <button type="button" class="back-btn" @click="goBack">
         <ArrowLeft class="w-4 h-4" />
         <span>Volver</span>
-      </router-link>
+      </button>
       <div class="header-content">
         <div class="header-eyebrow">
           <span class="eyebrow-dot"></span>
@@ -226,7 +226,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import {
   ArrowLeft, BarChart2, AlertCircle, RefreshCw,
   FileX, Trophy, CheckCircle2, Minus, XCircle, Users
@@ -234,6 +234,20 @@ import {
 import axios from '@/services/axios';
 
 const route  = useRoute();
+const router = useRouter();
+
+// Vuelve a la pagina anterior real (mapa o directorio, lo que haya
+// enlazado hasta aca) en vez de forzar siempre el directorio. Sin
+// historial previo dentro de la app (ej. entro por URL directa), cae al
+// directorio como destino por defecto.
+function goBack() {
+  if (window.history.state?.back) {
+    router.back();
+  } else {
+    router.push('/admin/candidates');
+  }
+}
+
 const barrio  = ref(null);
 const loading = ref(true);
 const error   = ref(null);
@@ -327,10 +341,12 @@ onMounted(() => fetchResultados());
   border: 1px solid #e4e8ef;
   border-radius: 8px;
   color: #64748b;
+  font: inherit;
   font-size: 0.8rem;
   font-weight: 600;
   text-decoration: none;
   white-space: nowrap;
+  cursor: pointer;
   transition: background .15s, color .15s;
   margin-top: .2rem;
   flex-shrink: 0;
