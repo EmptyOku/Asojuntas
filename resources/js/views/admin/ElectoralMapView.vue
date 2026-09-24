@@ -3,7 +3,7 @@
     <div class="flex flex-wrap items-start justify-between gap-3">
       <div>
         <h1 class="text-2xl font-bold text-gray-900">Mapa Electoral</h1>
-        <p class="text-sm text-gray-500">Comunas de Girardot. Haz clic en un punto (JAC) para ver los resultados del barrio.</p>
+        <p class="text-sm text-gray-500">Comunas de Girardot. Haz clic en una comuna para ver sus JAC y los resultados del barrio.</p>
       </div>
       <div class="flex flex-col items-end gap-1.5">
         <div class="flex items-center gap-3">
@@ -19,9 +19,9 @@
             </svg>
             {{ lastUpdated ? `Actualizado ${lastUpdated}` : 'Actualizar' }}
           </button>
-          <label class="flex items-center gap-2 text-sm text-gray-600 select-none">
+          <label v-if="selected" class="flex items-center gap-2 text-sm text-gray-600 select-none">
             <input type="checkbox" v-model="showBarrios" class="rounded border-gray-300 text-aso-primary focus:ring-aso-primary" />
-            Mostrar JAC ({{ barriosCount }})
+            Mostrar JAC ({{ selectedBarrios.length }})
           </label>
         </div>
         <p v-if="totalAtrasadas > 0" class="flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
@@ -57,13 +57,26 @@
         <div v-if="selected" class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
           <div class="h-1.5 w-full" :style="{ backgroundColor: communeColor(selected.code) }"></div>
           <div class="p-5">
-          <span
-            class="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-semibold"
-            :style="{ backgroundColor: communeColor(selected.code) + '1a', color: communeColor(selected.code) }"
-          >
-            <span class="h-1.5 w-1.5 rounded-full" :style="{ backgroundColor: communeColor(selected.code) }"></span>
-            {{ selected.code }}
-          </span>
+          <div class="flex items-center justify-between gap-2">
+            <span
+              class="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-semibold"
+              :style="{ backgroundColor: communeColor(selected.code) + '1a', color: communeColor(selected.code) }"
+            >
+              <span class="h-1.5 w-1.5 rounded-full" :style="{ backgroundColor: communeColor(selected.code) }"></span>
+              {{ selected.code }}
+            </span>
+            <button
+              type="button"
+              @click="clearSelection"
+              class="flex shrink-0 items-center gap-1.5 rounded-full bg-aso-primary px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-aso-primary/90"
+              title="Volver a ver todas las comunas"
+            >
+              <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 15l-6-6m0 0l6-6m-6 6h16" />
+              </svg>
+              Ver todas
+            </button>
+          </div>
           <h2 class="mt-2 text-lg font-semibold text-gray-900">{{ selected.name }}</h2>
           <dl class="mt-4 space-y-2 text-sm">
             <div class="flex justify-between">
@@ -140,6 +153,46 @@
               </button>
             </li>
           </ul>
+        </div>
+
+        <div class="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
+          <p class="px-2 pb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Leyenda</p>
+          <div class="grid grid-cols-2 gap-3 px-2 pb-1">
+            <div>
+              <p class="mb-1.5 text-[11px] font-medium text-gray-500">Puntos JAC</p>
+              <div class="space-y-1 text-xs text-gray-600">
+                <div class="flex items-center gap-2">
+                  <span class="h-2.5 w-2.5 shrink-0 rounded-full border-2 border-dashed border-gray-300" :style="{ backgroundColor: SEMAFORO_COLORS.rojo }"></span>
+                  Atrasada
+                </div>
+                <div class="flex items-center gap-2">
+                  <span class="h-2.5 w-2.5 shrink-0 rounded-full border-2 border-gray-300" :style="{ backgroundColor: SEMAFORO_COLORS.verde }"></span>
+                  Recibida
+                </div>
+                <div class="flex items-center gap-2">
+                  <span class="h-2.5 w-2.5 shrink-0 rounded-full border-2 border-gray-300 bg-white"></span>
+                  Sin acta
+                </div>
+              </div>
+            </div>
+            <div>
+              <p class="mb-1.5 text-[11px] font-medium text-gray-500">Comuna (% actas)</p>
+              <div class="space-y-1 text-xs text-gray-600">
+                <div class="flex items-center gap-2">
+                  <span class="h-2.5 w-2.5 shrink-0 rounded-sm" :style="{ backgroundColor: SEMAFORO_COLORS.rojo }"></span>
+                  Sin actas
+                </div>
+                <div class="flex items-center gap-2">
+                  <span class="h-2.5 w-2.5 shrink-0 rounded-sm" :style="{ backgroundColor: SEMAFORO_COLORS.amarillo }"></span>
+                  Parcial
+                </div>
+                <div class="flex items-center gap-2">
+                  <span class="h-2.5 w-2.5 shrink-0 rounded-sm" :style="{ backgroundColor: SEMAFORO_COLORS.verde }"></span>
+                  Completo
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div v-if="canEditLocation" class="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
@@ -387,6 +440,71 @@
   font-weight: 600;
   color: #2563eb;
 }
+
+/* Punto JAC: circulo de estado (relleno) con anillo de identidad de comuna
+   (borde) y halo blanco (box-shadow) para separarlo del relleno de la
+   comuna y de sus vecinos, aunque compartan color. */
+:deep(.jac-dot-wrap) {
+  background: transparent;
+  border: none;
+}
+:deep(.jac-dot) {
+  display: block;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  border-radius: 50%;
+  border: 2px solid var(--c);
+  box-shadow: 0 0 0 2.5px #fff;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+:deep(.jac-dot-atrasada) { background: #dc2626; border-style: dashed; }
+:deep(.jac-dot-recibida) { background: #16a34a; }
+:deep(.jac-dot-pendiente) { background: #ffffff; }
+:deep(.jac-dot-flash) {
+  transform: scale(1.5);
+  box-shadow: 0 0 0 3px #fff, 0 0 0 6px rgba(255, 255, 255, 0.55);
+}
+
+/* Insignias de comuna: el nombre (siempre visible) y el % de actas (solo
+   de lejos) son dos elementos separados, apiladas sobre el centro. */
+:deep(.comuna-badge-wrap) {
+  background: transparent;
+  border: none;
+}
+:deep(.comuna-name-pill) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  border-radius: 999px;
+  background: #fff;
+  color: var(--name-c);
+  border: 1.5px solid var(--name-c);
+  font-size: 11px;
+  font-weight: 700;
+  font-family: inherit;
+  white-space: nowrap;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  pointer-events: none;
+}
+:deep(.comuna-badge-pill) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--badge-bg);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  font-family: inherit;
+  white-space: nowrap;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25), 0 0 0 2px #fff;
+  pointer-events: none;
+}
 </style>
 
 <script setup>
@@ -407,10 +525,10 @@ const router = useRouter();
 const authStore = useAuthStore();
 const canEditLocation = computed(() => authStore.permissions?.includes('elections.update'));
 
-// Un color por comuna (identidad), deliberadamente distinto de los colores
-// de estado del semaforo (verde/ambar/rojo) para no confundir "de qué
-// comuna es" con "cómo va esa comuna".
-const COMMUNE_PALETTE = ['#2563eb', '#9333ea', '#0d9488', '#db2777', '#78350f', '#0891b2', '#f97316'];
+// Un color por comuna (identidad), deliberadamente lejos del rojo/verde/
+// blanco que usa el semaforo (estado de actas), para no confundir "de que
+// comuna es" con "como va esa comuna".
+const COMMUNE_PALETTE = ['#EBCF23', '#7C3AED', '#F97316', '#73B1EA', '#78350F'];
 function communeColor(code) {
   const idx = communes.value.findIndex((c) => c.code === code);
   return COMMUNE_PALETTE[(idx < 0 ? 0 : idx) % COMMUNE_PALETTE.length];
@@ -422,24 +540,60 @@ function semaforoColor(semaforo) {
   return SEMAFORO_COLORS[semaforo] || '#9ca3af';
 }
 
-// El borde de cada comuna es su color de identidad (el mismo de sus puntos
-// JAC y de la lista lateral); el relleno sigue mostrando el semaforo de
-// actas. Así se reconoce la comuna por el contorno y su avance por el color.
+// Numero de la comuna para la insignia (ej. "Comuna 3" -> "3"). Las pocas
+// comunas sin numero (veredas) caen al codigo tal cual (ej. "VRD-N").
+function communeNumber(feature) {
+  const name = feature?.properties?.name ?? '';
+  const match = name.match(/comuna\s+(\d+)/i);
+  return match ? match[1] : (feature?.properties?.code ?? '');
+}
+
+// El borde y el relleno de cada comuna son su color de identidad — el mismo
+// de sus puntos JAC y de la lista lateral. Relleno solido (no pastel) para
+// que se distinga bien de lejos; el estado de actas (semaforo) no se lee
+// aqui sino en la insignia de % (pctBadgeIconFor).
 function baseStyleFor(feature) {
   const identity = communeColor(feature?.properties?.code);
-  const status = semaforoColor(feature?.properties?.semaforo);
-  return { color: identity, weight: 2.5, fillColor: status, fillOpacity: 0.22, opacity: 1 };
+  return { color: identity, weight: 3, fillColor: identity, fillOpacity: 0.6, opacity: 1 };
 }
 function hoverStyleFor(feature) {
   const identity = communeColor(feature?.properties?.code);
-  const status = semaforoColor(feature?.properties?.semaforo);
-  return { color: identity, weight: 3.5, fillColor: status, fillOpacity: 0.36, opacity: 1 };
+  return { color: identity, weight: 4, fillColor: identity, fillOpacity: 0.72, opacity: 1 };
 }
 // Comuna seleccionada: sin relleno (transparente), solo el contorno marcado
 // bien grueso en su color de identidad.
 function activeStyleFor(feature) {
   const identity = communeColor(feature?.properties?.code);
-  return { color: identity, weight: 4, fillColor: identity, fillOpacity: 0, opacity: 1 };
+  return { color: identity, weight: 4.5, fillColor: identity, fillOpacity: 0, opacity: 1 };
+}
+
+// Insignia con el nombre de la comuna (siempre visible, tambien con la
+// comuna seleccionada/acercada): sirve de referencia de "donde estoy"
+// independiente del estado de actas.
+function nameBadgeIconFor(feature) {
+  const identity = communeColor(feature?.properties?.code);
+  const number = communeNumber(feature);
+  return L.divIcon({
+    className: 'comuna-badge-wrap',
+    html: `<div class="comuna-name-pill" style="--name-c:${identity}">Comuna ${number}</div>`,
+    iconSize: [86, 20],
+    iconAnchor: [43, 26],
+  });
+}
+
+// Insignia con el % de actas y el color de semaforo — reemplaza al relleno
+// como portador del estado. Solo tiene sentido de lejos (varias comunas a
+// la vez); al seleccionar y acercarse a una comuna se oculta esa insignia
+// puntual (ver updatePctBadgeVisibility), porque ya se ven sus JAC.
+function pctBadgeIconFor(feature) {
+  const color = semaforoColor(feature?.properties?.semaforo);
+  const pct = feature?.properties?.actas_pct ?? 0;
+  return L.divIcon({
+    className: 'comuna-badge-wrap',
+    html: `<div class="comuna-badge-pill" style="--badge-bg:${color}">${pct}%</div>`,
+    iconSize: [46, 20],
+    iconAnchor: [23, -6],
+  });
 }
 
 const mapEl = ref(null);
@@ -450,8 +604,9 @@ const error = ref('');
 const communes = ref([]);
 const selected = ref(null);
 const showBarrios = ref(true);
-const barriosCount = ref(0);
 const barrios = ref([]); // lista plana de JAC, para listarlas por comuna en el orden entregado
+
+const selectedCommuneId = computed(() => selected.value?.id ?? null);
 
 const selectedBarrios = computed(() => {
   if (!selected.value) return [];
@@ -714,8 +869,12 @@ const GIRARDOT_BOUNDS = L.latLngBounds([
 let map = null;
 const geoLayer = shallowRef(null);
 const barriosLayer = shallowRef(null);
+const nameBadgesLayer = shallowRef(null);
+const pctBadgesLayer = shallowRef(null);
 const layersById = new Map();
 const barrioMarkersById = new Map();
+const nameBadgeMarkersById = new Map();
+const pctBadgeMarkersById = new Map();
 let activeLayer = null;
 let openBarrioMarker = null;
 let allBounds = null;
@@ -744,6 +903,15 @@ function handleResize() {
   }
 }
 
+// true si el conjunto de IDs de `layersById`/`markersById` es exactamente
+// el de las features nuevas (mismo tamano, mismos ids). Cuando coincide, un
+// refresco silencioso puede actualizar las capas existentes en vez de
+// destruirlas y recrearlas (evita el parpadeo de todo el mapa cada 45s).
+function sameIdSet(existingMap, features, idFn) {
+  if (existingMap.size !== features.length) return false;
+  return features.every((f) => existingMap.has(idFn(f)));
+}
+
 function applySelection(layer, props) {
   const previous = activeLayer;
   activeLayer = layer;
@@ -764,18 +932,70 @@ function selectById(id) {
   if (layer) applySelection(layer, layer.feature.properties);
 }
 
-// Estilo del punto de una JAC: el anillo siempre es el color de su comuna
-// (para distinguir una comuna de otra de un vistazo); el relleno indica el
-// estado del acta — verde ya llegó, rojo atrasada, blanco aún se espera.
-function markerStyleFor(b) {
+// Vuelve a la vista de todas las comunas, como si no se hubiera hecho zoom:
+// quita la seleccion (restaura el estilo de la comuna activa) y reencuadra.
+function clearSelection() {
+  if (activeLayer) {
+    const layer = activeLayer;
+    activeLayer = null;
+    layer.setStyle(polygonStyleFor(layer));
+  }
+  selected.value = null;
+  fitAll();
+}
+
+// La insignia de % de una comuna solo tiene sentido de lejos; se oculta la
+// de la comuna seleccionada (ya se ven sus JAC) y se restauran las demas.
+function updatePctBadgeVisibility() {
+  if (!map) return;
+  pctBadgeMarkersById.forEach((marker, id) => {
+    const shouldShow = id !== selectedCommuneId.value;
+    const isOnMap = map.hasLayer(marker);
+    if (shouldShow && !isOnMap) marker.addTo(map);
+    if (!shouldShow && isOnMap) marker.remove();
+  });
+}
+
+// De lejos (sin comuna seleccionada) el mapa solo muestra el contorno y la
+// insignia de % por comuna; los puntos JAC de una comuna solo aparecen al
+// seleccionarla (clic en el mapa o en la lista), que ya hace zoom a su
+// area. Evita mostrar los ~100 puntos superpuestos de una sola vez.
+function updateVisibleBarrios() {
+  if (!map) return;
+
+  if (barriosLayer.value) {
+    barriosLayer.value.remove();
+    barriosLayer.value = null;
+  }
+
+  if (!selected.value || !showBarrios.value) return;
+
+  const visible = barrios.value
+    .filter((b) => b.commune_id === selected.value.id)
+    .map((b) => barrioMarkersById.get(b.id))
+    .filter(Boolean);
+
+  if (!visible.length) return;
+
+  barriosLayer.value = L.layerGroup(visible).addTo(map);
+}
+
+// Icono de un punto JAC: el anillo siempre es el color de su comuna (para
+// distinguir una comuna de otra de un vistazo); el relleno indica el estado
+// del acta — verde ya llegó, rojo atrasada (borde discontinuo), blanco aún
+// se espera. El halo blanco va incluido en el CSS del icono (jac-dot) para
+// separarlo del relleno de la comuna y de sus vecinos, aunque compartan color.
+function markerIconFor(b, { flash = false } = {}) {
   const identity = communeColor(b.commune_code);
-  if (b.atrasada) {
-    return { radius: 7, weight: 2.5, color: identity, dashArray: '2,3', fillColor: '#dc2626', fillOpacity: 0.92, opacity: 1 };
-  }
-  if (b.has_acta) {
-    return { radius: 6, weight: 2, color: identity, dashArray: null, fillColor: '#16a34a', fillOpacity: 0.95, opacity: 1 };
-  }
-  return { radius: 5, weight: 2, color: identity, dashArray: null, fillColor: '#ffffff', fillOpacity: 0.85, opacity: 1 };
+  const status = b.atrasada ? 'atrasada' : b.has_acta ? 'recibida' : 'pendiente';
+  const size = b.atrasada ? 16 : b.has_acta ? 14 : 12;
+  const cls = ['jac-dot', `jac-dot-${status}`, flash ? 'jac-dot-flash' : ''].filter(Boolean).join(' ');
+  return L.divIcon({
+    className: 'jac-dot-wrap',
+    html: `<span class="${cls}" style="--c:${identity}"></span>`,
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+  });
 }
 
 function markerTooltipHtml(b) {
@@ -822,9 +1042,9 @@ function goToBarrio(b) {
   map.flyTo([b.lat, b.lng], 17, { duration: 0.8 });
   marker.openTooltip();
 
-  const original = markerStyleFor(b);
-  marker.setStyle({ radius: 9, weight: 3, color: '#ffffff', dashArray: null });
-  setTimeout(() => marker.setStyle(original), 1500);
+  const original = markerIconFor(b);
+  marker.setIcon(markerIconFor(b, { flash: true }));
+  setTimeout(() => marker.setIcon(original), 1500);
 }
 
 async function load(silent = false) {
@@ -844,49 +1064,95 @@ async function load(silent = false) {
 
     const selectedId = selected.value?.id ?? null;
 
-    if (geoLayer.value) {
-      geoLayer.value.remove();
-      layersById.clear();
-      activeLayer = null;
-    }
-
-    geoLayer.value = L.geoJSON(data, {
-      style: baseStyleFor,
-      onEachFeature: (feature, layer) => {
-        layersById.set(feature.properties.id, layer);
-        layer.bindTooltip(
+    // Refresco silencioso con la misma geografia de siempre: se actualizan
+    // las comunas existentes en su lugar (estilo + tooltip) en vez de
+    // destruir y recrear toda la capa, para no hacer parpadear el mapa.
+    if (silent && geoLayer.value && sameIdSet(layersById, features, (f) => f.properties.id)) {
+      features.forEach((feature) => {
+        const layer = layersById.get(feature.properties.id);
+        layer.feature = feature;
+        layer.setStyle(polygonStyleFor(layer));
+        layer.setTooltipContent(
           `<strong>${feature.properties.name}</strong><br><span style="color:#6b7280">Actas: ${feature.properties.mesas_recibidas}/${feature.properties.mesas_total} (${feature.properties.actas_pct}%)</span>`,
-          { sticky: true },
         );
-        layer.on('mouseover', () => layer.setStyle(polygonStyleFor(layer, { hover: true })));
-        layer.on('mouseout', () => layer.setStyle(polygonStyleFor(layer)));
-        layer.on('click', () => applySelection(layer, feature.properties));
-      },
-    }).addTo(map);
 
-    if (features.length) {
-      allBounds = geoLayer.value.getBounds();
-    }
+        const nameBadge = nameBadgeMarkersById.get(feature.properties.id);
+        if (nameBadge) nameBadge.setIcon(nameBadgeIconFor(feature));
 
-    if (!silent && features.length) {
-      fitAll();
-      setTimeout(fitAll, 300);
-      setTimeout(fitAll, 800);
-    }
+        const pctBadge = pctBadgeMarkersById.get(feature.properties.id);
+        if (pctBadge) pctBadge.setIcon(pctBadgeIconFor(feature));
+      });
 
-    // Si habia una comuna seleccionada, se reaplica con los datos frescos.
-    if (selectedId) {
-      const layer = layersById.get(selectedId);
-      if (layer) {
-        activeLayer = layer;
-        layer.setStyle(activeStyleFor(layer.feature));
-        selected.value = layer.feature.properties;
-      } else {
-        selected.value = null;
+      if (selectedId && layersById.has(selectedId)) {
+        selected.value = layersById.get(selectedId).feature.properties;
+      }
+    } else {
+      if (geoLayer.value) {
+        geoLayer.value.remove();
+        layersById.clear();
+        activeLayer = null;
+      }
+      if (nameBadgesLayer.value) {
+        nameBadgesLayer.value.remove();
+        nameBadgeMarkersById.clear();
+      }
+      if (pctBadgesLayer.value) {
+        pctBadgesLayer.value.remove();
+        pctBadgeMarkersById.clear();
+      }
+
+      geoLayer.value = L.geoJSON(data, {
+        style: baseStyleFor,
+        onEachFeature: (feature, layer) => {
+          layersById.set(feature.properties.id, layer);
+          layer.bindTooltip(
+            `<strong>${feature.properties.name}</strong><br><span style="color:#6b7280">Actas: ${feature.properties.mesas_recibidas}/${feature.properties.mesas_total} (${feature.properties.actas_pct}%)</span>`,
+            { sticky: true },
+          );
+          layer.on('mouseover', () => layer.setStyle(polygonStyleFor(layer, { hover: true })));
+          layer.on('mouseout', () => layer.setStyle(polygonStyleFor(layer)));
+          layer.on('click', () => applySelection(layer, feature.properties));
+
+          const center = layer.getBounds().getCenter();
+          nameBadgeMarkersById.set(
+            feature.properties.id,
+            L.marker(center, { icon: nameBadgeIconFor(feature), interactive: false, keyboard: false }),
+          );
+          pctBadgeMarkersById.set(
+            feature.properties.id,
+            L.marker(center, { icon: pctBadgeIconFor(feature), interactive: false, keyboard: false }),
+          );
+        },
+      }).addTo(map);
+
+      nameBadgesLayer.value = L.layerGroup([...nameBadgeMarkersById.values()]).addTo(map);
+      pctBadgesLayer.value = L.layerGroup([...pctBadgeMarkersById.values()]).addTo(map);
+      updatePctBadgeVisibility();
+
+      if (features.length) {
+        allBounds = geoLayer.value.getBounds();
+      }
+
+      if (!silent && features.length) {
+        fitAll();
+        setTimeout(fitAll, 300);
+        setTimeout(fitAll, 800);
+      }
+
+      // Si habia una comuna seleccionada, se reaplica con los datos frescos.
+      if (selectedId) {
+        const layer = layersById.get(selectedId);
+        if (layer) {
+          activeLayer = layer;
+          layer.setStyle(activeStyleFor(layer.feature));
+          selected.value = layer.feature.properties;
+        } else {
+          selected.value = null;
+        }
       }
     }
 
-    await loadBarrios();
+    await loadBarrios(silent);
     lastUpdated.value = new Date().toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
   } catch (e) {
     if (!silent) error.value = 'No se pudieron cargar las comunas.';
@@ -901,19 +1167,12 @@ function refreshNow() {
   load(true);
 }
 
-async function loadBarrios() {
+async function loadBarrios(silent = false) {
   try {
-    const { data } = await axios.get('/admin/neighborhoods/geo');
+    const { data } = await axios.get('/admin/neighborhoods/geo', { skipGlobalLoading: silent });
     const features = data.features || [];
-    barriosCount.value = features.length;
 
-    if (barriosLayer.value) {
-      barriosLayer.value.remove();
-      barriosLayer.value = null;
-    }
-    barrioMarkersById.clear();
-
-    barrios.value = features.map((f) => {
+    const nextBarrios = features.map((f) => {
       const [lng, lat] = f.geometry.coordinates;
       const p = f.properties;
       return {
@@ -931,29 +1190,43 @@ async function loadBarrios() {
       };
     });
 
-    if (!features.length) return;
+    // Refresco silencioso con los mismos barrios de siempre: se actualiza el
+    // estilo/tooltip de cada marcador existente en vez de recrearlos todos,
+    // para no hacer parpadear los puntos JAC en el mapa. El chequeo es sobre
+    // los marcadores creados, no sobre si estan visibles en el mapa ahora
+    // mismo (con una comuna seleccionada, la mayoria no lo estan).
+    if (silent && sameIdSet(barrioMarkersById, features, (f) => f.properties.id)) {
+      barrios.value = nextBarrios;
+      nextBarrios.forEach((b) => {
+        const marker = barrioMarkersById.get(b.id);
+        marker.setIcon(markerIconFor(b));
+        marker.setTooltipContent(markerTooltipHtml(b));
+      });
+      return;
+    }
 
-    barriosLayer.value = L.layerGroup(
-      barrios.value.map((b) => {
-        const marker = L.circleMarker([b.lat, b.lng], markerStyleFor(b));
-        marker.bindTooltip(markerTooltipHtml(b), { direction: 'top', offset: [0, -6], className: 'jac-tooltip' });
-        // Solo una cajita a la vez: al abrirse una, cierra la anterior (hover o clic).
-        marker.on('tooltipopen', () => {
-          if (openBarrioMarker && openBarrioMarker !== marker) {
-            openBarrioMarker.closeTooltip();
-          }
-          openBarrioMarker = marker;
-        });
-        // Cada punto lleva directo a la vista de resultados del barrio.
-        marker.on('click', () => {
-          router.push(`/admin/neighborhood/${b.id}/results`);
-        });
-        barrioMarkersById.set(b.id, marker);
-        return marker;
-      }),
-    );
+    barrios.value = nextBarrios;
+    barrioMarkersById.clear();
 
-    if (showBarrios.value) barriosLayer.value.addTo(map);
+    nextBarrios.forEach((b) => {
+      const marker = L.marker([b.lat, b.lng], { icon: markerIconFor(b) });
+      marker.bindTooltip(markerTooltipHtml(b), { direction: 'top', offset: [0, -6], className: 'jac-tooltip' });
+      // Solo una cajita a la vez: al abrirse una, cierra la anterior (hover o clic).
+      marker.on('tooltipopen', () => {
+        if (openBarrioMarker && openBarrioMarker !== marker) {
+          openBarrioMarker.closeTooltip();
+        }
+        openBarrioMarker = marker;
+      });
+      // Cada punto lleva directo a la vista de resultados del barrio.
+      marker.on('click', () => {
+        router.push(`/admin/neighborhood/${b.id}/results`);
+      });
+      barrioMarkersById.set(b.id, marker);
+    });
+
+    // Solo se agregan al mapa los de la comuna seleccionada (si hay alguna).
+    updateVisibleBarrios();
   } catch (e) {
     console.error('No se pudieron cargar los barrios', e);
   }
@@ -967,9 +1240,19 @@ onMounted(async () => {
     minZoom: 11,
     maxZoom: 18,
   }).fitBounds(GIRARDOT_BOUNDS);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '&copy; OpenStreetMap',
-  }).addTo(map);
+  // Basemap neutro (gris claro, sin key): deja que el rojo/colores de
+  // identidad de la capa temática sean lo unico que resalte en el mapa.
+  // Esri solo tiene tiles nativos hasta z16; maxNativeZoom escala esos
+  // tiles para los niveles de zoom mas cercanos (ej. al ubicar un JAC).
+  const esriTileOptions = { maxZoom: 18, maxNativeZoom: 16, attribution: 'Tiles &copy; Esri' };
+  L.tileLayer(
+    'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+    esriTileOptions,
+  ).addTo(map);
+  L.tileLayer(
+    'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}',
+    { ...esriTileOptions, attribution: '' },
+  ).addTo(map);
 
   // Modo "tomar del mapa": el siguiente clic llena Latitud/Longitud, pero
   // solo si cae dentro de la comuna del barrio que se esta ubicando.
@@ -999,19 +1282,31 @@ onMounted(async () => {
   resizeObserver.observe(mapEl.value);
   window.addEventListener('resize', handleResize);
 
-  // Sala de control: el mapa se refresca solo, sin recargar la pagina.
-  refreshTimer = setInterval(() => load(true), 45000);
+  // Sala de control: el mapa se refresca solo, sin recargar la pagina. Se
+  // omite mientras la pestana esta oculta (nadie la esta viendo) y se
+  // refresca de inmediato al volver, por si quedo desactualizada.
+  refreshTimer = setInterval(() => {
+    if (document.hidden) return;
+    load(true);
+  }, 45000);
+  document.addEventListener('visibilitychange', handleVisibilityChange);
 });
 
-watch(showBarrios, (show) => {
-  if (!map || !barriosLayer.value) return;
-  if (show) barriosLayer.value.addTo(map);
-  else barriosLayer.value.remove();
-});
+function handleVisibilityChange() {
+  if (!document.hidden) load(true);
+}
+
+// Cambiar de comuna (o des/re-marcar "Mostrar JAC") actualiza que puntos
+// estan agregados al mapa — ver updateVisibleBarrios(). La insignia de %
+// de la comuna seleccionada se oculta con el mismo cambio de seleccion.
+watch(selectedCommuneId, updateVisibleBarrios);
+watch(selectedCommuneId, updatePctBadgeVisibility);
+watch(showBarrios, updateVisibleBarrios);
 
 onBeforeUnmount(() => {
   if (resizeObserver) resizeObserver.disconnect();
   window.removeEventListener('resize', handleResize);
+  document.removeEventListener('visibilitychange', handleVisibilityChange);
   if (refreshTimer) clearInterval(refreshTimer);
   if (map) {
     map.remove();
