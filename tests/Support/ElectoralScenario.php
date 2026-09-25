@@ -113,7 +113,8 @@ trait ElectoralScenario
                 )->id);
 
             $role->permissions()->sync($permissionIds->all());
-            $user->roles()->attach($role->id, ['assigned_at' => now()]);
+            // roles() es la relación de Spatie (model_has_roles), sin columnas de auditoría.
+            $user->roles()->attach($role->id);
         }
 
         return $user->fresh(['roles.permissions', 'person']);
