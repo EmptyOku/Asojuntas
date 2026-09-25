@@ -11,7 +11,10 @@ class EnsureApiPermission
 {
     public function __construct(private readonly ElectoralAccessGuard $guard) {}
 
-    public function handle(Request $request, Closure $next, string $permission): Response
+    /**
+     * Acepta uno o varios permisos (`api.permission:a,b`): basta con tener cualquiera.
+     */
+    public function handle(Request $request, Closure $next, string ...$permissions): Response
     {
         $user = $request->user();
 
@@ -22,11 +25,12 @@ class EnsureApiPermission
             ], 401);
         }
 
-        if (! $this->guard->hasPermission($user, $permission)) {
+        if (! $this->guard->hasAnyPermission($user, $permissions)) {
             return response()->json([
                 'success' => false,
                 'message' => 'No autorizado para esta acción',
-                'required_permission' => $permission,
+                'required_permission' => $permissions[0] ?? null,
+                'required_permissions' => $permissions,
             ], 403);
         }
 

@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Election;
+use App\Models\Permission;
 use App\Models\User;
 use Illuminate\Support\Collection;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
@@ -17,6 +18,12 @@ class ElectoralAccessGuard
 {
     /** Permiso que habilita a revisar material de cualquier barrio. */
     public const REVIEW_PERMISSION = 'records.review';
+
+    /** Permiso de captura de actas del jurado. */
+    public const JURY_PERMISSION = 'records.upload';
+
+    /** Permisos cuyo uso queda limitado al barrio del usuario (si no es revisor). */
+    public const NEIGHBORHOOD_SCOPED_PERMISSIONS = ['records.upload', 'slates.capture'];
 
     /** @var array<int, Collection<int, string>> Memo por request, evita reconsultar roles. */
     private array $permissionCache = [];
@@ -40,10 +47,66 @@ class ElectoralAccessGuard
         return $this->permissionsFor($user)->contains($permission);
     }
 
+    /** @param  array<int, string>  $permissions */
+    public function hasAnyPermission(User $user, array $permissions): bool
+    {
+        return $this->permissionsFor($user)->intersect($permissions)->isNotEmpty();
+    }
+
     /** Un revisor o administrador electoral no está limitado a un solo barrio. */
     public function isReviewer(User $user): bool
     {
         return $this->hasPermission($user, self::REVIEW_PERMISSION);
+    }
+
+    /**
+     * Permisos agregados de un conjunto de roles (p. ej. los elegidos en un
+     * formulario antes de asignarlos).
+     *
+     * @param  iterable<int>  $roleIds
+     * @return Collection<int, string>
+     */
+    public function permissionsForRoles(iterable $roleIds): Collection
+    {
+        return Permission::query()
+            ->whereHas('roles', fn ($query) => $query->whereIn('roles.id', collect($roleIds)->all()))
+            ->pluck('name')
+            ->unique()
+            ->values();
+    }
+
+    /**
+     * Sin records.review, capturar actas o planchas solo funciona dentro del
+     * barrio propio (ver canReachNeighborhood), así que esos permisos exigen barrio.
+     *
+     * @param  Collection<int, string>  $permissions
+     */
+    public function permissionsRequireNeighborhood(Collection $permissions): bool
+    {
+        return ! $permissions->contains(self::REVIEW_PERMISSION)
+            && $permissions->intersect(self::NEIGHBORHOOD_SCOPED_PERMISSIONS)->isNotEmpty();
+    }
+
+    /**
+     * Perfil de jurado: sube actas y está limitado a su barrio.
+     *
+     * @param  Collection<int, string>  $permissions
+     */
+    public function permissionsAreJury(Collection $permissions): bool
+    {
+        return $permissions->contains(self::JURY_PERMISSION)
+            && ! $permissions->contains(self::REVIEW_PERMISSION);
+    }
+
+    /** ¿Otro usuario con perfil de jurado ya está asignado a este barrio? */
+    public function neighborhoodHasJury(int $neighborhoodId, ?int $exceptUserId = null): bool
+    {
+        return User::query()
+            ->when($exceptUserId, fn ($query) => $query->whereKeyNot($exceptUserId))
+            ->whereHas('person', fn ($query) => $query->where('neighborhood_id', $neighborhoodId))
+            ->whereHas('roles.permissions', fn ($query) => $query->where('name', self::JURY_PERMISSION))
+            ->whereDoesntHave('roles.permissions', fn ($query) => $query->where('name', self::REVIEW_PERMISSION))
+            ->exists();
     }
 
     /** Barrio asignado al usuario, o null si no se puede determinar. */

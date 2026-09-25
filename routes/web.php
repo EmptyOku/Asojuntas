@@ -57,40 +57,54 @@ Route::prefix('api')->name('api.')->group(function (): void {
     Route::middleware('auth')->group(function (): void {
         Route::get('/user', [AuthController::class, 'user'])->name('user');
 
-        Route::prefix('secretary')->middleware('api.permission:records.upload')->group(function (): void {
+        // Secretaría de planchas: permisos slates.*, separados de records.upload (jurados).
+        Route::prefix('secretary')->group(function (): void {
             Route::post('/planchas/extract-preview', [PlanchaDraftController::class, 'previewExtraction'])
+                ->middleware('api.permission:slates.capture')
                 ->name('secretary.planchas.extract-preview');
 
             Route::post('/planchas/drafts', [PlanchaDraftController::class, 'storeDrafts'])
+                ->middleware('api.permission:slates.capture')
                 ->name('secretary.planchas.drafts.store');
 
             Route::get('/planchas/drafts', [PlanchaDraftController::class, 'index'])
+                ->middleware('api.permission:slates.capture,slates.review')
                 ->name('secretary.planchas.drafts.index');
 
             Route::put('/planchas/drafts/{candidateDraft}', [PlanchaDraftController::class, 'update'])
+                ->middleware('api.permission:slates.capture')
                 ->name('secretary.planchas.drafts.update');
 
             Route::post('/planchas/drafts/{candidateDraft}/decision', [PlanchaDraftController::class, 'decide'])
+                ->middleware('api.permission:slates.review')
                 ->name('secretary.planchas.drafts.decision');
 
             Route::post('/planchas/drafts/decision/batch', [PlanchaDraftController::class, 'decideBatch'])
+                ->middleware('api.permission:slates.review')
                 ->name('secretary.planchas.drafts.decision.batch');
 
             Route::post('/planchas/drafts/promote', [PlanchaDraftController::class, 'promoteApproved'])
+                ->middleware('api.permission:slates.promote')
                 ->name('secretary.planchas.drafts.promote');
 
             Route::post('/planchas/evidence', [PlanchaDraftController::class, 'uploadDraftFiles'])
+                ->middleware('api.permission:slates.capture')
                 ->name('secretary.planchas.evidence.store');
 
             Route::get('/planchas/evidence/{captureBatchUuid}', [PlanchaDraftController::class, 'listEvidenceByBatch'])
+                ->middleware('api.permission:slates.capture,slates.review')
                 ->name('secretary.planchas.evidence.index');
 
             Route::get('/planchas/evidence/files/{candidateDraftFile}', [PlanchaDraftController::class, 'showEvidenceFile'])
+                ->middleware('api.permission:slates.capture,slates.review')
                 ->name('secretary.planchas.evidence.show');
 
-            Route::get('/neighborhoods/search', [App\Http\Controllers\Admin\NeighborhoodController::class, 'search']);
-            Route::get('/planchas/by-neighborhood', [PlanchaDraftController::class, 'neighborhoodsWithSlates']);
+            Route::get('/neighborhoods/search', [App\Http\Controllers\Admin\NeighborhoodController::class, 'search'])
+                ->middleware('api.permission:slates.capture');
+            Route::get('/planchas/by-neighborhood', [PlanchaDraftController::class, 'neighborhoodsWithSlates'])
+                ->middleware('api.permission:slates.view,slates.capture');
             Route::get('/planchas/drafts/grouped', [PlanchaDraftController::class, 'groupedInbox'])
+                ->middleware('api.permission:slates.capture,slates.review')
                 ->name('secretary.planchas.drafts.grouped');
         });
 
@@ -100,60 +114,60 @@ Route::prefix('api')->name('api.')->group(function (): void {
             // RUTAS DE BARRIOS, MAPAS Y RESULTADOS (Combinadas)
             // =========================================================
             Route::get('/neighborhoods', [NeighborhoodDirectoryController::class, 'index'])
-                ->middleware('api.permission:elections.view')
+                ->middleware('api.permission:geography.view,candidates.view')
                 ->name('admin.neighborhoods.index');
 
             Route::get('/neighborhoods/report', [NeighborhoodDirectoryController::class, 'report'])
-                ->middleware('api.permission:elections.view')
+                ->middleware('api.permission:candidates.view')
                 ->name('admin.neighborhoods.report');
 
             Route::get('/neighborhoods/list-for-forms', [NeighborhoodDirectoryController::class, 'listForForms'])
-                ->middleware('api.permission:elections.view')
+                ->middleware('api.permission:geography.view,map.view,users.view')
                 ->name('admin.neighborhoods.list-for-forms');
 
             Route::get('/neighborhoods/communes', [NeighborhoodDirectoryController::class, 'communes'])
-                ->middleware('api.permission:elections.view')
+                ->middleware('api.permission:geography.view,map.view,users.view,roles.view')
                 ->name('admin.neighborhoods.communes');
 
             Route::get('/neighborhoods/communes-geo', [NeighborhoodDirectoryController::class, 'communesGeo'])
-                ->middleware('api.permission:elections.view')
+                ->middleware('api.permission:map.view')
                 ->name('admin.neighborhoods.communes-geo');
 
             Route::get('/neighborhoods/geo', [NeighborhoodDirectoryController::class, 'neighborhoodsGeo'])
-                ->middleware('api.permission:elections.view')
+                ->middleware('api.permission:map.view')
                 ->name('admin.neighborhoods.geo');
 
             Route::put('/neighborhoods/{id}/location', [NeighborhoodDirectoryController::class, 'updateLocation'])
                 ->whereNumber('id')
-                ->middleware('api.permission:elections.update')
+                ->middleware('api.permission:geography.manage')
                 ->name('admin.neighborhoods.location.update');
 
             Route::delete('/neighborhoods/{id}/location', [NeighborhoodDirectoryController::class, 'clearLocation'])
                 ->whereNumber('id')
-                ->middleware('api.permission:elections.update')
+                ->middleware('api.permission:geography.manage')
                 ->name('admin.neighborhoods.location.clear');
 
             Route::post('/neighborhoods', [NeighborhoodDirectoryController::class, 'store'])
-                ->middleware('api.permission:elections.create')
+                ->middleware('api.permission:geography.manage')
                 ->name('admin.neighborhoods.store');
 
             Route::put('/neighborhoods/{id}', [NeighborhoodDirectoryController::class, 'update'])
                 ->whereNumber('id')
-                ->middleware('api.permission:elections.update')
+                ->middleware('api.permission:geography.manage')
                 ->name('admin.neighborhoods.update');
 
             Route::delete('/neighborhoods/{id}', [NeighborhoodDirectoryController::class, 'destroy'])
                 ->whereNumber('id')
-                ->middleware('api.permission:elections.update')
+                ->middleware('api.permission:geography.manage')
                 ->name('admin.neighborhoods.destroy');
 
             Route::get('/neighborhoods/search-dropdown', [NeighborhoodDirectoryController::class, 'searchForDropdown'])
-                ->middleware('api.permission:elections.view')
+                ->middleware('api.permission:geography.view,map.view')
                 ->name('admin.neighborhoods.search-dropdown');
 
             Route::get('/neighborhoods/{id}', [NeighborhoodDirectoryController::class, 'show'])
                 ->whereNumber('id')
-                ->middleware('api.permission:elections.view')
+                ->middleware('api.permission:candidates.view,geography.view,map.view')
                 ->name('admin.neighborhoods.show');
 
             Route::post('/neighborhoods/{id}/elections', [NeighborhoodDirectoryController::class, 'createElection'])
@@ -175,7 +189,7 @@ Route::prefix('api')->name('api.')->group(function (): void {
                 ->name('admin.neighborhoods.elections.close-all');
 
             Route::get('/planchas/by-neighborhood', [PlanchaDraftController::class, 'neighborhoodsWithSlates'])
-                ->middleware('api.permission:elections.view')
+                ->middleware('api.permission:slates.view')
                 ->name('admin.planchas.by-neighborhood');
 
             // =========================================================

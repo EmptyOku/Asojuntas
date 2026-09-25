@@ -4,6 +4,7 @@ namespace Database\Seeders;
 
 use App\Models\Permission;
 use App\Models\Role;
+use App\Support\PermissionCatalog;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 
@@ -17,18 +18,15 @@ class RolePermissionSeeder extends Seeder
         $permissions = DB::table('permissions')->pluck('id', 'name');
 
         $matrix = [
-            'super_admin' => [
-                'users.view', 'users.create', 'users.update', 'users.delete',
-                'roles.view', 'roles.manage', 'roles.assign',
-                'elections.view', 'elections.create', 'elections.update',
-                'records.upload', 'records.review', 'records.approve',
-                'reports.view', 'audit.view',
-            ],
+            // Super admin recibe todo lo que declara el catálogo.
+            'super_admin' => PermissionCatalog::names(),
             'admin_electoral' => [
+                'dashboard.view', 'geography.view', 'geography.manage', 'map.view', 'candidates.view',
                 'users.view', 'users.create', 'users.update',
                 'roles.view', 'roles.manage', 'roles.assign',
                 'elections.view', 'elections.create', 'elections.update',
                 'records.upload', 'records.review', 'records.approve',
+                'slates.view', 'slates.capture', 'slates.review', 'slates.promote',
                 'reports.view', 'audit.view',
             ],
             'digitizer' => [

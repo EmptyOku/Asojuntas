@@ -138,7 +138,7 @@ class ElectoralMapGeoTest extends TestCase
         $electionB = $this->makeActiveElection($barrioB, now()->subDay()->toDateString());
         PollingTable::create(['election_id' => $electionB->id, 'name' => 'Mesa B', 'code' => 'MB', 'is_active' => true]);
 
-        $admin = $this->makeUser(['elections.view']);
+        $admin = $this->makeUser(['map.view']);
 
         $response = $this->actingAs($admin)
             ->getJson('/api/admin/neighborhoods/communes-geo')
@@ -166,7 +166,7 @@ class ElectoralMapGeoTest extends TestCase
         $mesa = PollingTable::create(['election_id' => $election->id, 'name' => 'Mesa', 'code' => 'M', 'is_active' => true]);
         $this->makeScrutinyRecord($election, $mesa, 'consolidated');
 
-        $admin = $this->makeUser(['elections.view']);
+        $admin = $this->makeUser(['map.view']);
 
         $response = $this->actingAs($admin)
             ->getJson('/api/admin/neighborhoods/communes-geo')
@@ -201,7 +201,7 @@ class ElectoralMapGeoTest extends TestCase
         $barrioAlDia = $this->makeGeoNeighborhood($commune, 'Barrio Al Dia', 'T03-ALDIA', 2, 4.32, -74.82);
         $this->makeActiveElection($barrioAlDia, now()->addDay()->toDateString());
 
-        $admin = $this->makeUser(['elections.view']);
+        $admin = $this->makeUser(['map.view']);
 
         $response = $this->actingAs($admin)
             ->getJson('/api/admin/neighborhoods/geo')
@@ -226,7 +226,7 @@ class ElectoralMapGeoTest extends TestCase
     }
 
     #[Test]
-    public function las_rutas_geo_exigen_permiso_de_elecciones(): void
+    public function las_rutas_geo_exigen_permiso_de_mapa(): void
     {
         $jurado = $this->makeUser(['records.upload']);
 
@@ -244,7 +244,7 @@ class ElectoralMapGeoTest extends TestCase
     {
         $commune = $this->makeCommune('T-04', 'Comuna Manual');
         $barrio = Neighborhood::create(['commune_id' => $commune->id, 'name' => 'Sin Ubicar', 'code' => 'T04-SINUB']);
-        $admin = $this->makeUser(['elections.update', 'elections.view']);
+        $admin = $this->makeUser(['map.view', 'geography.manage']);
 
         $this->actingAs($admin)
             ->putJson("/api/admin/neighborhoods/{$barrio->id}/location", [
@@ -278,7 +278,7 @@ class ElectoralMapGeoTest extends TestCase
     {
         $commune = $this->makeCommune('T-05', 'Comuna Validacion');
         $barrio = Neighborhood::create(['commune_id' => $commune->id, 'name' => 'Barrio X', 'code' => 'T05-X']);
-        $admin = $this->makeUser(['elections.update', 'elections.view']);
+        $admin = $this->makeUser(['map.view', 'geography.manage']);
 
         $this->actingAs($admin)
             ->putJson("/api/admin/neighborhoods/{$barrio->id}/location", ['latitude' => 999, 'longitude' => -74.8])
@@ -295,7 +295,7 @@ class ElectoralMapGeoTest extends TestCase
     public function un_admin_puede_crear_renombrar_y_eliminar_un_barrio_manualmente(): void
     {
         $commune = $this->makeCommune('T-06', 'Comuna CRUD');
-        $admin = $this->makeUser(['elections.create', 'elections.update', 'elections.view']);
+        $admin = $this->makeUser(['map.view', 'geography.manage']);
 
         // Crear.
         $create = $this->actingAs($admin)
@@ -339,7 +339,7 @@ class ElectoralMapGeoTest extends TestCase
         $mesa = PollingTable::create(['election_id' => $election->id, 'name' => 'Mesa', 'code' => 'M', 'is_active' => true]);
         $this->makeScrutinyRecord($election, $mesa, 'consolidated');
 
-        $admin = $this->makeUser(['elections.update']);
+        $admin = $this->makeUser(['geography.manage']);
 
         $this->actingAs($admin)
             ->deleteJson("/api/admin/neighborhoods/{$barrio->id}")
@@ -373,7 +373,7 @@ class ElectoralMapGeoTest extends TestCase
     {
         $comuna1 = $this->makeCommune('T-09-A', 'Comuna Uno');
         $barrio = Neighborhood::create(['commune_id' => $comuna1->id, 'name' => 'Barrio Z', 'code' => 'T09-Z']);
-        $admin = $this->makeUser(['elections.update']);
+        $admin = $this->makeUser(['geography.manage']);
 
         // Un punto claramente fuera del contorno de Comuna Uno (4.30-4.31 / -74.81..-74.80) se rechaza.
         $this->actingAs($admin)

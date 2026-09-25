@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Services\AuditTrailLogger;
+use App\Services\ElectoralAccessGuard;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
@@ -22,7 +23,7 @@ class AuthController extends Controller
         ]);
 
         $identity = $request->string('identity')->toString();
-        $user = User::with(['roles.permissions'])
+        $user = User::with(['roles', 'person.neighborhood.commune']) // mismo usuario que /user: el SPA no debe depender de recargar
             ->where('email', $identity)
             ->orWhere('username', $identity)
             ->first();
@@ -46,10 +47,7 @@ class AuthController extends Controller
             'user_id' => $user->id,
         ]);
 
-        $permissions = $user->roles
-            ->flatMap(fn ($role) => $role->permissions->pluck('name'))
-            ->unique()
-            ->values();
+        $permissions = $this->permissionsFor($user);
 
         return response()->json([
             'success' => true,
@@ -74,11 +72,8 @@ class AuthController extends Controller
             ], 401);
         }
 
-        $user = User::with(['roles.permissions', 'person.neighborhood.commune'])->find(Auth::id());
-        $permissions = $user->roles
-            ->flatMap(fn ($role) => $role->permissions->pluck('name'))
-            ->unique()
-            ->values();
+        $user = User::with(['roles', 'person.neighborhood.commune'])->find(Auth::id());
+        $permissions = $this->permissionsFor($user);
 
         return response()->json([
             'success' => true,
@@ -86,6 +81,15 @@ class AuthController extends Controller
             'roles' => $user->roles->pluck('name')->values(),
             'permissions' => $permissions,
         ], 200);
+    }
+
+    /**
+     * Mismo cálculo que usa el middleware api.permission (roles + permisos
+     * directos), para que el menú del SPA y el backend nunca discrepen.
+     */
+    private function permissionsFor(User $user)
+    {
+        return app(ElectoralAccessGuard::class)->permissionsFor($user);
     }
 
     /**

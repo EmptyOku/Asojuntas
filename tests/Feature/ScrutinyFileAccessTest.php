@@ -105,10 +105,10 @@ class ScrutinyFileAccessTest extends TestCase
     {
         $barrioA = $this->makeNeighborhood('Barrio A');
         $eleccionA = $this->makeElection($barrioA);
-        $secretaria = $this->makeUser(['records.upload'], $barrioA);
+        $secretaria = $this->makeUser(['slates.capture'], $barrioA);
 
         $barrioB = $this->makeNeighborhood('Barrio B');
-        $intruso = $this->makeUser(['records.upload'], $barrioB);
+        $intruso = $this->makeUser(['slates.capture'], $barrioB);
 
         Storage::disk('local')->put('planchas/evidencia.jpg', 'cedula-escaneada');
 
