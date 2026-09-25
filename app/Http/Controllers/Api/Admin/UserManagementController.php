@@ -10,7 +10,9 @@ use App\Models\PollingTable;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\AuditTrailLogger;
+use App\Services\ElectoralAccessGuard;
 use App\Services\LegacyRbacAuditTrail;
+use App\Services\RoleAdministrationGuard;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -18,6 +20,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class UserManagementController extends Controller
 {
@@ -220,13 +223,15 @@ class UserManagementController extends Controller
             'is_active' => 'sometimes|boolean',
         ]);
 
-        $digitizerRole = Role::where('name', 'digitizer')->first();
-        if ($digitizerRole && in_array($digitizerRole->id, $validated['roles'])) {
+        $guard = app(ElectoralAccessGuard::class);
+        $rolePermissions = $guard->permissionsForRoles($validated['roles']);
+
+        if ($guard->permissionsRequireNeighborhood($rolePermissions)) {
             $person = Person::find($validated['person_id']);
             $effectiveNeighborhoodId = ($validated['neighborhood_id'] ?? null) ?: $person?->neighborhood_id;
 
             if (empty($effectiveNeighborhoodId)) {
-                $message = 'El barrio es obligatorio para asignar rol de Jurado.';
+                $message = 'El barrio es obligatorio: el rol elegido solo opera dentro de un barrio.';
                 return response()->json([
                     'success' => false,
                     'message' => $message,
@@ -234,11 +239,7 @@ class UserManagementController extends Controller
                 ], 422);
             }
 
-            $alreadyAssigned = User::whereHas('person', function ($q) use ($effectiveNeighborhoodId) {
-                $q->where('neighborhood_id', $effectiveNeighborhoodId);
-            })->exists();
-
-            if ($alreadyAssigned) {
+            if ($guard->permissionsAreJury($rolePermissions) && $guard->neighborhoodHasJury((int) $effectiveNeighborhoodId)) {
                 $message = 'Este barrio ya tiene un jurado asignado. Selecciona otro barrio.';
                 return response()->json([
                     'success' => false,
@@ -317,15 +318,10 @@ class UserManagementController extends Controller
                 function ($attribute, $value, $fail) use ($user) {
                     if (empty($value)) return;
 
-                    $isDigitizer = $user->roles()->where('name', 'digitizer')->exists();
-                    if (! $isDigitizer) return;
+                    $guard = app(ElectoralAccessGuard::class);
+                    if (! $guard->permissionsAreJury($guard->permissionsFor($user))) return;
 
-                    $alreadyAssigned = User::where('id', '!=', $user->id)
-                        ->whereHas('person', function ($q) use ($value) {
-                            $q->where('neighborhood_id', $value);
-                        })->exists();
-
-                    if ($alreadyAssigned) {
+                    if ($guard->neighborhoodHasJury((int) $value, $user->id)) {
                         $fail('Este barrio ya tiene un jurado asignado. Selecciona otro barrio.');
                     }
                 },
@@ -363,8 +359,16 @@ class UserManagementController extends Controller
 
     public function toggleActive(User $user): JsonResponse
     {
+        if ($user->is_active && $user->is(Auth::user())) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No puedes desactivar tu propia cuenta.',
+            ], 422);
+        }
+
         try {
-            $user->update(['is_active' => ! $user->is_active]);
+            // preserve(): no deja desactivar al último usuario que puede administrar roles.
+            app(RoleAdministrationGuard::class)->preserve(fn () => $user->update(['is_active' => ! $user->is_active]));
             $user->load(['person.neighborhood:id,name,code,commune_id', 'roles:id,name,display_name']);
 
             return response()->json([
@@ -372,6 +376,8 @@ class UserManagementController extends Controller
                 'message' => $user->is_active ? 'Usuario habilitado correctamente.' : 'Usuario deshabilitado correctamente.',
                 'data' => $user,
             ]);
+        } catch (ValidationException $e) {
+            throw $e;
         } catch (\Exception $e) {
             \Log::error('Error toggling user status', ['user_id' => $user->id, 'error' => $e->getMessage()]);
             return response()->json(['success' => false, 'message' => 'Error al cambiar el estado del usuario.'], 500);
@@ -406,24 +412,27 @@ class UserManagementController extends Controller
             'roles.*' => 'exists:roles,id',
         ]);
 
-        $digitizerRole = Role::where('name', 'digitizer')->first();
-        if ($digitizerRole && in_array($digitizerRole->id, $validated['roles'])) {
+        $guard = app(ElectoralAccessGuard::class);
+        if ($guard->permissionsRequireNeighborhood($guard->permissionsForRoles($validated['roles']))) {
             $user->loadMissing('person');
             if (! $user->person || ! $user->person->neighborhood_id) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'No se puede asignar el rol de Jurado sin un barrio asignado a la persona.',
+                    'message' => 'No se puede asignar este rol sin un barrio asignado a la persona: solo opera dentro de un barrio.',
                 ], 422);
             }
         }
 
-        $rolesBefore = $user->roles()->pluck('display_name')->values()->all();
-        $roles = Role::whereIn('id', $validated['roles'])->get();
+        // preserve(): si el cambio deja al sistema sin nadie con roles.manage, se revierte (422).
+        app(RoleAdministrationGuard::class)->preserve(function () use ($user, $validated): void {
+            $rolesBefore = $user->roles()->pluck('display_name')->values()->all();
+            $roles = Role::whereIn('id', $validated['roles'])->get();
 
-        $user->syncRoles($roles);
-        LegacyRbacAuditTrail::syncUserRoles($user->id, $validated['roles'], Auth::id());
+            $user->syncRoles($roles);
+            LegacyRbacAuditTrail::syncUserRoles($user->id, $validated['roles'], Auth::id());
 
-        $this->logRoleAssignment($user, $rolesBefore, $roles->pluck('display_name')->values()->all());
+            $this->logRoleAssignment($user, $rolesBefore, $roles->pluck('display_name')->values()->all());
+        });
 
         $user->load(['person.neighborhood', 'roles:id,name,display_name']);
 

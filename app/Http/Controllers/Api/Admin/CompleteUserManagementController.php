@@ -7,6 +7,7 @@ use App\Http\Requests\Admin\StoreCompleteUserRequest;
 use App\Models\Person;
 use App\Models\Role;
 use App\Models\User;
+use App\Services\ElectoralAccessGuard;
 use App\Services\LegacyRbacAuditTrail;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
@@ -20,10 +21,12 @@ class CompleteUserManagementController extends Controller
     {
         $data = $request->validated();
 
-        $digitizerRole = Role::where('name', 'digitizer')->first();
-        if ($digitizerRole && in_array($digitizerRole->id, $data['roles'])) {
+        $guard = app(ElectoralAccessGuard::class);
+        $rolePermissions = $guard->permissionsForRoles($data['roles']);
+
+        if ($guard->permissionsRequireNeighborhood($rolePermissions)) {
             if (empty($data['neighborhood_id'])) {
-                $message = 'El barrio es obligatorio para asignar rol de Jurado.';
+                $message = 'El barrio es obligatorio: el rol elegido solo opera dentro de un barrio.';
 
                 return response()->json([
                     'success' => false,
@@ -32,11 +35,7 @@ class CompleteUserManagementController extends Controller
                 ], 422);
             }
 
-            $alreadyAssigned = User::whereHas('person', function ($q) use ($data) {
-                $q->where('neighborhood_id', $data['neighborhood_id']);
-            })->exists();
-
-            if ($alreadyAssigned) {
+            if ($guard->permissionsAreJury($rolePermissions) && $guard->neighborhoodHasJury((int) $data['neighborhood_id'])) {
                 $message = 'Este barrio ya tiene un jurado asignado. Selecciona otro barrio.';
 
                 return response()->json([

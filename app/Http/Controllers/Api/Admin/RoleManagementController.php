@@ -8,9 +8,13 @@ use App\Http\Requests\Admin\UpdateRoleRequest;
 use App\Models\Permission;
 use App\Models\Role;
 use App\Services\AuditTrailLogger;
+use App\Services\ElectoralAccessGuard;
 use App\Services\LegacyRbacAuditTrail;
+use App\Services\RoleAdministrationGuard;
+use App\Support\PermissionCatalog;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
@@ -63,6 +67,25 @@ class RoleManagementController extends Controller
         ], get_class($user), $user->id);
     }
 
+    /**
+     * Permisos pedidos (IDs o nombres) más, en cascada, los que exigen según
+     * PermissionCatalog (p. ej. slates.promote trae slates.review), para que un
+     * rol nunca quede con una acción sin la pantalla o permiso que necesita.
+     */
+    private function resolvePermissions(array $rawPermissions): Collection
+    {
+        // IDs y nombres por separado: en Postgres comparar la columna bigint `id`
+        // contra un texto ('users.view') es un error, no un simple "no coincide".
+        [$ids, $names] = collect($rawPermissions)->partition(fn ($value) => is_int($value) || ctype_digit((string) $value));
+
+        $requested = Permission::where(function ($query) use ($ids, $names) {
+            $query->whereIn('id', $ids->map(fn ($id) => (int) $id)->all())
+                ->orWhereIn('name', $names->all());
+        })->pluck('name');
+
+        return Permission::whereIn('name', PermissionCatalog::withDependencies($requested))->get();
+    }
+
     public function index(Request $request): JsonResponse
     {
         $query = Role::with(['permissions:id,name,display_name,description'])
@@ -73,9 +96,20 @@ class RoleManagementController extends Controller
             $query->where('is_active', true);
         }
 
+        $guard = app(ElectoralAccessGuard::class);
+
+        // requires_neighborhood: el rol solo opera dentro de un barrio, así que
+        // quien lo reciba necesita barrio asignado (la UI lo usa para avisar).
+        $roles = $query->get()->each(function (Role $role) use ($guard): void {
+            $role->setAttribute(
+                'requires_neighborhood',
+                $guard->permissionsRequireNeighborhood($role->permissions->pluck('name'))
+            );
+        });
+
         return response()->json([
             'success' => true,
-            'data' => $query->get(),
+            'data' => $roles,
         ]);
     }
 
@@ -84,10 +118,7 @@ class RoleManagementController extends Controller
         $role = DB::transaction(function () use ($request) {
             $rawPermissions = $request->validated('permissions', []);
 
-            $permissions = Permission::where(function ($query) use ($rawPermissions) {
-                $query->whereIn('id', $rawPermissions)
-                    ->orWhereIn('name', $rawPermissions);
-            })->get();
+            $permissions = $this->resolvePermissions($rawPermissions);
 
             $guardName = $permissions->first()?->guard_name ?? 'web';
 
@@ -113,7 +144,8 @@ class RoleManagementController extends Controller
 
     public function update(UpdateRoleRequest $request, int $id): JsonResponse
     {
-        $role = DB::transaction(function () use ($request, $id) {
+        // preserve(): si el cambio deja al sistema sin nadie con roles.manage, se revierte.
+        $role = app(RoleAdministrationGuard::class)->preserve(function () use ($request, $id) {
             $role = Role::findOrFail($id);
             $permissionsBefore = $role->permissions()->pluck('display_name')->values()->all();
 
@@ -121,10 +153,7 @@ class RoleManagementController extends Controller
 
             $rawPermissions = $request->validated('permissions', []);
 
-            $permissions = Permission::where(function ($query) use ($rawPermissions) {
-                $query->whereIn('id', $rawPermissions)
-                    ->orWhereIn('name', $rawPermissions);
-            })->get();
+            $permissions = $this->resolvePermissions($rawPermissions);
 
             $role->syncPermissions($permissions);
             LegacyRbacAuditTrail::syncRolePermissions($role->id, $permissions->pluck('id'), Auth::id());
@@ -144,7 +173,7 @@ class RoleManagementController extends Controller
     {
         $affectedUsersCount = 0;
 
-        $role = DB::transaction(function () use ($id, &$affectedUsersCount) {
+        $role = app(RoleAdministrationGuard::class)->preserve(function () use ($id, &$affectedUsersCount) {
             $role = Role::findOrFail($id);
             $isActiveBefore = $role->is_active;
             $activating = ! $isActiveBefore;
