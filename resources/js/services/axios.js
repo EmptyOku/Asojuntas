@@ -52,6 +52,27 @@ async function handleExpiredSession() {
     window.location.href = '/login';
 }
 
+/**
+ * Un 403 puede significar que un admin cambió el rol del usuario con la sesión
+ * abierta: se refrescan los permisos y, si la pantalla actual ya no está
+ * permitida, se lleva al usuario a su inicio. Un 403 por alcance territorial
+ * (otro barrio) no cambia permisos y no redirige.
+ */
+async function handleForbidden() {
+    // Importación diferida: store y router importan este módulo (evita ciclos).
+    const [{ useAuthStore }, { default: router, canAccessRoute, firstAllowedRoute }] = await Promise.all([
+        import('@/stores/auth'),
+        import('@/router'),
+    ]);
+
+    const auth = useAuthStore();
+    const changed = await auth.refreshPermissions();
+
+    if (changed && !canAccessRoute(router.currentRoute.value, auth)) {
+        router.replace(firstAllowedRoute(auth));
+    }
+}
+
 function attachInterceptors(client) {
     client.interceptors.request.use(
         (config) => {
@@ -93,6 +114,10 @@ function attachInterceptors(client) {
             // 419 = token CSRF expirado; para el usuario es lo mismo que una sesión caída.
             if ((status === 401 || status === 419) && !isAuthEndpoint(error?.config?.url)) {
                 handleExpiredSession();
+            }
+
+            if (status === 403 && !isAuthEndpoint(error?.config?.url)) {
+                handleForbidden();
             }
 
             return Promise.reject(error);

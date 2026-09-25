@@ -110,6 +110,7 @@
 import { ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useAuthStore } from '@/stores/auth';
+import { firstAllowedRoute } from '@/router';
 import { Eye, EyeOff } from 'lucide-vue-next';
 
 const router = useRouter();
@@ -127,23 +128,9 @@ const handleLogin = async () => {
   try {
     await authStore.login(credentials.value);
 
-    const isElectoralSecretary = authStore.roles.includes('admin_electoral') || authStore.roles.includes('electoral_admin');
-    if (isElectoralSecretary) {
-      router.push('/secretary/dashboard');
-      return;
-    }
-
-    if (authStore.permissions.includes('users.view')) {
-      router.push('/admin/dashboard');
-      return;
-    }
-
-    if (authStore.permissions.includes('records.upload')) {
-      router.push('/jury/dashboard');
-      return;
-    }
-
-    errorMessage.value = 'El usuario no tiene permisos para entrar a un módulo.';
+    // Inicio según permisos (primera entrada del menú que puede abrir); si el
+    // rol no tiene ningún módulo, va a la pantalla "sin módulos".
+    router.push(firstAllowedRoute(authStore));
   } catch (error) {
     errorMessage.value = 'Credenciales incorrectas o error de conexión.';
   }

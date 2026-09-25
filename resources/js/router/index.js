@@ -3,11 +3,9 @@ import { useAuthStore } from '@/stores/auth';
 import { startRouteLoading, stopRouteLoading } from '@/state/loading';
 
 // ==========================================
-// Importación de Layouts (Estáticos)
+// Layout único: el menú se arma con navigationFor() según permisos
 // ==========================================
-import AdminLayout from '@/layouts/AdminLayout.vue';
-import JuryLayout from '@/layouts/JuryLayout.vue';
-import SecretaryLayout from '@/layouts/SecretaryLayout.vue';
+import AppLayout from '@/layouts/AppLayout.vue';
 
 // Importación de vistas estáticas
 import SecretaryDashboardView from '@/views/secretary/SecretaryDashboardView.vue';
@@ -18,6 +16,20 @@ import SecretaryNeighborhoodSlatesView from '@/views/secretary/SecretaryNeighbor
 import CandidatesDirectoryView from '@/views/admin/CandidatesDirectoryView.vue';
 import NeighborhoodResultsView from '@/views/admin/NeighborhoodResultsView.vue';
 import RegistrationPlatesView from '@/views/admin/RegistrationPlatesView.vue';
+
+// ==========================================
+// Permisos por ruta (roles dinámicos)
+// ==========================================
+// Cada ruta hija declara lo que exige:
+//   meta.permission: 'x.view'            -> exige ese permiso
+//   meta.anyPermission: ['a', 'b']       -> basta con uno
+// y, si aparece en el menú, meta.nav:
+//   { label, icon (ver ICONS en AppSidebar.vue), section, order, query?, position?: 'bottom' }
+// `order` también define el inicio tras el login: la primera entrada del menú
+// que el usuario puede abrir (Admin -> Secretaría -> Jurado -> Configuración).
+// Los módulos (padres) solo aportan meta.title (título del header) y, si hace
+// falta, meta.layout: 'narrow' (columna angosta, pensada para celular).
+// Los permisos se declaran en app/Support/PermissionCatalog.php.
 
 const routes = [
   {
@@ -31,63 +43,113 @@ const routes = [
   },
 
   // ==========================================
-  // Módulo de Jurados (Solo Escrutinio)
-  // ==========================================
-  {
-    path: '/jury',
-    component: JuryLayout,
-    meta: { requiresAuth: true, permission: 'records.upload' },
-    children: [
-      { path: 'dashboard', name: 'jury-dashboard', component: () => import('@/views/jury/JuryDashboardView.vue') },
-      { path: 'capture', name: 'jury-capture', component: () => import('@/views/jury/CaptureSlatesView.vue') },
-      { path: 'review', name: 'jury-review', component: () => import('@/views/jury/PreviousReviewView.vue') }
-    ]
-  },
-
-  // ==========================================
-  // Módulo de Secretaría 
-  // ==========================================
-  {
-    path: '/secretary',
-    component: SecretaryLayout,
-    meta: {
-      requiresAuth: true,
-      permission: 'records.upload',
-      roles: ['admin_electoral', 'electoral_admin']
-    },
-    children: [
-      { path: 'dashboard', name: 'secretary-dashboard', component: SecretaryDashboardView },
-      { path: 'capture', name: 'secretary-capture', component: SecretaryCaptureView },
-      { path: 'planchas-por-barrio', name: 'secretary-neighborhood-slates', component: SecretaryNeighborhoodSlatesView },
-      { path: 'planchas', name: 'secretary-planchas', component: SecretaryPlanchasList },
-      { path: 'planchas/:id', name: 'secretary-plancha-detail', component: SecretaryPlanchaDetailView }
-    ]
-  },
-
-  // ==========================================
   // Módulo de Administración
   // ==========================================
   {
     path: '/admin',
-    component: AdminLayout,
-    meta: { requiresAuth: true, permission: 'users.view' },
+    component: AppLayout,
+    meta: { requiresAuth: true, title: 'Panel de Administración' },
     children: [
-      { path: 'dashboard', name: 'admin-dashboard', component: () => import('@/views/admin/AdminDashboardView.vue') },
-      { path: 'audit', name: 'admin-audit', component: () => import('@/views/admin/AuditView.vue') },
-      { path: 'audit-logs', name: 'admin-audit-logs', component: () => import('@/views/admin/AuditLogsView.vue'), meta: { permission: 'audit.view' } },
-      { path: 'geography', name: 'admin-geography', component: () => import('@/views/admin/GeographyView.vue') },
-      { path: 'map', name: 'admin-map', component: () => import('@/views/admin/ElectoralMapView.vue') },
-      { path: 'audit/:id', name: 'admin-audit-detail', component: () => import('@/views/admin/VoteValidationView.vue') },
-      { path: 'roles', name: 'admin-roles', component: () => import('@/views/security-config/RolesPermissionsView.vue') },
-      { path: 'candidates', name: 'admin.candidates', component: CandidatesDirectoryView },
-      { path: 'neighborhood/:id/results', name: 'admin.neighborhood.results', component: NeighborhoodResultsView },
-      { path: 'registration', name: 'admin.registration', component: RegistrationPlatesView}
+      {
+        path: 'dashboard', name: 'admin-dashboard', component: () => import('@/views/admin/AdminDashboardView.vue'),
+        meta: { permission: 'dashboard.view', nav: { label: 'Dashboard', icon: 'LayoutDashboard', section: 'Administración', order: 10 } }
+      },
+      {
+        path: 'geography', name: 'admin-geography', component: () => import('@/views/admin/GeographyView.vue'),
+        meta: { permission: 'geography.view', nav: { label: 'Geografía Electoral', icon: 'Map', section: 'Administración', order: 20 } }
+      },
+      {
+        path: 'map', name: 'admin-map', component: () => import('@/views/admin/ElectoralMapView.vue'),
+        meta: { permission: 'map.view', nav: { label: 'Mapa Interactivo', icon: 'MapPin', section: 'Administración', order: 30 } }
+      },
+      {
+        path: 'candidates', name: 'admin.candidates', component: CandidatesDirectoryView,
+        meta: { permission: 'candidates.view', nav: { label: 'Directorio JAC', icon: 'Users', section: 'Administración', order: 40 } }
+      },
+      {
+        path: 'audit', name: 'admin-audit', component: () => import('@/views/admin/AuditView.vue'),
+        meta: { permission: 'records.review', nav: { label: 'Auditoría de Actas', icon: 'FileCheck', section: 'Administración', order: 50 } }
+      },
+      {
+        path: 'audit-logs', name: 'admin-audit-logs', component: () => import('@/views/admin/AuditLogsView.vue'),
+        meta: { permission: 'audit.view', nav: { label: 'Bitácora del Sistema', icon: 'ClipboardList', section: 'Administración', order: 60 } }
+      },
+      {
+        path: 'registration', name: 'admin.registration', component: RegistrationPlatesView,
+        meta: { permission: 'slates.view', nav: { label: 'Revisión de planchas', icon: 'ShieldAlert', section: 'Administración', order: 70 } }
+      },
+      {
+        path: 'audit/:id', name: 'admin-audit-detail', component: () => import('@/views/admin/VoteValidationView.vue'),
+        meta: { permission: 'records.review' }
+      },
+      {
+        path: 'neighborhood/:id/results', name: 'admin.neighborhood.results', component: NeighborhoodResultsView,
+        meta: { anyPermission: ['candidates.view', 'geography.view', 'map.view'] }
+      },
+      {
+        path: 'roles', name: 'admin-roles', component: () => import('@/views/security-config/RolesPermissionsView.vue'),
+        meta: { anyPermission: ['users.view', 'roles.view'], nav: { label: 'Roles y Permisos', icon: 'ShieldAlert', section: 'Configuración', order: 900, position: 'bottom' } }
+      }
+    ]
+  },
+
+  // ==========================================
+  // Módulo de Secretaría (planchas)
+  // ==========================================
+  {
+    path: '/secretary',
+    component: AppLayout,
+    meta: { requiresAuth: true, title: 'Secretaría Técnica' },
+    children: [
+      {
+        path: 'dashboard', name: 'secretary-dashboard', component: SecretaryDashboardView,
+        meta: { permission: 'slates.capture', nav: { label: 'Dashboard', icon: 'LayoutDashboard', section: 'Secretaría', order: 110 } }
+      },
+      {
+        path: 'capture', name: 'secretary-capture', component: SecretaryCaptureView,
+        meta: { permission: 'slates.capture', nav: { label: 'Escanear Planchas', icon: 'Camera', section: 'Secretaría', order: 120, query: { doc: 'plancha' } } }
+      },
+      {
+        path: 'planchas', name: 'secretary-planchas', component: SecretaryPlanchasList,
+        meta: { anyPermission: ['slates.capture', 'slates.review'], nav: { label: 'Auditoría de Planchas', icon: 'Files', section: 'Secretaría', order: 130 } }
+      },
+      {
+        path: 'planchas-por-barrio', name: 'secretary-neighborhood-slates', component: SecretaryNeighborhoodSlatesView,
+        meta: { anyPermission: ['slates.view', 'slates.capture'], nav: { label: 'Planchas por Barrio', icon: 'MapPinned', section: 'Secretaría', order: 140 } }
+      },
+      {
+        path: 'planchas/:id', name: 'secretary-plancha-detail', component: SecretaryPlanchaDetailView,
+        meta: { anyPermission: ['slates.capture', 'slates.review'] }
+      }
+    ]
+  },
+
+  // ==========================================
+  // Módulo de Jurados (Solo Escrutinio)
+  // ==========================================
+  {
+    path: '/jury',
+    component: AppLayout,
+    meta: { requiresAuth: true, title: 'Módulo de Jurados', layout: 'narrow' },
+    children: [
+      {
+        path: 'dashboard', name: 'jury-dashboard', component: () => import('@/views/jury/JuryDashboardView.vue'),
+        meta: { permission: 'records.upload', nav: { label: 'Actas de mesa', icon: 'Camera', section: 'Jurado', order: 210 } }
+      },
+      { path: 'capture', name: 'jury-capture', component: () => import('@/views/jury/CaptureSlatesView.vue'), meta: { permission: 'records.upload' } },
+      { path: 'review', name: 'jury-review', component: () => import('@/views/jury/PreviousReviewView.vue'), meta: { permission: 'records.upload' } }
     ]
   },
 
   // ==========================================
   // Rutas de Error
   // ==========================================
+  {
+    path: '/sin-modulos',
+    name: 'no-modules',
+    component: () => import('@/views/errors/NoModulesView.vue'),
+    meta: { requiresAuth: true }
+  },
   {
     path: '/unauthorized',
     name: 'unauthorized',
@@ -105,13 +167,42 @@ const router = createRouter({
   routes
 });
 
+/** ¿Los permisos del usuario cubren lo que exige este registro de ruta? */
+function recordAllows(record, auth) {
+  const { permission, anyPermission } = record.meta ?? {};
+  if (permission && !auth.can(permission)) return false;
+  if (anyPermission && !auth.canAny(anyPermission)) return false;
+  return true;
+}
+
+/** ¿El usuario puede abrir esta ruta resuelta? Revisa toda la cadena (padre + hijas). */
+export function canAccessRoute(route, auth = useAuthStore()) {
+  return (route.matched ?? []).every((record) => recordAllows(record, auth));
+}
+
+/** Entradas del menú que el usuario puede ver, ordenadas por meta.nav.order. */
+export function navigationFor(auth = useAuthStore()) {
+  return router.getRoutes()
+    .filter((record) => record.meta?.nav && record.name)
+    .map((record) => router.resolve({ name: record.name, query: record.meta.nav.query }))
+    .filter((route) => canAccessRoute(route, auth))
+    .sort((a, b) => a.meta.nav.order - b.meta.nav.order)
+    .map((route) => ({ ...route.meta.nav, name: route.name, to: route.fullPath }));
+}
+
+/** Inicio del usuario: la primera entrada del menú que puede abrir. */
+export function firstAllowedRoute(auth = useAuthStore()) {
+  const [first] = navigationFor(auth);
+  return first ? first.to : { name: 'no-modules' };
+}
+
 // Guardia de Seguridad Global
 router.beforeEach(async (to) => {
   startRouteLoading();
 
   const auth = useAuthStore();
 
-  if (to.meta.requiresAuth) {
+  if (to.matched.some((record) => record.meta.requiresAuth)) {
     if (!auth.isAuthenticated) {
       if (typeof auth.fetchUser === 'function') {
         try {
@@ -123,19 +214,9 @@ router.beforeEach(async (to) => {
       if (!auth.isAuthenticated) return { name: 'login' };
     }
 
-    // Verificación de permisos (RBAC)
-    if (to.meta.permission && !auth.permissions.includes(to.meta.permission)) {
+    // Verificación de permisos (RBAC): la ruta y todos sus padres.
+    if (!canAccessRoute(to, auth)) {
       return { name: 'unauthorized' };
-    }
-
-    // Verificación opcional de roles para módulos específicos.
-    if (to.meta.roles) {
-      const allowedRoles = Array.isArray(to.meta.roles) ? to.meta.roles : [to.meta.roles];
-      const hasAllowedRole = auth.roles.some((role) => allowedRoles.includes(role));
-
-      if (!hasAllowedRole) {
-        return { name: 'unauthorized' };
-      }
     }
   }
 

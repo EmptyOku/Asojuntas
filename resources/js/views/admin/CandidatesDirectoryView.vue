@@ -420,7 +420,8 @@ const changePage = (page) => {
   if (page >= 1 && page <= pagination.value.last_page) {
     openCardId.value = null;
     fetchBarrios(page);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    // El scroll vive en el contenedor del layout (AppLayout), no en window.
+    document.querySelector('[data-app-scroll]')?.scrollTo({ top: 0, behavior: 'smooth' });
   }
 };
 
