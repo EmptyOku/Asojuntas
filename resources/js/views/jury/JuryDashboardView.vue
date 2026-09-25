@@ -2,7 +2,7 @@
   <div class="space-y-6 flex-1 flex flex-col">
     
     <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-      <h2 class="text-xl font-bold text-gray-900">Hola, {{ authStore.user?.name || 'Jurado' }}</h2>
+      <h2 class="text-xl font-bold text-gray-900">Hola, {{ authStore.user?.person?.first_name || authStore.user?.username || 'Jurado' }}</h2>
       <p class="text-sm text-gray-500 mt-1">Bienvenido al módulo de transmisión documental.</p>
       
       <div class="mt-6 p-4 bg-blue-50 border border-blue-100 rounded-xl flex items-start gap-3">
@@ -180,7 +180,10 @@ const assignmentLocation = computed(() => {
 });
 
 const assignmentNeighborhood = computed(() => {
-  const personNeighborhood = authStore.user?.person?.neighborhood;
+  // Barrio de la persona; si no llegó (o no tiene), el de la mesa asignada
+  // (/jury/context), para no contradecir la asignación que se muestra arriba.
+  const personNeighborhood = authStore.user?.person?.neighborhood
+    || juryContext.value?.suggested_polling_table?.neighborhood;
   const commune = personNeighborhood?.commune;
   const address = authStore.user?.person?.address;
 
