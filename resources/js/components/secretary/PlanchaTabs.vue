@@ -62,7 +62,7 @@
         </button>
         
         <button 
-          @click="handleBatchAction('approved')"
+          @click="askBatchAction('approved')"
           :disabled="currentBatch.pending === 0"
           class="flex-1 sm:flex-none px-4 py-2 bg-emerald-600 text-white rounded-lg text-xs font-bold hover:bg-emerald-700 disabled:opacity-50 transition-all shadow-sm"
         >
@@ -73,6 +73,16 @@
 
     <CandidateGrid :batch="currentBatch" />
 
+
+    <ConfirmModal
+      :open="Boolean(pendingDecision)"
+      title="¿Aprobar todo el lote?"
+      :message="`Se aprobarán los ${currentBatch?.pending ?? 0} candidato(s) pendientes de esta plancha.`"
+      confirm-text="Aprobar lote"
+      :loading="decidingBatch"
+      @confirm="handleBatchAction"
+      @cancel="pendingDecision = null"
+    />
   </div>
 </template>
 
@@ -81,6 +91,7 @@ import { ref, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { ChevronLeft, ChevronRight, FileText, Plus, Eye } from 'lucide-vue-next';
 import axios from '@/services/axios';
+import ConfirmModal from '@/components/ConfirmModal.vue';
 import CandidateGrid from './CandidateGrid.vue';
 
 const props = defineProps({
@@ -119,8 +130,18 @@ const viewPlanchaDetail = () => {
   });
 };
 
-const handleBatchAction = async (decision) => {
-  if (!window.confirm(`¿Confirmas aprobar todos los candidatos de esta plancha?`)) return;
+// El botón guarda la decisión y abre el modal; handleBatchAction() la aplica al confirmar.
+const pendingDecision = ref(null);
+const decidingBatch = ref(false);
+const askBatchAction = (decision) => {
+  pendingDecision.value = decision;
+};
+
+const handleBatchAction = async () => {
+  const decision = pendingDecision.value;
+  if (!decision) return;
+
+  decidingBatch.value = true;
   try {
     await axios.post('/secretary/planchas/drafts/decision/batch', {
       capture_batch_uuid: currentBatch.value.capture_batch_uuid,
@@ -132,6 +153,9 @@ const handleBatchAction = async (decision) => {
     emit('draft-updated');
   } catch (error) {
     console.error(error);
+  } finally {
+    decidingBatch.value = false;
+    pendingDecision.value = null;
   }
 };
 </script>

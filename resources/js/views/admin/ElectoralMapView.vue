@@ -280,7 +280,7 @@
               </button>
               <button
                 type="button"
-                @click="deleteBarrio"
+                @click="askDeleteBarrio"
                 :disabled="locateSaving"
                 title="Eliminar este barrio"
                 class="shrink-0 rounded-lg border border-red-200 px-2 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
@@ -360,6 +360,17 @@
       :title="resultModal.title"
       :message="resultModal.message"
       @close="resultModal.open = false"
+    />
+
+    <ConfirmModal
+      :open="confirmDeleteBarrio"
+      :title="`¿Eliminar “${barrioToDeleteName}”?`"
+      message="Dejará de aparecer en el mapa. Si fue un error, se puede revisar con soporte."
+      confirm-text="Eliminar"
+      danger
+      :loading="locateSaving"
+      @confirm="deleteBarrio"
+      @cancel="confirmDeleteBarrio = false"
     />
   </div>
 </template>
@@ -515,6 +526,7 @@ import 'leaflet/dist/leaflet.css';
 import axios from '@/services/axios';
 import { useAuthStore } from '@/stores/auth';
 import ResultModal from '@/components/ResultModal.vue';
+import ConfirmModal from '@/components/ConfirmModal.vue';
 
 const resultModal = ref({ open: false, success: true, title: '', message: '' });
 const showResult = (success, title, message) => {
@@ -742,13 +754,19 @@ async function renameBarrio() {
   }
 }
 
+// El botón abre el modal (askDeleteBarrio); deleteBarrio() elimina al confirmar.
+const confirmDeleteBarrio = ref(false);
+const barrioToDeleteName = computed(
+  () => locateNeighborhoods.value.find((n) => n.id === locateNeighborhoodId.value)?.name ?? 'este barrio'
+);
+
+function askDeleteBarrio() {
+  if (!locateNeighborhoodId.value) return;
+  confirmDeleteBarrio.value = true;
+}
+
 async function deleteBarrio() {
   if (!locateNeighborhoodId.value) return;
-
-  const nombre = locateNeighborhoods.value.find((n) => n.id === locateNeighborhoodId.value)?.name ?? 'este barrio';
-  if (!window.confirm(`¿Eliminar "${nombre}"? Esta acción se puede revisar con soporte, pero no aparecerá más en el mapa.`)) {
-    return;
-  }
 
   locateSaving.value = true;
   locateMessage.value = '';
@@ -764,6 +782,7 @@ async function deleteBarrio() {
     showResult(false, 'No se pudo eliminar el barrio', message);
   } finally {
     locateSaving.value = false;
+    confirmDeleteBarrio.value = false;
   }
 }
 

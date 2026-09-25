@@ -51,14 +51,15 @@
             </td>
             <td class="px-3 py-2.5">
               <div class="flex flex-wrap gap-2">
-                <button type="button" class="text-xs px-3 py-1.5 rounded-md bg-gray-900 text-white hover:bg-black" @click="$emit('edit-roles', user)">Editar Roles</button>
-                <button type="button" class="text-xs px-3 py-1.5 rounded-md border border-gray-200 text-gray-700 hover:bg-gray-50" @click="$emit('edit-user', user)">Editar Usuario</button>
-                <button type="button" class="text-xs px-3 py-1.5 rounded-md border border-amber-200 text-amber-700 hover:bg-amber-50" @click="$emit('reset-password', user)">Restablecer Contraseña</button>
+                <button v-can="'roles.assign'" type="button" class="text-xs px-3 py-1.5 rounded-md bg-gray-900 text-white hover:bg-black" @click="$emit('edit-roles', user)">Editar Roles</button>
+                <button v-can="'users.update'" type="button" class="text-xs px-3 py-1.5 rounded-md border border-gray-200 text-gray-700 hover:bg-gray-50" @click="$emit('edit-user', user)">Editar Usuario</button>
+                <button v-can="'users.update'" type="button" class="text-xs px-3 py-1.5 rounded-md border border-amber-200 text-amber-700 hover:bg-amber-50" @click="$emit('reset-password', user)">Restablecer Contraseña</button>
                 <button
+                  v-can="'users.update'"
                   type="button"
                   class="text-xs px-3 py-1.5 rounded-md border"
                   :class="user.is_active ? 'border-red-200 text-red-700 hover:bg-red-50' : 'border-emerald-200 text-emerald-700 hover:bg-emerald-50'"
-                  @click="toggleUserStatus(user)"
+                  @click="askToggleUser(user)"
                 >
                   {{ user.is_active ? 'Deshabilitar' : 'Habilitar' }}
                 </button>
@@ -110,12 +111,24 @@
         </div>
       </div>
     </div>
+
+    <ConfirmModal
+      :open="Boolean(userToToggle)"
+      :title="userToToggle?.is_active ? `¿Deshabilitar a “${userToToggle?.username}”?` : `¿Habilitar a “${userToToggle?.username}”?`"
+      :message="userToToggle?.is_active ? 'No podrá iniciar sesión hasta que lo vuelvas a habilitar.' : 'Podrá volver a iniciar sesión con sus roles actuales.'"
+      :confirm-text="userToToggle?.is_active ? 'Deshabilitar' : 'Habilitar'"
+      :danger="Boolean(userToToggle?.is_active)"
+      :loading="togglingUser"
+      @confirm="toggleUserStatus"
+      @cancel="userToToggle = null"
+    />
   </section>
 </template>
 
 <script setup>
 import { computed, ref } from 'vue';
 import axios from '@/services/axios';
+import ConfirmModal from '@/components/ConfirmModal.vue';
 
 const props = defineProps({
   users: { type: Array, default: () => [] },
@@ -165,15 +178,26 @@ const suggestedTableForUser = (user) => {
   return getSuggestedTableByNeighborhood(neighborhoodId);
 };
 
-const toggleUserStatus = async (user) => {
-  const action = user.is_active ? 'deshabilitar' : 'habilitar';
-  if (!confirm(`¿Seguro que deseas ${action} a "${user.username}"?`)) return;
+// El botón abre el modal; toggleUserStatus() aplica el cambio al confirmar.
+const userToToggle = ref(null);
+const togglingUser = ref(false);
+const askToggleUser = (user) => {
+  userToToggle.value = user;
+};
 
+const toggleUserStatus = async () => {
+  const user = userToToggle.value;
+  if (!user) return;
+
+  togglingUser.value = true;
   try {
     await axios.patch(`/admin/users/${user.id}/toggle-active`);
     emit('reload');
   } catch (error) {
     emit('show-result', false, 'Error', error?.response?.data?.message || 'Error al cambiar el estado del usuario.');
+  } finally {
+    togglingUser.value = false;
+    userToToggle.value = null;
   }
 };
 </script>

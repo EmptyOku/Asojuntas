@@ -1,10 +1,16 @@
 <template>
   <div class="space-y-6">
     <nav class="flex items-center gap-2 border-b border-gray-200 overflow-x-auto" aria-label="Administración">
-      <button type="button" class="px-4 py-3 text-sm font-semibold border-b-2 whitespace-nowrap" :class="activeTab === 'create' ? 'border-aso-primary text-aso-primary' : 'border-transparent text-gray-500'" @click="activeTab = 'create'">Creación de usuarios</button>
-      <button type="button" class="px-4 py-3 text-sm font-semibold border-b-2 whitespace-nowrap" :class="activeTab === 'roles' ? 'border-aso-primary text-aso-primary' : 'border-transparent text-gray-500'" @click="activeTab = 'roles'">Gestión de roles y permisos</button>
-      <button type="button" class="px-4 py-3 text-sm font-semibold border-b-2 whitespace-nowrap" :class="activeTab === 'persons' ? 'border-aso-primary text-aso-primary' : 'border-transparent text-gray-500'" @click="activeTab = 'persons'">Gestión de personas</button>
-      <button type="button" class="px-4 py-3 text-sm font-semibold border-b-2 whitespace-nowrap" :class="activeTab === 'users' ? 'border-aso-primary text-aso-primary' : 'border-transparent text-gray-500'" @click="activeTab = 'users'">Gestión de usuarios</button>
+      <button
+        v-for="tab in visibleTabs"
+        :key="tab.key"
+        type="button"
+        class="px-4 py-3 text-sm font-semibold border-b-2 whitespace-nowrap"
+        :class="activeTab === tab.key ? 'border-aso-primary text-aso-primary' : 'border-transparent text-gray-500'"
+        @click="activeTab = tab.key"
+      >
+        {{ tab.label }}
+      </button>
     </nav>
 
     <div v-if="errorMessage" class="rounded-xl bg-red-50 border border-red-200 text-red-700 px-4 py-3 text-sm">
@@ -12,6 +18,7 @@
     </div>
 
     <UserCreationWizard
+      v-if="authStore.can('users.create')"
       v-show="activeTab === 'create'"
       :communes="communes"
       :roles="roles"
@@ -37,6 +44,7 @@
             <p class="text-sm text-gray-500 mt-1">Consulta y edita las personas registradas.</p>
           </div>
           <button
+            v-can="'users.create'"
             type="button"
             class="px-3 py-2 text-sm font-medium rounded-lg bg-aso-primary text-white hover:bg-aso-primary-dark transition-colors"
             @click="creatingPersonOpen = true"
@@ -78,6 +86,7 @@
               Recargar
             </button>
             <button
+              v-can="'users.create'"
               type="button"
               class="px-3 py-2 text-sm font-medium rounded-lg bg-aso-primary text-white hover:bg-aso-primary-dark transition-colors"
               @click="creatingUserOpen = true"
@@ -131,8 +140,9 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import axios from '@/services/axios';
+import { useAuthStore } from '@/stores/auth';
 import UserCreationWizard from '@/components/security-config/UserCreationWizard.vue';
 import PersonsTable from '@/components/security-config/PersonsTable.vue';
 import PersonEditorModal from '@/components/security-config/PersonEditorModal.vue';
@@ -145,8 +155,19 @@ import UserEditorModal from '@/components/security-config/UserEditorModal.vue';
 import PasswordResetModal from '@/components/security-config/PasswordResetModal.vue';
 import ResultModal from '@/components/ResultModal.vue';
 
+const authStore = useAuthStore();
+
+// Cada pestaña se muestra solo con el permiso que exige su API.
+const TABS = [
+  { key: 'create', label: 'Creación de usuarios', permission: 'users.create' },
+  { key: 'roles', label: 'Gestión de roles y permisos', permission: 'roles.view' },
+  { key: 'persons', label: 'Gestión de personas', permission: 'users.view' },
+  { key: 'users', label: 'Gestión de usuarios', permission: 'users.view' },
+];
+const visibleTabs = computed(() => TABS.filter((tab) => authStore.can(tab.permission)));
+
 const loading = ref(false);
-const activeTab = ref('create');
+const activeTab = ref(visibleTabs.value[0]?.key ?? 'users');
 const errorMessage = ref('');
 
 const users = ref([]);
@@ -285,18 +306,21 @@ const loadAll = async () => {
   loading.value = true;
   errorMessage.value = '';
   try {
+    // Solo se pide lo que el rol puede ver: evita 403 (y el refresco de permisos que disparan).
+    const canViewRoles = authStore.can('roles.view');
+    const canViewUsers = authStore.can('users.view');
     await Promise.all([
       loadCommunes(),
-      loadRoles().catch((e) => {
+      canViewRoles && loadRoles().catch((e) => {
         console.error('Error loading roles:', e?.response?.status, e?.message);
         throw e;
       }),
-      loadPermissions(),
-      loadUsers().catch((e) => {
+      canViewRoles && loadPermissions(),
+      canViewUsers && loadUsers().catch((e) => {
         console.error('Error loading users:', e?.response?.status, e?.message);
         throw e;
       }),
-      loadAssignmentContext().catch((e) => {
+      canViewUsers && loadAssignmentContext().catch((e) => {
         console.error('Error loading assignment context:', e?.response?.status, e?.message);
       }),
     ]);
@@ -309,7 +333,7 @@ const loadAll = async () => {
   // una petición concurrente adicional: en este entorno de desarrollo el servidor PHP es de
   // un solo hilo y eso ya provocaba timeouts de 30s incluso antes de agregar este listado.
   try {
-    await loadPersons();
+    if (authStore.can('users.view')) await loadPersons();
   } catch (error) {
     console.error('Error loading persons:', error?.response?.status, error?.message);
     errorMessage.value = errorMessage.value || 'No fue posible cargar el listado de personas.';

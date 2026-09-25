@@ -35,7 +35,7 @@
               </span>
             </td>
             <td class="px-3 py-2.5">
-              <button type="button" class="text-xs px-3 py-1.5 rounded-md bg-gray-900 text-white hover:bg-black" @click="$emit('edit-person', person)">Editar</button>
+              <button v-can="'users.update'" type="button" class="text-xs px-3 py-1.5 rounded-md bg-gray-900 text-white hover:bg-black" @click="$emit('edit-person', person)">Editar</button>
             </td>
           </tr>
           <tr v-if="!persons.length">

@@ -258,7 +258,7 @@
             <label class="block text-sm text-gray-700 mb-1">Rol asignado</label>
             <p class="text-xs text-gray-500 mb-2">Revisa los permisos de cada rol antes de asignarlo.</p>
             <div v-if="missingNeighborhoodForRole" class="mb-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 px-3 py-2 text-xs flex items-start justify-between gap-2">
-              <span>El rol Jurado requiere un barrio asignado a la persona.</span>
+              <span>El rol elegido solo opera dentro de un barrio: asigna un barrio a la persona.</span>
               <button type="button" class="underline shrink-0" @click="step = 1">Volver al paso 1</button>
             </div>
             <RoleDirectoryPicker v-model="selectedRoleId" :roles="roles" radio-name="wizard-account-role" />
@@ -305,6 +305,17 @@
         </div>
       </form>
     </div>
+
+    <ConfirmModal
+      :open="confirmCancel"
+      title="¿Cancelar la creación del usuario?"
+      message="Se perderán los datos del formulario que aún no se han guardado."
+      confirm-text="Sí, cancelar"
+      cancel-text="Seguir editando"
+      danger
+      @confirm="confirmCancel = false; resetWizard()"
+      @cancel="confirmCancel = false"
+    />
   </section>
 </template>
 
@@ -314,6 +325,7 @@ import axios from '@/services/axios';
 import { Check, Eye, EyeOff, ArrowLeft, ArrowRight } from 'lucide-vue-next';
 import { extractFieldErrors, buildErrorMessage } from '@/utils/formErrors';
 import RoleDirectoryPicker from '@/components/security-config/RoleDirectoryPicker.vue';
+import ConfirmModal from '@/components/ConfirmModal.vue';
 
 const props = defineProps({
   communes: { type: Array, default: () => [] },
@@ -354,9 +366,9 @@ const personFullName = computed(() => [form.value.first_name, form.value.middle_
   .join(' '));
 
 // El barrio/comuna es opcional en general (hay cuentas de personal de Asojuntas sin barrio),
-// pero el backend exige barrio cuando el rol asignado es Jurado (digitizer).
+// pero el backend exige barrio cuando el rol solo opera dentro de un barrio (role.requires_neighborhood).
 const selectedRole = computed(() => props.roles.find((role) => role.id === selectedRoleId.value));
-const missingNeighborhoodForRole = computed(() => selectedRole.value?.name === 'digitizer' && !form.value.neighborhood_id);
+const missingNeighborhoodForRole = computed(() => Boolean(selectedRole.value?.requires_neighborhood) && !form.value.neighborhood_id);
 
 watch(selectedCommune, async (communeId) => {
   form.value.neighborhood_id = '';
@@ -388,9 +400,14 @@ const resetWizard = () => {
   showPasswordConfirm.value = false;
 };
 
+// Con datos en el formulario se pide confirmación (modal) antes de descartarlos.
+const confirmCancel = ref(false);
 const cancelWizard = () => {
   const hasProgress = step.value === 2 || form.value.document_number || form.value.first_name || form.value.last_name;
-  if (hasProgress && !confirm('¿Deseas cancelar? Se perderán los datos no guardados del formulario.')) return;
+  if (hasProgress) {
+    confirmCancel.value = true;
+    return;
+  }
   resetWizard();
 };
 

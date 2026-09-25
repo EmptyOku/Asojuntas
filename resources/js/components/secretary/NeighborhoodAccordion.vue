@@ -32,7 +32,7 @@
         </div>
 
         <button 
-          @click.stop="promoteOfficial"
+          @click.stop="confirmPromote = true"
           :disabled="isPromoting || !hasPromotableData"
           class="shrink-0 px-4 py-2 rounded-lg text-sm font-bold shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
           :class="hasPromotableData ? 'bg-emerald-600 text-white hover:bg-emerald-700' : 'bg-gray-100 text-gray-400'"
@@ -57,6 +57,15 @@
       />
 
     </div>
+
+    <ConfirmModal
+      :open="confirmPromote"
+      title="¿Oficializar los datos aprobados?"
+      :message="`Se promoverán todos los candidatos aprobados del barrio ${neighborhood.neighborhood_name} a planchas oficiales.`"
+      confirm-text="Oficializar"
+      @confirm="confirmPromote = false; promoteOfficial()"
+      @cancel="confirmPromote = false"
+    />
   </div>
 </template>
 
@@ -64,6 +73,7 @@
 import { ref, computed } from 'vue';
 import { ChevronDown } from 'lucide-vue-next';
 import axios from '@/services/axios';
+import ConfirmModal from '@/components/ConfirmModal.vue';
 
 // Importamos el componente de las Pestañas que crearemos en el próximo paso
 import PlanchaTabs from '@/components/secretary/PlanchaTabs.vue';
@@ -89,11 +99,10 @@ const hasPromotableData = computed(() => {
   return props.neighborhood.batches.some(batch => batch.promotable > 0);
 });
 
-const promoteOfficial = async () => {
-  if (!window.confirm(`¿Confirmas promover todos los datos aprobados del barrio ${props.neighborhood.neighborhood_name}?`)) {
-    return;
-  }
+// El botón abre el modal; promoteOfficial() corre al confirmar.
+const confirmPromote = ref(false);
 
+const promoteOfficial = async () => {
   isPromoting.value = true;
   let processedTotal = 0;
   let skippedTotal = 0;
