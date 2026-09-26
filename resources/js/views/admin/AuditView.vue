@@ -3,23 +3,23 @@
     
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
       <div>
-        <h1 class="text-2xl font-bold text-gray-900 tracking-tight">Auditoría de Actas</h1>
-        <p class="text-sm text-gray-500 mt-1">Bandeja de entrada de resultados transmitidos por los Tribunales de Garantías.</p>
+        <h1 class="page-title">Auditoría de Actas</h1>
+        <p class="page-subtitle">Bandeja de entrada de resultados transmitidos por los Tribunales de Garantías.</p>
       </div>
       
       <div class="flex items-center gap-3">
-        <div class="px-4 py-2 bg-green-50 border border-green-100 rounded-xl">
-          <p class="text-[10px] font-bold text-green-600 uppercase">Procesadas (IA OK)</p>
-          <p class="text-lg font-bold text-green-700">{{ stats.processed_count }}</p>
+        <div class="stat-card stat-card--green px-5 py-3 sm:px-5 sm:py-3">
+          <p class="text-[10px] font-bold text-emerald-700 uppercase tracking-wide">Procesadas (IA OK)</p>
+          <p class="font-display text-2xl font-bold text-gray-900 tabular-nums">{{ stats.processed_count }}</p>
         </div>
-        <div class="px-4 py-2 bg-orange-50 border border-orange-100 rounded-xl">
-          <p class="text-[10px] font-bold text-orange-600 uppercase">Requieren Revisión</p>
-          <p class="text-lg font-bold text-orange-700">{{ stats.review_count }}</p>
+        <div class="stat-card stat-card--amber px-5 py-3 sm:px-5 sm:py-3">
+          <p class="text-[10px] font-bold text-amber-700 uppercase tracking-wide">Requieren revisión</p>
+          <p class="font-display text-2xl font-bold text-gray-900 tabular-nums">{{ stats.review_count }}</p>
         </div>
       </div>
     </div>
 
-    <div class="bg-white border border-gray-100 rounded-2xl shadow-[0_4px_20px_rgba(0,0,0,0.02)] overflow-hidden">
+    <div class="card overflow-hidden">
       
       <div class="p-5 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-gray-50/30">
         <div class="relative w-full sm:max-w-md">
@@ -28,11 +28,11 @@
             v-model="search"
             type="text"
             placeholder="Buscar por mesa, comuna o jurado..."
-            class="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-aso-primary/20 focus:border-aso-primary"
+            class="field field-search"
           >
         </div>
         <div class="flex gap-2">
-          <select v-model="filter" class="border border-gray-200 rounded-lg text-sm text-gray-600 py-2 px-3 focus:outline-none">
+          <select v-model="filter" class="field w-auto min-w-48">
             <option value="all">Todas las actas</option>
             <option value="review">Requieren revision</option>
             <option value="processed">Procesadas</option>
@@ -41,7 +41,7 @@
       </div>
 
       <div class="overflow-x-auto">
-        <table class="w-full text-left text-sm text-gray-600">
+        <table class="data-table">
           <thead class="bg-gray-50/80 text-gray-500 font-semibold border-b border-gray-100">
             <tr>
               <th class="px-6 py-4">Mesa / Ubicación</th>
@@ -68,17 +68,15 @@
               <td class="px-6 py-4">{{ row.jury_name }}<br><span class="text-xs text-gray-400">{{ row.transmitted_at_human || 'Sin fecha' }}</span></td>
               <td class="px-6 py-4 text-center font-bold text-gray-700">{{ row.valid_votes }}</td>
               <td class="px-6 py-4">
-                <span
-                  :class="row.status_tag?.kind === 'ok' ? 'bg-green-50 text-green-700 border-green-100' : 'bg-orange-50 text-orange-700 border-orange-100'"
-                  class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border"
-                >
-                  <span :class="row.status_tag?.kind === 'ok' ? 'bg-green-500' : 'bg-orange-500 animate-pulse'" class="w-1.5 h-1.5 rounded-full"></span>
+                <span :class="row.status_tag?.kind === 'ok' ? 'badge-green' : 'badge-amber'">
+                  <span class="badge-dot" :class="{ 'animate-pulse': row.status_tag?.kind !== 'ok' }"></span>
                   {{ row.status_tag?.text || 'Sin estado' }}
                 </span>
               </td>
               <td class="px-6 py-4 text-right">
-                <router-link :to="`/admin/audit/${row.id}`" class="inline-block bg-white border border-gray-200 hover:border-aso-primary hover:text-aso-primary text-gray-700 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors shadow-sm">
+                <router-link :to="`/admin/audit/${row.id}`" class="btn-secondary px-3 py-2 text-xs hover:border-aso-primary hover:text-aso-primary">
                   Corroborar
+                  <ArrowRight class="w-3.5 h-3.5" />
                 </router-link>
               </td>
             </tr>
@@ -92,7 +90,7 @@
 
 <script setup>
 import { onMounted, ref, watch } from 'vue';
-import { Search } from 'lucide-vue-next';
+import { ArrowRight, Search } from 'lucide-vue-next';
 import axios from '@/services/axios';
 
 const isLoading = ref(false);

@@ -1,7 +1,7 @@
 <template>
   <Teleport to="body">
     <div v-if="open" class="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm">
-      <div class="w-full max-w-sm rounded-2xl bg-white shadow-2xl border border-gray-100 overflow-hidden text-center">
+      <div class="w-full max-w-sm rounded-3xl bg-white shadow-2xl ring-1 ring-black/5 overflow-hidden animate-rise text-center">
         <div class="p-6">
           <div class="mx-auto w-12 h-12 rounded-full flex items-center justify-center" :class="success ? 'bg-emerald-50' : 'bg-red-50'">
             <CheckCircle2 v-if="success" class="w-7 h-7 text-emerald-600" />

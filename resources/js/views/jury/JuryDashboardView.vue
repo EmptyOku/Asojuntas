@@ -1,7 +1,7 @@
 <template>
   <div class="space-y-6 flex-1 flex flex-col">
     
-    <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+    <div class="card p-6">
       <h2 class="text-xl font-bold text-gray-900">Hola, {{ authStore.user?.person?.first_name || authStore.user?.username || 'Jurado' }}</h2>
       <p class="text-sm text-gray-500 mt-1">Bienvenido al módulo de transmisión documental.</p>
       

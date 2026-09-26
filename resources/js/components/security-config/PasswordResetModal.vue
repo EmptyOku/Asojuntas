@@ -1,11 +1,11 @@
 <template>
   <Teleport to="body">
     <div v-if="user" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/50 backdrop-blur-sm">
-      <div class="w-full max-w-md rounded-2xl bg-white shadow-2xl border border-gray-100 overflow-hidden">
+      <div class="w-full max-w-md rounded-3xl bg-white shadow-2xl ring-1 ring-black/5 overflow-hidden animate-rise">
         <div class="px-6 py-5 border-b border-gray-100 flex items-start justify-between gap-4">
           <div>
             <p class="text-xs font-bold uppercase tracking-[0.2em] text-gray-400">Restablecer Contraseña</p>
-            <h2 class="mt-1 text-lg font-bold text-gray-900">{{ user.username }}</h2>
+            <h2 class="mt-1 font-display text-xl font-bold text-gray-900">{{ user.username }}</h2>
           </div>
           <button type="button" class="text-gray-400 hover:text-gray-700" @click="$emit('close')">
             <X class="w-5 h-5" />
@@ -16,13 +16,13 @@
 
         <div class="px-6 py-5 space-y-4">
           <div>
-            <label class="block text-sm text-gray-700 mb-1">Nueva contraseña</label>
+            <label class="field-label">Nueva contraseña</label>
             <div class="relative">
               <input
                 v-model="passwordForm.password"
                 required
                 :type="showPassword ? 'text' : 'password'"
-                class="w-full px-3 py-2 pr-10 rounded-lg border border-gray-200 bg-white text-sm"
+                class="field pr-10"
                 :class="passwordTooShort ? 'border-red-300' : ''"
               />
               <button
@@ -39,13 +39,13 @@
             <p v-else-if="passwordForm.password.length >= 8" class="text-xs text-emerald-600 mt-1">Longitud válida.</p>
           </div>
           <div>
-            <label class="block text-sm text-gray-700 mb-1">Confirmar contraseña</label>
+            <label class="field-label">Confirmar contraseña</label>
             <div class="relative">
               <input
                 v-model="passwordForm.password_confirmation"
                 required
                 :type="showPasswordConfirm ? 'text' : 'password'"
-                class="w-full px-3 py-2 pr-10 rounded-lg border border-gray-200 bg-white text-sm"
+                class="field pr-10"
                 :class="passwordMismatch ? 'border-red-300' : ''"
               />
               <button
@@ -64,7 +64,7 @@
         </div>
 
         <div class="px-6 py-4 bg-gray-50 flex items-center justify-end gap-3">
-          <button type="button" class="px-4 py-2 rounded-xl border border-gray-200 text-sm font-semibold text-gray-700 hover:bg-white transition-colors" @click="$emit('close')">
+          <button type="button" class="btn-secondary" @click="$emit('close')">
             Cancelar
           </button>
           <button

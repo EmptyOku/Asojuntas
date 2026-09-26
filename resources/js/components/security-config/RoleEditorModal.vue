@@ -1,11 +1,11 @@
 <template>
   <Teleport to="body">
     <div v-if="user" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/50 backdrop-blur-sm">
-      <div class="w-full max-w-md rounded-2xl bg-white shadow-2xl border border-gray-100 overflow-hidden">
+      <div class="w-full max-w-md rounded-3xl bg-white shadow-2xl ring-1 ring-black/5 overflow-hidden animate-rise">
         <div class="px-6 py-5 border-b border-gray-100 flex items-start justify-between gap-4">
           <div>
             <p class="text-xs font-bold uppercase tracking-[0.2em] text-gray-400">Editar Roles</p>
-            <h2 class="mt-1 text-lg font-bold text-gray-900">{{ user.username }}</h2>
+            <h2 class="mt-1 font-display text-xl font-bold text-gray-900">{{ user.username }}</h2>
           </div>
           <button type="button" class="text-gray-400 hover:text-gray-700" @click="$emit('close')">
             <X class="w-5 h-5" />
@@ -26,12 +26,12 @@
         </div>
 
         <div class="px-6 py-4 bg-gray-50 flex items-center justify-end gap-3">
-          <button type="button" class="px-4 py-2 rounded-xl border border-gray-200 text-sm font-semibold text-gray-700 hover:bg-white transition-colors" @click="$emit('close')">
+          <button type="button" class="btn-secondary" @click="$emit('close')">
             Cancelar
           </button>
           <button
             type="button"
-            class="px-4 py-2 rounded-xl text-sm font-semibold text-white bg-aso-primary hover:bg-aso-primary-dark transition-colors disabled:opacity-60"
+            class="btn-primary"
             :disabled="loading || editingRoles.length === 0"
             @click="saveRoles"
           >

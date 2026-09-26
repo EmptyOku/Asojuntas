@@ -7,7 +7,7 @@
       aria-modal="true"
       @keydown.esc="!loading && $emit('cancel')"
     >
-      <div class="w-full max-w-md rounded-2xl bg-white shadow-2xl border border-gray-100 overflow-hidden">
+      <div class="w-full max-w-md rounded-3xl bg-white shadow-2xl ring-1 ring-black/5 overflow-hidden animate-rise">
         <div class="p-6 text-center">
           <div class="mx-auto w-12 h-12 rounded-full flex items-center justify-center" :class="danger ? 'bg-red-50' : 'bg-emerald-50'">
             <AlertTriangle v-if="danger" class="w-7 h-7 text-red-600" />

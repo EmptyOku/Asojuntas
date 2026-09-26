@@ -22,7 +22,7 @@
 
         <button
           @click="fetchData(1)"
-          class="px-3 py-2 rounded-lg border border-gray-200 text-sm font-semibold text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+          class="btn-secondary px-3"
         >
           <RefreshCw :class="{ 'animate-spin': loading }" class="w-4 h-4" />
           <span class="hidden sm:inline">Recargar</span>

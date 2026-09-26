@@ -139,7 +139,7 @@
 
       <div class="w-full lg:w-7/12 space-y-6">
         
-        <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-5 flex justify-between items-end">
+        <div class="card p-5 flex justify-between items-end">
           <div>
             <h3 class="text-lg font-black text-gray-900 uppercase">Validación de Datos · Página {{ currentPage + 1 }}</h3>
             <p class="text-xs text-gray-500 mt-1">Verifica la información contra la imagen de la izquierda.</p>
@@ -149,7 +149,7 @@
           </div>
         </div>
 
-        <div v-if="currentPage === 0" class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 animate-in fade-in duration-300">
+        <div v-if="currentPage === 0" class="card p-6 animate-in fade-in duration-300">
           <h4 class="text-sm font-black text-aso-primary uppercase tracking-widest mb-5 border-b border-gray-100 pb-2 flex items-center gap-2"><Users class="w-4 h-4"/> Bloque Directivo (Pág 1 de 2)</h4>
           <div class="space-y-5">
             <div :class="{'ring-2 ring-red-500 rounded-2xl shadow-sm': hasError('bloque1.presidente')}">
@@ -165,14 +165,14 @@
         </div>
 
         <div v-if="currentPage === 1" class="space-y-6 animate-in fade-in duration-300">
-          <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+          <div class="card p-6">
             <h4 class="text-sm font-black text-aso-primary uppercase tracking-widest mb-5 border-b border-gray-100 pb-2 flex items-center gap-2"><Users class="w-4 h-4"/> Bloque Directivo (Fin)</h4>
             <div :class="{'ring-2 ring-red-500 rounded-2xl shadow-sm': hasError('bloque1.secretario')}">
               <CandidateCard cargo="Secretario (a)" :is-editing="isEditing" v-model:nombre="planchaData.bloque1.secretario.nombre" v-model:identificacion="planchaData.bloque1.secretario.identificacion" v-model:celular="planchaData.bloque1.secretario.celular" v-model:correo="planchaData.bloque1.secretario.correo" />
             </div>
           </div>
 
-          <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+          <div class="card p-6">
             <h4 class="text-sm font-black text-aso-primary uppercase tracking-widest mb-5 border-b border-gray-100 pb-2 flex items-center gap-2"><UserPlus class="w-4 h-4"/> Delegados Asojuntas (Pág 1 de 2)</h4>
             <div class="space-y-5">
               <div :class="{'ring-2 ring-red-500 rounded-2xl shadow-sm': hasError('bloque2.suplentePresidente')}">
@@ -192,7 +192,7 @@
         </div>
 
         <div v-if="currentPage === 2" class="space-y-6 animate-in fade-in duration-300">
-          <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+          <div class="card p-6">
             <h4 class="text-sm font-black text-aso-primary uppercase tracking-widest mb-5 border-b border-gray-100 pb-2 flex items-center gap-2"><UserPlus class="w-4 h-4"/> Delegados Asojuntas (Fin)</h4>
             <div class="space-y-5">
               <div :class="{'ring-2 ring-red-500 rounded-2xl shadow-sm': hasError('bloque2.suplente2')}">
@@ -207,7 +207,7 @@
             </div>
           </div>
 
-          <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+          <div class="card p-6">
             <h4 class="text-sm font-black text-aso-primary uppercase tracking-widest mb-5 border-b border-gray-100 pb-2 flex items-center gap-2"><Scale class="w-4 h-4"/> Bloque Fiscal</h4>
             <div class="space-y-5">
               <div :class="{'ring-2 ring-red-500 rounded-2xl shadow-sm': hasError('bloque3.fiscal')}">
@@ -220,7 +220,7 @@
           </div>
         </div>
 
-        <div v-if="currentPage === 3" class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 animate-in fade-in duration-300">
+        <div v-if="currentPage === 3" class="card p-6 animate-in fade-in duration-300">
           <h4 class="text-sm font-black text-aso-primary uppercase tracking-widest mb-5 border-b border-gray-100 pb-2 flex items-center gap-2"><Handshake class="w-4 h-4"/> Convivencia y Empresarial</h4>
           <div class="space-y-5">
             <div :class="{'ring-2 ring-red-500 rounded-2xl shadow-sm': hasError('bloque4.conciliador1')}">
@@ -238,7 +238,7 @@
           </div>
         </div>
 
-        <div v-if="currentPage > 3" class="bg-white rounded-2xl shadow-sm border border-gray-200 p-10 text-center">
+        <div v-if="currentPage > 3" class="card p-10 text-center">
           <p class="text-gray-500 font-bold">No hay cargos parametrizados para hojas adicionales.</p>
         </div>
       </div>

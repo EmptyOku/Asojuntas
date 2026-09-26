@@ -48,7 +48,7 @@ const routes = [
   {
     path: '/admin',
     component: AppLayout,
-    meta: { requiresAuth: true, title: 'Panel de Administración' },
+    meta: { requiresAuth: true, title: 'Panel de Administración', subtitle: 'Gestión centralizada de juntas y del proceso electoral' },
     children: [
       {
         path: 'dashboard', name: 'admin-dashboard', component: () => import('@/views/admin/AdminDashboardView.vue'),
@@ -99,7 +99,7 @@ const routes = [
   {
     path: '/secretary',
     component: AppLayout,
-    meta: { requiresAuth: true, title: 'Secretaría Técnica' },
+    meta: { requiresAuth: true, title: 'Secretaría Técnica', subtitle: 'Registro y revisión de planchas por barrio' },
     children: [
       {
         path: 'dashboard', name: 'secretary-dashboard', component: SecretaryDashboardView,
@@ -130,7 +130,7 @@ const routes = [
   {
     path: '/jury',
     component: AppLayout,
-    meta: { requiresAuth: true, title: 'Módulo de Jurados', layout: 'narrow' },
+    meta: { requiresAuth: true, title: 'Módulo de Jurados', subtitle: 'Carga de actas de mesa', layout: 'narrow' },
     children: [
       {
         path: 'dashboard', name: 'jury-dashboard', component: () => import('@/views/jury/JuryDashboardView.vue'),

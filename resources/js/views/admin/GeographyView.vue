@@ -2,14 +2,14 @@
   <div class="space-y-6">
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
       <div>
-        <h1 class="text-2xl font-bold text-gray-900 tracking-tight">Geografía Electoral</h1>
-        <p class="text-sm text-gray-500 mt-1">Filtra por comuna y busca barrios directamente en base de datos.</p>
+        <h1 class="page-title">Geografía Electoral</h1>
+        <p class="page-subtitle">Filtra por comuna y busca barrios directamente en base de datos.</p>
       </div>
 
       <div class="flex flex-wrap items-center justify-end gap-2">
         <button
           type="button"
-          class="inline-flex items-center gap-2 text-xs sm:text-sm font-semibold bg-white border border-green-200 text-green-700 px-3.5 py-2 rounded-xl hover:bg-green-50 transition-colors disabled:opacity-60"
+          class="btn bg-white text-emerald-700 ring-1 ring-emerald-200 hover:bg-emerald-50"
           :disabled="loading || bulkCreateCount === 0"
           @click="openBulkModal('create')"
         >
@@ -18,7 +18,7 @@
 
         <button
           type="button"
-          class="inline-flex items-center gap-2 text-xs sm:text-sm font-semibold bg-white border border-amber-200 text-amber-700 px-3.5 py-2 rounded-xl hover:bg-amber-50 transition-colors disabled:opacity-60"
+          class="btn bg-white text-amber-700 ring-1 ring-amber-200 hover:bg-amber-50"
           :disabled="loading || bulkCloseCount === 0"
           @click="openBulkModal('close')"
         >
@@ -32,7 +32,7 @@
       </div>
     </div>
 
-    <div class="bg-white border border-gray-100 rounded-2xl shadow-[0_4px_20px_rgba(0,0,0,0.02)] overflow-hidden">
+    <div class="card overflow-hidden">
       <div class="p-5 border-b border-gray-100 grid grid-cols-1 lg:grid-cols-4 gap-3 bg-gray-50/30">
         <div class="relative lg:col-span-2">
           <Search class="w-4 h-4 absolute left-3.5 top-1/2 transform -translate-y-1/2 text-gray-400" />
@@ -40,15 +40,15 @@
             v-model.trim="search"
             type="text" 
             placeholder="Buscar barrio por nombre, código..."
-            class="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-aso-primary/20 focus:border-aso-primary transition-colors"
+            class="field field-search"
           >
         </div>
 
         <div class="relative">
-          <Filter class="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 transform -translate-y-1/2" />
+          <Filter class="w-4 h-4 text-gray-400 z-10 pointer-events-none absolute left-3.5 top-1/2 transform -translate-y-1/2" />
           <select
             v-model="selectedCommuneId"
-            class="w-full py-2.5 pl-9 pr-9 border border-gray-200 rounded-xl text-sm bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-aso-primary/20 focus:border-aso-primary transition-colors appearance-none"
+            class="field pl-10"
           >
             <option value="">Todas las comunas</option>
             <option
@@ -64,7 +64,7 @@
         <div class="flex items-center gap-2">
           <button
             type="button"
-            class="flex-1 lg:flex-initial inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-aso-primary text-white rounded-xl text-sm font-semibold hover:bg-aso-primary-dark transition-colors disabled:opacity-60"
+            class="btn-primary flex-1 lg:flex-initial"
             @click="fetchNeighborhoods"
             :disabled="loading"
           >
@@ -72,7 +72,7 @@
           </button>
           <button
             type="button"
-            class="inline-flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-50 transition-colors"
+            class="btn-secondary"
             @click="clearFilters"
             :disabled="loading"
           >
@@ -82,7 +82,7 @@
       </div>
 
       <div class="overflow-x-auto">
-        <table class="w-full text-left text-sm text-gray-600">
+        <table class="data-table">
           <thead class="bg-gray-50/80 text-gray-500 font-semibold border-b border-gray-100">
             <tr>
               <th class="px-6 py-4 whitespace-nowrap">Comuna</th>
@@ -140,7 +140,7 @@
                   <button
                     v-if="!neighborhood.has_active_election"
                     type="button"
-                    class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold border border-green-200 text-green-700 rounded-lg hover:bg-green-50 transition-colors disabled:opacity-60"
+                    class="btn px-3 py-2 text-xs bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 hover:bg-emerald-100"
                     :disabled="isRowBusy(neighborhood.id)"
                     @click="createElection(neighborhood)"
                   >
@@ -150,7 +150,7 @@
                   <button
                     v-else
                     type="button"
-                    class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold border border-amber-200 text-amber-700 rounded-lg hover:bg-amber-50 transition-colors disabled:opacity-60"
+                    class="btn px-3 py-2 text-xs bg-amber-50 text-amber-700 ring-1 ring-amber-200 hover:bg-amber-100"
                     :disabled="isRowBusy(neighborhood.id)"
                     @click="closeElection(neighborhood)"
                   >
@@ -159,7 +159,7 @@
 
                   <RouterLink
                     :to="`/admin/neighborhood/${neighborhood.id}/results`"
-                    class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                    class="btn-secondary px-3 py-2 text-xs hover:border-aso-primary hover:text-aso-primary"
                   >
                     Ver resultados
                     <ChevronRight class="w-3.5 h-3.5" />
@@ -181,20 +181,20 @@
         <div class="flex items-center gap-2">
           <button
             type="button"
-            class="px-3 py-1.5 border border-gray-200 rounded-lg text-gray-500 hover:bg-gray-50 disabled:opacity-50 transition-colors"
+            class="pager-btn"
             :disabled="loading || pagination.current_page <= 1"
             @click="changePage(pagination.current_page - 1)"
           >
             Anterior
           </button>
 
-          <span class="px-3 py-1.5 rounded-lg bg-gray-50 text-gray-600 text-xs font-semibold border border-gray-200">
+          <span class="px-2 text-sm text-gray-600 whitespace-nowrap">
             Página {{ pagination.current_page }} / {{ pagination.last_page }}
           </span>
 
           <button
             type="button"
-            class="px-3 py-1.5 border border-gray-200 rounded-lg text-gray-500 hover:bg-gray-50 disabled:opacity-50 transition-colors"
+            class="pager-btn"
             :disabled="loading || pagination.current_page >= pagination.last_page"
             @click="changePage(pagination.current_page + 1)"
           >
@@ -205,11 +205,11 @@
     </div>
     <Teleport to="body">
       <div v-if="confirmState.open" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/50 backdrop-blur-sm">
-        <div class="w-full max-w-md rounded-3xl bg-white shadow-2xl border border-gray-100 overflow-hidden">
+        <div class="w-full max-w-md rounded-3xl bg-white shadow-2xl ring-1 ring-black/5 overflow-hidden animate-rise">
           <div class="px-6 py-5 border-b border-gray-100 flex items-start justify-between gap-4">
             <div>
               <p class="text-xs font-bold uppercase tracking-[0.2em] text-gray-400">Confirmación</p>
-              <h2 class="mt-1 text-lg font-bold text-gray-900">{{ confirmState.title }}</h2>
+              <h2 class="mt-1 font-display text-xl font-bold text-gray-900">{{ confirmState.title }}</h2>
             </div>
             <button type="button" class="text-gray-400 hover:text-gray-700" @click="closeConfirmModal">
               <X class="w-5 h-5" />
@@ -237,7 +237,7 @@
           <div class="px-6 py-4 bg-gray-50 flex items-center justify-end gap-3">
             <button
               type="button"
-              class="px-4 py-2 rounded-xl border border-gray-200 text-sm font-semibold text-gray-700 hover:bg-white transition-colors"
+              class="btn-secondary"
               @click="closeConfirmModal"
             >
               Cancelar

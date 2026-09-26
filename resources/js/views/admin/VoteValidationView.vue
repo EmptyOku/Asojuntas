@@ -7,7 +7,7 @@
         </router-link>
         <div>
           <div class="flex flex-wrap items-center gap-2 sm:gap-3">
-            <h1 class="text-xl lg:text-2xl font-bold text-gray-900 tracking-tight">Auditoría Acta #{{ route.params.id }}</h1>
+            <h1 class="page-title">Auditoría Acta #{{ route.params.id }}</h1>
             <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] lg:text-xs font-semibold bg-orange-50 text-orange-700 border border-orange-100">
               <span class="w-1.5 h-1.5 rounded-full bg-orange-500" :class="{ 'animate-pulse': detail.status !== 'approved' }"></span>
               {{ statusLabel }}
@@ -65,7 +65,7 @@
         </div>
       </div>
 
-      <div class="w-full lg:w-1/2 bg-white rounded-2xl border border-gray-100 shadow-[0_4px_20px_rgba(0,0,0,0.02)] flex flex-col h-[50vh] lg:h-full overflow-hidden">
+      <div class="w-full lg:w-1/2 card flex flex-col h-[50vh] lg:h-full overflow-hidden">
         <div class="p-4 lg:p-5 border-b border-gray-100 bg-gray-50/50 shrink-0">
           <h2 class="text-base lg:text-lg font-bold text-gray-900">Extracción de Escrutinio</h2>
           <p class="text-[10px] lg:text-xs text-gray-500 mt-1">Verifica los valores contra la imagen y confirma la auditoría.</p>
@@ -137,8 +137,16 @@ const detail = ref({
 
 const editableBlocks = ref([]);
 const currentImageIndex = ref(0);
-const AUTO_REFRESH_MS = 5000;
+// Refresco en segundo plano mientras el OCR termina de procesar el acta. Con
+// 5s y una BD lenta las peticiones se encimaban y bloqueaban el servidor.
+const AUTO_REFRESH_MS = 20000;
 let autoRefreshTimer = null;
+let refreshInFlight = false;
+
+// Bloques tal como llegaron del servidor la última vez: si el auditor ya editó
+// alguna cifra, el refresco no debe pisar su trabajo.
+let lastLoadedBlocksJson = '[]';
+const hasUnsavedEdits = () => JSON.stringify(editableBlocks.value || []) !== lastLoadedBlocksJson;
 
 const files = computed(() => detail.value.files || []);
 const currentFile = computed(() => files.value[currentImageIndex.value] || null);
@@ -203,11 +211,17 @@ const startAutoRefresh = () => {
   stopAutoRefresh();
 
   autoRefreshTimer = setInterval(async () => {
-    if (isSubmitting.value || isLoading.value || isFinalStatus.value) {
+    // Una sola petición a la vez, y nada si la pestaña está oculta.
+    if (refreshInFlight || document.hidden || isSubmitting.value || isLoading.value || isFinalStatus.value) {
       return;
     }
 
-    await fetchDetail({ silent: true });
+    refreshInFlight = true;
+    try {
+      await fetchDetail({ silent: true });
+    } finally {
+      refreshInFlight = false;
+    }
   }, AUTO_REFRESH_MS);
 };
 
@@ -221,9 +235,11 @@ const fetchDetail = async ({ silent = false } = {}) => {
     const { data } = await axios.get(`/admin/audit-records/${route.params.id}`, {
       skipGlobalLoading: true,
     });
+    const editsPending = silent && hasUnsavedEdits();
     detail.value = data?.data || detail.value;
-    if (!isSubmitting.value) {
-      editableBlocks.value = JSON.parse(JSON.stringify(detail.value.blocks || []));
+    if (!isSubmitting.value && !editsPending) {
+      lastLoadedBlocksJson = JSON.stringify(detail.value.blocks || []);
+      editableBlocks.value = JSON.parse(lastLoadedBlocksJson);
     }
     if (!silent) {
       currentImageIndex.value = 0;

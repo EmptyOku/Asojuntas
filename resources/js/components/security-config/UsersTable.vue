@@ -1,73 +1,93 @@
 <template>
-  <section class="bg-white border border-gray-100 rounded-2xl p-5 sm:p-6 shadow-sm">
-    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-      <h2 class="text-base sm:text-lg font-semibold text-gray-900">Listado de Usuarios</h2>
-      <input
-        v-model.trim="search"
-        @input="handleUsersSearchInput"
-        class="w-full sm:w-80 px-3 py-2 rounded-lg border border-gray-200 text-sm"
-        placeholder="Buscar por usuario, correo, documento, barrio o comuna..."
-      />
+  <section class="card overflow-hidden">
+    <div class="card-header">
+      <div>
+        <h2 class="card-title">Listado de usuarios</h2>
+        <p class="card-subtitle">{{ usersTotal }} {{ usersTotal === 1 ? 'registro' : 'registros' }}</p>
+      </div>
+      <div class="relative w-full sm:w-80">
+        <Search class="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+        <input
+          v-model.trim="search"
+          @input="handleUsersSearchInput"
+          class="field field-search"
+          placeholder="Buscar usuario, correo o barrio"
+        />
+      </div>
     </div>
 
-    <div class="overflow-auto border border-gray-100 rounded-xl">
-      <table class="min-w-full text-sm">
-        <thead class="bg-gray-50 text-gray-600">
+    <div class="table-wrap rounded-none">
+      <table class="data-table">
+        <thead>
           <tr>
-            <th class="text-left font-medium px-3 py-2.5">Usuario</th>
-            <th class="text-left font-medium px-3 py-2.5">Correo</th>
-            <th class="text-left font-medium px-3 py-2.5">Barrio</th>
-            <th class="text-left font-medium px-3 py-2.5">Mesa Sugerida</th>
-            <th class="text-left font-medium px-3 py-2.5">Estado</th>
-            <th class="text-left font-medium px-3 py-2.5">Roles</th>
-            <th class="text-left font-medium px-3 py-2.5">Acción</th>
+            <th>Usuario</th>
+            <th>Barrio / Sector</th>
+            <th>Mesa sugerida</th>
+            <th>Estado</th>
+            <th>Rol</th>
+            <th class="text-right">Acciones</th>
           </tr>
         </thead>
         <tbody>
-          <tr v-for="user in users" :key="user.id" class="border-t border-gray-100">
-            <td class="px-3 py-2.5 text-gray-900">{{ user.username }}</td>
-            <td class="px-3 py-2.5 text-gray-700">{{ user.email }}</td>
-            <td class="px-3 py-2.5 text-gray-700">
-              <span v-if="user.person?.neighborhood">{{ user.person.neighborhood.name }}</span>
+          <tr v-for="user in users" :key="user.id" class="row-enter">
+            <td>
+              <div class="flex items-center gap-3 min-w-0">
+                <div class="avatar" :class="{ 'grayscale opacity-60': !user.is_active }">{{ initialsOf(user) }}</div>
+                <div class="min-w-0">
+                  <p class="font-semibold text-gray-900 truncate">{{ user.username }}</p>
+                  <p class="text-xs text-gray-500 truncate">{{ user.email }}</p>
+                </div>
+              </div>
+            </td>
+            <td>
+              <span v-if="user.person?.neighborhood" class="text-gray-800">{{ user.person.neighborhood.name }}</span>
               <span v-else class="text-gray-400">Sin asignar</span>
             </td>
-            <td class="px-3 py-2.5 text-gray-700">
+            <td>
               <template v-if="suggestedTableForUser(user)">
-                {{ suggestedTableForUser(user).name }} ({{ suggestedTableForUser(user).code }})
+                <span class="text-gray-800">{{ suggestedTableForUser(user).name }}</span>
+                <span class="text-xs text-gray-400"> · {{ suggestedTableForUser(user).code }}</span>
               </template>
               <span v-else class="text-gray-400">Sin mesa activa</span>
             </td>
-            <td class="px-3 py-2.5">
-              <span class="text-xs px-2 py-1 rounded-md" :class="user.is_active ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-700'">
+            <td>
+              <span :class="user.is_active ? 'badge-green' : 'badge-gray'">
+                <span class="badge-dot"></span>
                 {{ user.is_active ? 'Activo' : 'Inactivo' }}
               </span>
             </td>
-            <td class="px-3 py-2.5">
-              <div class="flex flex-wrap gap-1.5">
-                <span v-for="role in user.roles || []" :key="role.id" class="text-xs px-2 py-1 rounded-md bg-blue-50 text-blue-700 border border-blue-200">
-                  {{ role.display_name }}
-                </span>
-              </div>
+            <td>
+              <span v-if="(user.roles || []).length" class="text-gray-700">
+                {{ user.roles.map((role) => role.display_name).join(', ') }}
+              </span>
+              <span v-else class="text-gray-400">Sin rol</span>
             </td>
-            <td class="px-3 py-2.5">
-              <div class="flex flex-wrap gap-2">
-                <button v-can="'roles.assign'" type="button" class="text-xs px-3 py-1.5 rounded-md bg-gray-900 text-white hover:bg-black" @click="$emit('edit-roles', user)">Editar Roles</button>
-                <button v-can="'users.update'" type="button" class="text-xs px-3 py-1.5 rounded-md border border-gray-200 text-gray-700 hover:bg-gray-50" @click="$emit('edit-user', user)">Editar Usuario</button>
-                <button v-can="'users.update'" type="button" class="text-xs px-3 py-1.5 rounded-md border border-amber-200 text-amber-700 hover:bg-amber-50" @click="$emit('reset-password', user)">Restablecer Contraseña</button>
+            <td>
+              <div class="flex justify-end gap-2">
+                <button v-can="'users.update'" type="button" class="icon-btn-blue" title="Editar usuario" aria-label="Editar usuario" @click="$emit('edit-user', user)">
+                  <Pencil class="w-4 h-4" />
+                </button>
+                <button v-can="'roles.assign'" type="button" class="icon-btn-amber" title="Editar roles" aria-label="Editar roles" @click="$emit('edit-roles', user)">
+                  <ShieldCheck class="w-4 h-4" />
+                </button>
+                <button v-can="'users.update'" type="button" class="icon-btn-gray" title="Restablecer contraseña" aria-label="Restablecer contraseña" @click="$emit('reset-password', user)">
+                  <KeyRound class="w-4 h-4" />
+                </button>
                 <button
                   v-can="'users.update'"
                   type="button"
-                  class="text-xs px-3 py-1.5 rounded-md border"
-                  :class="user.is_active ? 'border-red-200 text-red-700 hover:bg-red-50' : 'border-emerald-200 text-emerald-700 hover:bg-emerald-50'"
+                  :class="user.is_active ? 'icon-btn-red' : 'icon-btn-green'"
+                  :title="user.is_active ? 'Deshabilitar' : 'Habilitar'"
+                  :aria-label="user.is_active ? 'Deshabilitar usuario' : 'Habilitar usuario'"
                   @click="askToggleUser(user)"
                 >
-                  {{ user.is_active ? 'Deshabilitar' : 'Habilitar' }}
+                  <Power class="w-4 h-4" />
                 </button>
               </div>
             </td>
           </tr>
           <tr v-if="!users.length">
-            <td colspan="7" class="px-3 py-8 text-center text-sm text-gray-400">
+            <td colspan="6" class="py-10 text-center text-sm text-gray-400">
               No se encontraron usuarios{{ search ? ' para "' + search + '"' : '' }}.
             </td>
           </tr>
@@ -75,38 +95,40 @@
       </table>
     </div>
 
-    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-4">
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-5 sm:px-6 py-4 border-t border-gray-100 bg-gray-50/50">
       <p class="text-sm text-gray-500">
-        <template v-if="usersTotal > 0">Mostrando {{ usersFrom }}–{{ usersTo }} de {{ usersTotal }}</template>
+        <template v-if="usersTotal > 0">Mostrando <span class="font-semibold text-gray-700">{{ usersFrom }}–{{ usersTo }}</span> de {{ usersTotal }}</template>
         <template v-else>Sin resultados</template>
       </p>
       <div class="flex items-center gap-3">
         <label class="flex items-center gap-2 text-sm text-gray-600">
           Mostrar
-          <select v-model.number="perPageModel" class="px-2 py-1.5 rounded-lg border border-gray-200 bg-white text-sm">
+          <select v-model.number="perPageModel" class="field w-20 py-1.5">
             <option :value="10">10</option>
-            <option :value="20">20</option>
-            <option :value="30">30</option>
+            <option :value="15">15</option>
+            <option :value="25">25</option>
             <option :value="50">50</option>
           </select>
         </label>
-        <div class="flex items-center gap-1">
+        <div class="flex items-center gap-1.5">
           <button
             type="button"
-            @click="$emit('page-change', usersCurrentPage - 1)"
+            class="pager-btn"
+            aria-label="Página anterior"
             :disabled="usersCurrentPage <= 1"
-            class="px-3 py-1.5 rounded-lg border border-gray-200 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+            @click="$emit('page-change', usersCurrentPage - 1)"
           >
-            Anterior
+            <ChevronLeft class="w-4 h-4" />
           </button>
-          <span class="px-2 text-sm text-gray-600 whitespace-nowrap">Página {{ usersCurrentPage }} de {{ usersLastPage }}</span>
+          <span class="px-2 text-sm text-gray-600 whitespace-nowrap">{{ usersCurrentPage }} / {{ usersLastPage }}</span>
           <button
             type="button"
-            @click="$emit('page-change', usersCurrentPage + 1)"
+            class="pager-btn"
+            aria-label="Página siguiente"
             :disabled="usersCurrentPage >= usersLastPage"
-            class="px-3 py-1.5 rounded-lg border border-gray-200 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+            @click="$emit('page-change', usersCurrentPage + 1)"
           >
-            Siguiente
+            <ChevronRight class="w-4 h-4" />
           </button>
         </div>
       </div>
@@ -127,12 +149,25 @@
 
 <script setup>
 import { computed, ref } from 'vue';
+import { ChevronLeft, ChevronRight, KeyRound, Pencil, Power, Search, ShieldCheck } from 'lucide-vue-next';
 import axios from '@/services/axios';
 import ConfirmModal from '@/components/ConfirmModal.vue';
 
+// Iniciales para el avatar: nombre de la persona si existe, si no el usuario.
+const initialsOf = (user) => {
+  const person = user?.person;
+  const source = [person?.first_name, person?.last_name].filter(Boolean).join(' ') || user?.username || '?';
+  return source
+    .split(/[\s._-]+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join('');
+};
+
 const props = defineProps({
   users: { type: Array, default: () => [] },
-  usersPerPage: { type: Number, default: 20 },
+  usersPerPage: { type: Number, default: 10 },
   usersCurrentPage: { type: Number, default: 1 },
   usersLastPage: { type: Number, default: 1 },
   usersTotal: { type: Number, default: 0 },

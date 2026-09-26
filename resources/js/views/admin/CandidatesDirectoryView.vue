@@ -2,8 +2,8 @@
   <div class="space-y-6">
     <div class="flex items-center justify-between border-b border-gray-100 pb-4">
       <div>
-        <h1 class="text-2xl font-bold text-gray-900">Directorio de Juntas de Acción Comunal</h1>
-        <p class="text-gray-500 mt-1">
+        <h1 class="page-title">Directorio de Juntas de Acción Comunal</h1>
+        <p class="page-subtitle">
           Listado paginado. Total registros: <span class="font-bold text-aso-primary">{{ pagination.total }}</span>
         </p>
       </div>
@@ -37,7 +37,7 @@
       <button
         @click="fetchBarrios(1)"
         :disabled="loading"
-        class="px-6 py-2 bg-aso-primary text-white font-semibold rounded-lg hover:bg-aso-primary-dark transition-colors disabled:opacity-60"
+        class="btn-primary px-6"
       >
         Buscar
       </button>
@@ -136,7 +136,7 @@
             <div>
               <p class="text-sm font-semibold text-gray-900 mb-2">Planchas</p>
               <div class="overflow-x-auto">
-                <table class="min-w-full text-sm border border-gray-200 rounded-lg overflow-hidden">
+                <table class="data-table data-table--compact border border-gray-200 rounded-xl overflow-hidden">
                   <thead class="bg-gray-50 text-gray-600">
                     <tr>
                       <th class="text-left px-3 py-2 border-b border-gray-200">Plancha</th>
@@ -179,7 +179,7 @@
                     </p>
                   </div>
                   <div class="overflow-x-auto">
-                    <table class="min-w-full text-sm">
+                    <table class="data-table data-table--compact">
                       <thead class="bg-white text-gray-600">
                         <tr>
                           <th class="text-left px-3 py-2 border-b border-gray-200">Plancha</th>
@@ -285,7 +285,7 @@
             <div class="flex justify-end pt-4 border-t border-gray-100">
               <router-link
                 :to="{ name: 'admin.neighborhood.results', params: { id: barrio.id } }"
-                class="inline-flex items-center gap-2 px-5 py-2.5 bg-aso-primary text-white text-sm font-bold rounded-lg hover:bg-aso-primary-dark transition-colors shadow-sm"
+                class="btn-primary px-5"
               >
                 Ver resultados totales
                 <ArrowRight class="w-4 h-4" />

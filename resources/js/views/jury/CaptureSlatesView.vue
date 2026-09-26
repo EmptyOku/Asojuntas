@@ -8,7 +8,7 @@
       <h2 class="text-xl font-bold text-gray-900">Capturar {{ isPlancha ? 'Planchas' : 'Escrutinio' }}</h2>
     </div>
 
-    <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex-1 flex flex-col">
+    <div class="card p-6 flex-1 flex flex-col">
 
       <input type="file" accept="image/*" ref="fileInputRef" :capture="dynamicCapture" class="hidden" @change="handleImageUpload"
 >
@@ -75,7 +75,7 @@
           </button>
         </div>
        
-        <button @click="enviarActa" :disabled="isUploading || !canSendPackage" class="w-full py-4 bg-aso-primary text-white font-bold rounded-xl shadow-md hover:bg-aso-primary-dark transition-all flex items-center justify-center gap-2 disabled:opacity-70 mt-4 shrink-0">
+        <button @click="enviarActa" :disabled="isUploading || !canSendPackage" class="btn-primary w-full py-4 mt-4 shrink-0">
           <template v-if="isUploading">
             <Loader2 class="w-5 h-5 animate-spin" /> Encolando acta...
           </template>

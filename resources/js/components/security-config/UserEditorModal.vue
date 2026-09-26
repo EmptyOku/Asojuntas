@@ -1,11 +1,11 @@
 <template>
   <Teleport to="body">
     <div v-if="user" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/50 backdrop-blur-sm">
-      <div class="w-full max-w-lg rounded-2xl bg-white shadow-2xl border border-gray-100 overflow-hidden">
+      <div class="w-full max-w-lg rounded-3xl bg-white shadow-2xl ring-1 ring-black/5 overflow-hidden animate-rise">
         <div class="px-6 py-5 border-b border-gray-100 flex items-start justify-between gap-4">
           <div>
             <p class="text-xs font-bold uppercase tracking-[0.2em] text-gray-400">Editar Usuario</p>
-            <h2 class="mt-1 text-lg font-bold text-gray-900">{{ user.username }}</h2>
+            <h2 class="mt-1 font-display text-xl font-bold text-gray-900">{{ user.username }}</h2>
           </div>
           <button type="button" class="text-gray-400 hover:text-gray-700" @click="$emit('close')">
             <X class="w-5 h-5" />
@@ -19,8 +19,8 @@
             <p class="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">Datos de la persona</p>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label class="block text-sm text-gray-700 mb-1">Tipo de Doc.</label>
-                <select v-model="editingUserForm.document_type_id" required class="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm">
+                <label class="field-label">Tipo de Doc.</label>
+                <select v-model="editingUserForm.document_type_id" required class="field">
                   <option value="" disabled>Seleccione...</option>
                   <option value="1">Cédula de Ciudadanía (CC)</option>
                   <option value="2">Tarjeta de Identidad (TI)</option>
@@ -28,24 +28,24 @@
                 </select>
               </div>
               <div>
-                <label class="block text-sm text-gray-700 mb-1">Número de Doc.</label>
-                <input v-model="editingUserForm.document_number" required type="text" class="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm" />
+                <label class="field-label">Número de Doc.</label>
+                <input v-model="editingUserForm.document_number" required type="text" class="field" />
               </div>
               <div>
-                <label class="block text-sm text-gray-700 mb-1">Primer Nombre</label>
-                <input v-model="editingUserForm.first_name" required type="text" class="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm" />
+                <label class="field-label">Primer Nombre</label>
+                <input v-model="editingUserForm.first_name" required type="text" class="field" />
               </div>
               <div>
-                <label class="block text-sm text-gray-700 mb-1">Segundo Nombre</label>
-                <input v-model="editingUserForm.middle_name" type="text" class="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm" placeholder="Opcional" />
+                <label class="field-label">Segundo Nombre</label>
+                <input v-model="editingUserForm.middle_name" type="text" class="field" placeholder="Opcional" />
               </div>
               <div>
-                <label class="block text-sm text-gray-700 mb-1">Primer Apellido</label>
-                <input v-model="editingUserForm.last_name" required type="text" class="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm" />
+                <label class="field-label">Primer Apellido</label>
+                <input v-model="editingUserForm.last_name" required type="text" class="field" />
               </div>
               <div>
-                <label class="block text-sm text-gray-700 mb-1">Segundo Apellido</label>
-                <input v-model="editingUserForm.second_last_name" type="text" class="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm" placeholder="Opcional" />
+                <label class="field-label">Segundo Apellido</label>
+                <input v-model="editingUserForm.second_last_name" type="text" class="field" placeholder="Opcional" />
               </div>
             </div>
           </div>
@@ -54,8 +54,8 @@
             <p class="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">Ubicación</p>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label class="block text-sm text-gray-700 mb-1">Comuna</label>
-                <select v-model="editorSelectedCommune" @change="handleEditorCommuneChange" class="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm">
+                <label class="field-label">Comuna</label>
+                <select v-model="editorSelectedCommune" @change="handleEditorCommuneChange" class="field">
                   <option value="">Seleccione una comuna...</option>
                   <option v-for="item in communes" :key="item.id" :value="String(item.id)">
                     {{ item.name }}
@@ -63,12 +63,12 @@
                 </select>
               </div>
               <div>
-                <label class="block text-sm text-gray-700 mb-1">Barrio</label>
+                <label class="field-label">Barrio</label>
                 <div class="relative">
                   <select
                     v-model="editingUserForm.neighborhood_id"
                     :disabled="!editorSelectedCommune || loadingEditorNeighborhoods"
-                    class="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm disabled:opacity-60"
+                    class="field disabled:opacity-60"
                   >
                     <option value="">{{ editorSelectedCommune ? 'Sin asignar' : 'Primero seleccione una comuna...' }}</option>
                     <option v-for="item in editorNeighborhoods" :key="item.id" :value="String(item.id)">
@@ -86,24 +86,24 @@
             <p class="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">Cuenta</p>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label class="block text-sm text-gray-700 mb-1">Usuario</label>
-                <input v-model="editingUserForm.username" required type="text" class="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm" />
+                <label class="field-label">Usuario</label>
+                <input v-model="editingUserForm.username" required type="text" class="field" />
               </div>
               <div>
-                <label class="block text-sm text-gray-700 mb-1">Correo</label>
-                <input v-model="editingUserForm.email" required type="email" class="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm" />
+                <label class="field-label">Correo</label>
+                <input v-model="editingUserForm.email" required type="email" class="field" />
               </div>
             </div>
           </div>
         </div>
 
         <div class="px-6 py-4 bg-gray-50 flex items-center justify-end gap-3">
-          <button type="button" class="px-4 py-2 rounded-xl border border-gray-200 text-sm font-semibold text-gray-700 hover:bg-white transition-colors" @click="$emit('close')">
+          <button type="button" class="btn-secondary" @click="$emit('close')">
             Cancelar
           </button>
           <button
             type="button"
-            class="px-4 py-2 rounded-xl text-sm font-semibold text-white bg-aso-primary hover:bg-aso-primary-dark transition-colors disabled:opacity-60"
+            class="btn-primary"
             :disabled="loading || !editingUserForm.document_type_id || !editingUserForm.document_number || !editingUserForm.first_name || !editingUserForm.last_name || !editingUserForm.username || !editingUserForm.email"
             @click="saveUserData"
           >

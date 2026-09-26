@@ -9,7 +9,7 @@
       </div>
     </div>
 
-    <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 space-y-4">
+    <div class="card p-6 space-y-4">
       <div class="relative">
         <label class="text-xs font-black text-gray-400 uppercase tracking-widest mb-2 block">1. Seleccionar Barrio de Girardot</label>
         <div class="relative">
@@ -62,7 +62,7 @@
     </div>
 
     <div 
-      class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex-1 flex flex-col transition-opacity duration-300"
+      class="card p-6 flex-1 flex flex-col transition-opacity duration-300"
       :class="{ 'opacity-40 pointer-events-none': !selectedNeighborhood }"
     >
       <div v-if="!selectedNeighborhood" class="absolute inset-0 z-10 flex items-center justify-center">
@@ -103,7 +103,7 @@
           </label>
         </div>
 
-        <button @click="extractPlanchas" :disabled="isExtracting" class="w-full py-4 bg-aso-primary text-white font-bold rounded-xl shadow-md hover:bg-aso-primary-dark transition-all flex items-center justify-center gap-2 disabled:opacity-70 mt-4 shrink-0">
+        <button @click="extractPlanchas" :disabled="isExtracting" class="btn-primary w-full py-4 mt-4 shrink-0">
           <template v-if="isExtracting">
             <Loader2 class="w-5 h-5 animate-spin" /> Extrayendo...
           </template>

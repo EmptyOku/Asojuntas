@@ -1,14 +1,16 @@
 <template>
   <div class="space-y-6">
-    <nav class="flex items-center gap-2 border-b border-gray-200 overflow-x-auto" aria-label="Administración">
+    <nav class="flex items-center gap-1 p-1 rounded-2xl bg-white border border-gray-200/70 overflow-x-auto w-fit max-w-full shadow-sm" aria-label="Administración">
       <button
         v-for="tab in visibleTabs"
         :key="tab.key"
         type="button"
-        class="px-4 py-3 text-sm font-semibold border-b-2 whitespace-nowrap"
-        :class="activeTab === tab.key ? 'border-aso-primary text-aso-primary' : 'border-transparent text-gray-500'"
+        class="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold whitespace-nowrap transition-all duration-200"
+        :class="activeTab === tab.key ? 'bg-aso-primary text-white shadow-md shadow-aso-primary/25' : 'text-gray-500 hover:text-gray-800 hover:bg-gray-100'"
+        :aria-current="activeTab === tab.key ? 'page' : undefined"
         @click="activeTab = tab.key"
       >
+        <component :is="tab.icon" class="w-4 h-4" />
         {{ tab.label }}
       </button>
     </nav>
@@ -22,7 +24,7 @@
       v-show="activeTab === 'create'"
       :communes="communes"
       :roles="roles"
-      @reload="loadAll"
+      @reload="markListsStale"
       @show-result="showResult"
       @created="activeTab = 'users'"
     />
@@ -37,16 +39,16 @@
     </template>
 
     <template v-if="activeTab === 'persons'">
-      <section class="bg-white border border-gray-100 rounded-2xl p-5 sm:p-6 shadow-sm">
+      <section class="card p-5 sm:p-6">
         <div class="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h1 class="text-xl sm:text-2xl font-semibold text-gray-900">Gestión de Personas</h1>
-            <p class="text-sm text-gray-500 mt-1">Consulta y edita las personas registradas.</p>
+            <h1 class="page-title">Gestión de Personas</h1>
+            <p class="page-subtitle">Consulta y edita las personas registradas.</p>
           </div>
           <button
             v-can="'users.create'"
             type="button"
-            class="px-3 py-2 text-sm font-medium rounded-lg bg-aso-primary text-white hover:bg-aso-primary-dark transition-colors"
+            class="btn-primary px-3"
             @click="creatingPersonOpen = true"
           >
             Crear Persona
@@ -70,25 +72,26 @@
     </template>
 
     <template v-if="activeTab === 'users'">
-      <section class="bg-white border border-gray-100 rounded-2xl p-5 sm:p-6 shadow-sm">
+      <section class="card p-5 sm:p-6">
         <div class="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h1 class="text-xl sm:text-2xl font-semibold text-gray-900">Gestión de Usuarios</h1>
-            <p class="text-sm text-gray-500 mt-1">Administra cuentas, roles y estado de acceso.</p>
+            <h1 class="page-title">Gestión de Usuarios</h1>
+            <p class="page-subtitle">Administra cuentas, roles y estado de acceso.</p>
           </div>
           <div class="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              class="px-3 py-2 text-sm font-medium rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 transition-colors"
-              @click="loadAll"
+              class="btn-secondary px-3"
+              @click="reloadActiveTab"
               :disabled="loading"
             >
+              <RefreshCw class="w-4 h-4" :class="{ 'animate-spin': loading }" />
               Recargar
             </button>
             <button
               v-can="'users.create'"
               type="button"
-              class="px-3 py-2 text-sm font-medium rounded-lg bg-aso-primary text-white hover:bg-aso-primary-dark transition-colors"
+              class="btn-primary px-3"
               @click="creatingUserOpen = true"
             >
               Crear Usuario
@@ -140,7 +143,8 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
+import { IdCard, RefreshCw, ShieldCheck, UserPlus, Users } from 'lucide-vue-next';
 import axios from '@/services/axios';
 import { useAuthStore } from '@/stores/auth';
 import UserCreationWizard from '@/components/security-config/UserCreationWizard.vue';
@@ -159,11 +163,14 @@ const authStore = useAuthStore();
 
 // Cada pestaña se muestra solo con el permiso que exige su API.
 const TABS = [
-  { key: 'create', label: 'Creación de usuarios', permission: 'users.create' },
-  { key: 'roles', label: 'Gestión de roles y permisos', permission: 'roles.view' },
-  { key: 'persons', label: 'Gestión de personas', permission: 'users.view' },
-  { key: 'users', label: 'Gestión de usuarios', permission: 'users.view' },
+  { key: 'create', label: 'Creación de usuarios', permission: 'users.create', icon: UserPlus },
+  { key: 'roles', label: 'Roles y permisos', permission: 'roles.view', icon: ShieldCheck },
+  { key: 'persons', label: 'Personas', permission: 'users.view', icon: IdCard },
+  { key: 'users', label: 'Usuarios', permission: 'users.view', icon: Users },
 ];
+
+// Registros por página de los listados de personas y usuarios.
+const DEFAULT_PER_PAGE = 10;
 const visibleTabs = computed(() => TABS.filter((tab) => authStore.can(tab.permission)));
 
 const loading = ref(false);
@@ -178,7 +185,7 @@ const communes = ref([]);
 const assignmentContext = ref([]);
 
 const search = ref('');
-const usersPerPage = ref(20);
+const usersPerPage = ref(DEFAULT_PER_PAGE);
 const usersCurrentPage = ref(1);
 const usersLastPage = ref(1);
 const usersTotal = ref(0);
@@ -186,7 +193,7 @@ const usersFrom = ref(0);
 const usersTo = ref(0);
 
 const personsSearch = ref('');
-const personsPerPage = ref(20);
+const personsPerPage = ref(DEFAULT_PER_PAGE);
 const personsCurrentPage = ref(1);
 const personsLastPage = ref(1);
 const personsTotal = ref(0);
@@ -302,47 +309,57 @@ const loadAssignmentContext = async () => {
   assignmentContext.value = Array.isArray(data.data) ? data.data : [];
 };
 
-const loadAll = async () => {
-  loading.value = true;
-  errorMessage.value = '';
-  try {
-    // Solo se pide lo que el rol puede ver: evita 403 (y el refresco de permisos que disparan).
-    const canViewRoles = authStore.can('roles.view');
-    const canViewUsers = authStore.can('users.view');
-    await Promise.all([
-      loadCommunes(),
-      canViewRoles && loadRoles().catch((e) => {
-        console.error('Error loading roles:', e?.response?.status, e?.message);
-        throw e;
-      }),
-      canViewRoles && loadPermissions(),
-      canViewUsers && loadUsers().catch((e) => {
-        console.error('Error loading users:', e?.response?.status, e?.message);
-        throw e;
-      }),
-      canViewUsers && loadAssignmentContext().catch((e) => {
-        console.error('Error loading assignment context:', e?.response?.status, e?.message);
-      }),
-    ]);
-  } catch (error) {
-    console.error('Full error:', error);
-    errorMessage.value = 'No fue posible cargar la información inicial.';
-  }
-
-  // Se carga después del bloque anterior (no dentro del mismo Promise.all) para no sumar
-  // una petición concurrente adicional: en este entorno de desarrollo el servidor PHP es de
-  // un solo hilo y eso ya provocaba timeouts de 30s incluso antes de agregar este listado.
-  try {
-    if (authStore.can('users.view')) await loadPersons();
-  } catch (error) {
-    console.error('Error loading persons:', error?.response?.status, error?.message);
-    errorMessage.value = errorMessage.value || 'No fue posible cargar el listado de personas.';
-  } finally {
-    loading.value = false;
-  }
+// Cada pestaña pide solo sus datos, la primera vez que se abre (antes se pedían
+// seis listados al entrar y otra vez tras crear un usuario). En desarrollo el
+// servidor PHP atiende una petición a la vez, así que se piden en serie.
+const LOADERS = {
+  communes: { load: loadCommunes },
+  roles: { load: loadRoles, permission: 'roles.view' },
+  permissions: { load: loadPermissions, permission: 'roles.view' },
+  users: { load: loadUsers, permission: 'users.view' },
+  assignment: { load: loadAssignmentContext, permission: 'users.view' },
+  persons: { load: loadPersons, permission: 'users.view' },
 };
 
-onMounted(() => {
-  loadAll();
-});
+// RoleCatalogEditor carga sus propios roles; aquí solo necesita los permisos.
+const TAB_DATA = {
+  create: ['communes', 'roles'],
+  roles: ['permissions'],
+  persons: ['persons', 'communes'],
+  users: ['users', 'assignment', 'roles', 'communes'],
+};
+
+const loaded = new Set();
+
+const ensureTabData = async (tabKey, { force = false } = {}) => {
+  // Solo se pide lo que el rol puede ver: evita 403 (y el refresco de permisos que disparan).
+  const keys = (TAB_DATA[tabKey] ?? []).filter((key) => {
+    const permission = LOADERS[key].permission;
+    return (force || !loaded.has(key)) && (!permission || authStore.can(permission));
+  });
+  if (!keys.length) return;
+
+  loading.value = true;
+  errorMessage.value = '';
+  for (const key of keys) {
+    try {
+      await LOADERS[key].load();
+      loaded.add(key);
+    } catch (error) {
+      console.error(`Error cargando ${key}:`, error?.response?.status, error?.message);
+      errorMessage.value = 'No fue posible cargar parte de la información. Intenta recargar.';
+    }
+  }
+  loading.value = false;
+};
+
+const reloadActiveTab = () => ensureTabData(activeTab.value, { force: true });
+
+// Tras crear una persona y su cuenta, los listados quedan viejos: se vuelven a
+// pedir cuando se abra su pestaña (el asistente lleva directo a Usuarios).
+const markListsStale = () => {
+  ['users', 'persons', 'assignment'].forEach((key) => loaded.delete(key));
+};
+
+watch(activeTab, (tab) => ensureTabData(tab), { immediate: true });
 </script>

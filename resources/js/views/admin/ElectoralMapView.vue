@@ -2,7 +2,7 @@
   <div class="space-y-6">
     <div class="flex flex-wrap items-start justify-between gap-3">
       <div>
-        <h1 class="text-2xl font-bold text-gray-900">Mapa Electoral</h1>
+        <h1 class="page-title">Mapa Electoral</h1>
         <p class="text-sm text-gray-500">Comunas de Girardot. Haz clic en una comuna para ver sus JAC y los resultados del barrio.</p>
       </div>
       <div class="flex flex-col items-end gap-1.5">
@@ -32,8 +32,83 @@
 
     <div class="flex flex-col lg:flex-row gap-4">
       <!-- Mapa interactivo (izquierda) -->
-      <div class="relative flex-1 min-h-[560px] rounded-xl overflow-hidden border border-gray-200 shadow-sm">
+      <div ref="mapWrapEl" class="relative flex-1 min-h-[560px] rounded-2xl overflow-hidden border border-gray-200 shadow-sm bg-white [&:fullscreen]:rounded-none [&:fullscreen]:border-0">
         <div ref="mapEl" class="absolute inset-0 z-0"></div>
+
+        <!-- Controles propios (arriba a la derecha) -->
+        <div v-if="!loading && !error" class="absolute top-3 right-3 z-[500] flex flex-col gap-2">
+          <button
+            type="button"
+            class="map-ctrl"
+            title="Ver todo Girardot"
+            aria-label="Ver todo Girardot"
+            @click="clearSelection"
+          >
+            <Maximize class="w-4 h-4" />
+          </button>
+          <button
+            type="button"
+            class="map-ctrl"
+            :title="isFullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'"
+            :aria-label="isFullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'"
+            @click="toggleFullscreen"
+          >
+            <Minimize2 v-if="isFullscreen" class="w-4 h-4" />
+            <Maximize2 v-else class="w-4 h-4" />
+          </button>
+        </div>
+
+        <!-- Leyenda flotante: cambia segun lo que se esta viendo -->
+        <div
+          v-if="!loading && !error"
+          class="absolute bottom-6 left-3 z-[500] w-56 rounded-2xl bg-white/95 backdrop-blur px-4 py-3 shadow-lg ring-1 ring-black/5"
+        >
+          <button
+            type="button"
+            class="flex w-full items-center justify-between text-[11px] font-bold uppercase tracking-wider text-gray-500"
+            :aria-expanded="legendOpen"
+            @click="legendOpen = !legendOpen"
+          >
+            {{ selected && showBarrios ? 'Puntos JAC' : 'Actas recibidas por comuna' }}
+            <ChevronDown class="w-3.5 h-3.5 transition-transform" :class="legendOpen ? '' : '-rotate-90'" />
+          </button>
+
+          <ul v-if="legendOpen" class="mt-2.5 space-y-1.5 text-xs text-gray-700">
+            <template v-if="selected && showBarrios">
+              <li class="flex items-center gap-2.5">
+                <span class="h-3 w-3 shrink-0 rounded-full ring-2 ring-white shadow" :style="{ backgroundColor: SEMAFORO_COLORS.verde }"></span>
+                Acta recibida
+              </li>
+              <li class="flex items-center gap-2.5">
+                <span class="h-3 w-3 shrink-0 rounded-full border-2 border-dashed border-red-300 shadow" :style="{ backgroundColor: SEMAFORO_COLORS.rojo }"></span>
+                Acta atrasada
+              </li>
+              <li class="flex items-center gap-2.5">
+                <span class="h-3 w-3 shrink-0 rounded-full border-2 border-gray-300 bg-white shadow"></span>
+                Sin acta aún
+              </li>
+              <li class="flex items-center gap-2.5 pt-1 text-gray-500">
+                <span class="w-3 text-center shrink-0">🏆</span>
+                Ya tiene ganador
+              </li>
+            </template>
+            <template v-else>
+              <li class="flex items-center gap-2.5">
+                <span class="h-3 w-5 shrink-0 rounded-full" :style="{ backgroundColor: SEMAFORO_COLORS.verde }"></span>
+                80% o más
+              </li>
+              <li class="flex items-center gap-2.5">
+                <span class="h-3 w-5 shrink-0 rounded-full" :style="{ backgroundColor: SEMAFORO_COLORS.amarillo }"></span>
+                Entre 30% y 79%
+              </li>
+              <li class="flex items-center gap-2.5">
+                <span class="h-3 w-5 shrink-0 rounded-full" :style="{ backgroundColor: SEMAFORO_COLORS.rojo }"></span>
+                Menos de 30%
+              </li>
+              <li class="pt-1 text-[11px] leading-snug text-gray-500">Haz clic en una comuna para ver sus JAC.</li>
+            </template>
+          </ul>
+        </div>
 
         <div
           v-if="loading"
@@ -153,46 +228,6 @@
               </button>
             </li>
           </ul>
-        </div>
-
-        <div class="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
-          <p class="px-2 pb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Leyenda</p>
-          <div class="grid grid-cols-2 gap-3 px-2 pb-1">
-            <div>
-              <p class="mb-1.5 text-[11px] font-medium text-gray-500">Puntos JAC</p>
-              <div class="space-y-1 text-xs text-gray-600">
-                <div class="flex items-center gap-2">
-                  <span class="h-2.5 w-2.5 shrink-0 rounded-full border-2 border-dashed border-gray-300" :style="{ backgroundColor: SEMAFORO_COLORS.rojo }"></span>
-                  Atrasada
-                </div>
-                <div class="flex items-center gap-2">
-                  <span class="h-2.5 w-2.5 shrink-0 rounded-full border-2 border-gray-300" :style="{ backgroundColor: SEMAFORO_COLORS.verde }"></span>
-                  Recibida
-                </div>
-                <div class="flex items-center gap-2">
-                  <span class="h-2.5 w-2.5 shrink-0 rounded-full border-2 border-gray-300 bg-white"></span>
-                  Sin acta
-                </div>
-              </div>
-            </div>
-            <div>
-              <p class="mb-1.5 text-[11px] font-medium text-gray-500">Comuna (% actas)</p>
-              <div class="space-y-1 text-xs text-gray-600">
-                <div class="flex items-center gap-2">
-                  <span class="h-2.5 w-2.5 shrink-0 rounded-sm" :style="{ backgroundColor: SEMAFORO_COLORS.rojo }"></span>
-                  Sin actas
-                </div>
-                <div class="flex items-center gap-2">
-                  <span class="h-2.5 w-2.5 shrink-0 rounded-sm" :style="{ backgroundColor: SEMAFORO_COLORS.amarillo }"></span>
-                  Parcial
-                </div>
-                <div class="flex items-center gap-2">
-                  <span class="h-2.5 w-2.5 shrink-0 rounded-sm" :style="{ backgroundColor: SEMAFORO_COLORS.verde }"></span>
-                  Completo
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
 
         <div v-if="canEditLocation" class="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
@@ -455,6 +490,43 @@
 /* Punto JAC: circulo de estado (relleno) con anillo de identidad de comuna
    (borde) y halo blanco (box-shadow) para separarlo del relleno de la
    comuna y de sus vecinos, aunque compartan color. */
+/* Botones flotantes propios, con el mismo aspecto que el control de zoom. */
+.map-ctrl {
+  display: flex;
+  height: 2.25rem;
+  width: 2.25rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.75rem;
+  background: rgb(255 255 255 / 0.95);
+  color: #374151;
+  box-shadow: 0 4px 12px -2px rgb(0 0 0 / 0.15), 0 0 0 1px rgb(0 0 0 / 0.05);
+  transition: background-color 0.15s ease, color 0.15s ease, transform 0.15s ease;
+}
+.map-ctrl:hover {
+  background: #fff;
+  color: var(--color-aso-primary);
+  transform: translateY(-1px);
+}
+
+/* Control de zoom de Leaflet al estilo del resto de la app. */
+:deep(.leaflet-control-zoom) {
+  border: none !important;
+  border-radius: 0.75rem;
+  overflow: hidden;
+  box-shadow: 0 4px 12px -2px rgb(0 0 0 / 0.15), 0 0 0 1px rgb(0 0 0 / 0.05) !important;
+}
+:deep(.leaflet-control-zoom a) {
+  width: 2.25rem !important;
+  height: 2.25rem !important;
+  line-height: 2.25rem !important;
+  color: #374151 !important;
+  border-bottom-color: #f3f4f6 !important;
+}
+:deep(.leaflet-control-zoom a:hover) {
+  color: var(--color-aso-primary) !important;
+}
+
 :deep(.jac-dot-wrap) {
   background: transparent;
   border: none;
@@ -523,6 +595,7 @@ import { ref, shallowRef, computed, watch, onMounted, onBeforeUnmount, nextTick 
 import { useRouter } from 'vue-router';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import { ChevronDown, Maximize, Maximize2, Minimize2 } from 'lucide-vue-next';
 import axios from '@/services/axios';
 import { useAuthStore } from '@/stores/auth';
 import ResultModal from '@/components/ResultModal.vue';
@@ -609,6 +682,24 @@ function pctBadgeIconFor(feature) {
 }
 
 const mapEl = ref(null);
+const mapWrapEl = ref(null);
+const legendOpen = ref(true);
+
+// Pantalla completa del recuadro del mapa (con su leyenda y controles).
+const isFullscreen = ref(false);
+function toggleFullscreen() {
+  if (document.fullscreenElement) {
+    document.exitFullscreen?.();
+  } else {
+    mapWrapEl.value?.requestFullscreen?.();
+  }
+}
+function handleFullscreenChange() {
+  isFullscreen.value = document.fullscreenElement === mapWrapEl.value;
+  // El ResizeObserver ya recalcula el tamano; esto cubre navegadores que no
+  // notifican el cambio a tiempo.
+  setTimeout(() => map?.invalidateSize({ pan: false }), 120);
+}
 const loading = ref(true);
 const refreshing = ref(false);
 const lastUpdated = ref('');
@@ -900,26 +991,69 @@ let allBounds = null;
 let resizeObserver = null;
 let refreshTimer = null;
 
-function fitAll() {
+// true en cuanto el usuario arrastra o hace zoom. Desde ahi el mapa no se
+// reencuadra solo: antes cualquier cambio de tamano del contenedor (refresco
+// de 45s, panel lateral, menu contraido) lo devolvia a la vista inicial.
+let userMovedMap = false;
+const markUserMoved = () => { userMovedMap = true; };
+
+// Oscurece suavemente todo lo que queda fuera de Girardot, como un foco
+// sobre el municipio: un rectangulo del tamano del mundo con un hueco por
+// cada comuna (regla evenodd). Vive en su propio pane, bajo las comunas.
+let maskLayer = null;
+const WORLD_RING = [[-85, -179.9], [-85, 179.9], [85, 179.9], [85, -179.9]];
+
+function drawGirardotMask(features) {
+  if (maskLayer) {
+    maskLayer.remove();
+    maskLayer = null;
+  }
+
+  const holes = [];
+  features.forEach((feature) => {
+    const geometry = feature?.geometry;
+    const polygons = geometry?.type === 'Polygon'
+      ? [geometry.coordinates]
+      : geometry?.type === 'MultiPolygon' ? geometry.coordinates : [];
+
+    polygons.forEach((polygon) => {
+      const outerRing = polygon?.[0];
+      if (outerRing?.length) holes.push(outerRing.map(([lng, lat]) => [lat, lng]));
+    });
+  });
+
+  if (!holes.length) return;
+
+  maskLayer = L.polygon([WORLD_RING, ...holes], {
+    pane: 'mask',
+    stroke: false,
+    fillColor: '#0f2a1c',
+    fillOpacity: 0.3,
+    fillRule: 'evenodd',
+    interactive: false,
+  }).addTo(map);
+}
+
+function fitAll({ force = false } = {}) {
   if (!map || !allBounds || !allBounds.isValid() || selected.value) return;
+  if (userMovedMap && !force) return;
   map.invalidateSize();
   // minZoom fijo y bajo mientras encuadra; se sube al valor real despues.
   map.setMinZoom(3);
   map.fitBounds(allBounds, { padding: [20, 20] });
-  // El encuadre de todas las comunas pasa a ser el nivel mas alejado permitido.
-  map.setMinZoom(map.getZoom());
+  // Medio nivel mas alejado que el encuadre completo: deja margen para
+  // moverse sin poder salir a ver todo el pais.
+  map.setMinZoom(Math.max(3, map.getZoom() - 0.5));
 }
 
 // Al redimensionar el panel (o la ventana), Leaflet debe recalcular el
-// tamano del contenedor SIEMPRE, aunque haya una comuna seleccionada; si no,
-// el area nueva queda gris porque el mapa sigue creyendo que mide lo de antes.
+// tamano del contenedor SIEMPRE; si no, el area nueva queda gris porque el
+// mapa sigue creyendo que mide lo de antes. Solo reencuadra si el usuario
+// todavia no ha movido el mapa.
 function handleResize() {
   if (!map) return;
-  if (selected.value) {
-    map.invalidateSize();
-  } else {
-    fitAll();
-  }
+  map.invalidateSize({ pan: false });
+  fitAll();
 }
 
 // true si el conjunto de IDs de `layersById`/`markersById` es exactamente
@@ -960,7 +1094,8 @@ function clearSelection() {
     layer.setStyle(polygonStyleFor(layer));
   }
   selected.value = null;
-  fitAll();
+  userMovedMap = false;
+  fitAll({ force: true });
 }
 
 // La insignia de % de una comuna solo tiene sentido de lejos; se oculta la
@@ -1144,6 +1279,8 @@ async function load(silent = false) {
         },
       }).addTo(map);
 
+      drawGirardotMask(features);
+
       nameBadgesLayer.value = L.layerGroup([...nameBadgeMarkersById.values()]).addTo(map);
       pctBadgesLayer.value = L.layerGroup([...pctBadgeMarkersById.values()]).addTo(map);
       updatePctBadgeVisibility();
@@ -1254,11 +1391,28 @@ async function loadBarrios(silent = false) {
 onMounted(async () => {
   map = L.map(mapEl.value, {
     scrollWheelZoom: true,
-    maxBounds: GIRARDOT_BOUNDS,
-    maxBoundsViscosity: 1.0,
+    // Zoom en medios niveles: la rueda del mouse acerca de forma gradual en
+    // vez de saltar de un nivel entero al siguiente.
+    zoomSnap: 0.5,
+    zoomDelta: 0.5,
+    wheelPxPerZoomLevel: 110,
+    // Limite con holgura y borde "elastico" (no un muro): se puede arrastrar
+    // con naturalidad y el mapa regresa suave si se sale de Girardot.
+    maxBounds: GIRARDOT_BOUNDS.pad(0.35),
+    maxBoundsViscosity: 0.8,
     minZoom: 11,
     maxZoom: 18,
   }).fitBounds(GIRARDOT_BOUNDS);
+
+  // Pane de la mascara: sobre el mapa base (200) y bajo las comunas (400).
+  const maskPane = map.createPane('mask');
+  maskPane.style.zIndex = '350';
+  maskPane.style.pointerEvents = 'none';
+
+  map.on('dragstart', markUserMoved);
+  map.on('dblclick', markUserMoved);
+  map.getContainer().addEventListener('wheel', markUserMoved, { passive: true });
+  map.zoomControl?.getContainer().addEventListener('click', markUserMoved);
   // Basemap neutro (gris claro, sin key): deja que el rojo/colores de
   // identidad de la capa temática sean lo unico que resalte en el mapa.
   // Esri solo tiene tiles nativos hasta z16; maxNativeZoom escala esos
@@ -1309,6 +1463,7 @@ onMounted(async () => {
     load(true);
   }, 45000);
   document.addEventListener('visibilitychange', handleVisibilityChange);
+  document.addEventListener('fullscreenchange', handleFullscreenChange);
 });
 
 function handleVisibilityChange() {
@@ -1326,6 +1481,8 @@ onBeforeUnmount(() => {
   if (resizeObserver) resizeObserver.disconnect();
   window.removeEventListener('resize', handleResize);
   document.removeEventListener('visibilitychange', handleVisibilityChange);
+  document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  if (document.fullscreenElement === mapWrapEl.value) document.exitFullscreen?.();
   if (refreshTimer) clearInterval(refreshTimer);
   if (map) {
     map.remove();

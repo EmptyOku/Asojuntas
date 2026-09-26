@@ -26,7 +26,7 @@
 
           <button
             @click="loadNeighborhoods(1)"
-            class="w-full sm:w-auto justify-center px-4 py-2 rounded-lg border border-gray-200 text-sm font-semibold text-gray-700 hover:bg-gray-50 flex items-center gap-2 transition-colors"
+            class="btn-secondary w-full sm:w-auto"
           >
             <RefreshCw :class="{ 'animate-spin': loading }" class="w-4 h-4" />
             <span>Recargar</span>

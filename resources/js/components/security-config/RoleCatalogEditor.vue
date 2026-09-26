@@ -43,15 +43,15 @@
             <p class="text-sm text-gray-500">Marca las pantallas que verá el rol y las acciones que podrá hacer. Lo que una acción necesita se marca solo.</p>
           </div>
           <div class="flex flex-col-reverse sm:flex-row gap-2 md:shrink-0">
-            <button v-if="editingRoleId" type="button" class="w-full sm:w-auto px-3 py-2 text-sm font-medium rounded-lg border border-gray-200 text-gray-700 bg-white hover:bg-gray-100" @click="cancelEdit">Cancelar edición</button>
+            <button v-if="editingRoleId" type="button" class="btn-secondary w-full sm:w-auto px-3" @click="cancelEdit">Cancelar edición</button>
             <button type="button" class="w-full sm:w-auto px-3 py-2 text-sm font-medium rounded-lg bg-gray-900 text-white hover:bg-black disabled:opacity-50" :disabled="loading" @click="askSaveRole">{{ editingRoleId ? 'Guardar cambios' : 'Crear rol' }}</button>
           </div>
         </div>
         <p v-if="formError" class="mb-4 rounded-lg bg-red-50 border border-red-200 text-red-700 px-3 py-2 text-sm">{{ formError }}</p>
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-          <label class="block text-sm text-gray-700">Nombre técnico<input v-model="roleForm.name" class="mt-1 w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm" placeholder="records.manager" /></label>
-          <label class="block text-sm text-gray-700">Nombre visible<input v-model="roleForm.display_name" class="mt-1 w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm" /></label>
-          <label class="block text-sm text-gray-700">Descripción<input v-model="roleForm.description" class="mt-1 w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm" /></label>
+          <label class="field-label">Nombre técnico<input v-model="roleForm.name" class="field mt-1" placeholder="records.manager" /></label>
+          <label class="field-label">Nombre visible<input v-model="roleForm.display_name" class="field mt-1" /></label>
+          <label class="field-label">Descripción<input v-model="roleForm.description" class="field mt-1" /></label>
         </div>
         <p class="mb-4 text-sm text-gray-600">
           <span class="font-medium text-gray-900">Pantallas en el menú:</span>

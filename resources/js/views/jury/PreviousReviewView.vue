@@ -32,7 +32,7 @@
         <p class="text-sm font-semibold">{{ docStore.extractionWarning }}</p>
       </div>
 
-      <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-6">
+      <div class="card overflow-hidden mb-6">
         <div class="bg-gray-50 px-5 py-4 border-b border-gray-100">
           <h2 class="text-lg font-bold text-gray-900">{{ isPlancha ? 'Validación de Planchas' : 'Validación de Acta' }}</h2>
           <p class="text-[10px] text-gray-400 uppercase font-black tracking-widest mt-1">Página Actual: {{ currentPage + 1 }}</p>
@@ -50,7 +50,7 @@
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div class="col-span-1 sm:col-span-2">
                     <label class="text-[10px] font-bold text-gray-400 uppercase">Nombre</label>
-                    <input type="text" :value="cargo.nombre" readonly class="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-700">
+                    <input type="text" :value="cargo.nombre" readonly class="field">
                   </div>
                   <div>
                     <label class="text-[10px] font-bold text-gray-400 uppercase">No. Identificación</label>
@@ -58,11 +58,11 @@
                   </div>
                   <div>
                     <label class="text-[10px] font-bold text-gray-400 uppercase">Celular</label>
-                    <input type="text" :value="cargo.celular" readonly class="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-700">
+                    <input type="text" :value="cargo.celular" readonly class="field">
                   </div>
                   <div>
                     <label class="text-[10px] font-bold text-gray-400 uppercase">Correo Electrónico</label>
-                    <input type="email" :value="cargo.correo" readonly class="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-700 truncate">
+                    <input type="email" :value="cargo.correo" readonly class="field truncate">
                   </div>
                 </div>
               </div>
@@ -93,9 +93,9 @@
       </div>
 
       <!-- OBSERVACIONES -->
-      <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 mb-24 lg:mb-6">
+      <div class="card p-5 mb-24 lg:mb-6">
         <label class="block text-sm font-bold text-gray-900 mb-2">Observaciones de la Página {{ currentPage + 1 }}</label>
-        <textarea v-model="observacionesPorPagina[currentPage]" rows="3" class="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-aso-primary transition-all" placeholder="Reporta cualquier inconsistencia visual..."></textarea>
+        <textarea v-model="observacionesPorPagina[currentPage]" rows="3" class="field" placeholder="Reporta cualquier inconsistencia visual..."></textarea>
       </div>
 
       <!-- BOTONES -->
@@ -107,14 +107,14 @@
       </div>
 
       <!-- PRUEBA DE INTEGRACION (DESARROLLO) -->
-      <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 mt-6 mb-24 lg:mb-6">
+      <div class="card p-5 mt-6 mb-24 lg:mb-6">
         <h3 class="text-sm font-bold text-gray-900">Prueba de Integracion API</h3>
         <p class="text-xs text-gray-500 mt-1">Esta prueba usa tu sesion autenticada del jurado, sin token manual.</p>
 
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
           <div>
             <label class="text-[10px] font-bold text-gray-400 uppercase">Scrutiny Record ID (Auto)</label>
-            <input :value="integration.recordId || ''" type="number" readonly class="w-full px-3 py-2 bg-gray-100 border border-gray-200 rounded-lg text-sm text-gray-700" placeholder="Se asigna automaticamente">
+            <input :value="integration.recordId || ''" type="number" readonly class="field bg-gray-100 text-gray-600" placeholder="Se asigna automaticamente">
           </div>
           <div>
             <label class="text-[10px] font-bold text-gray-400 uppercase">Mesa de Votacion</label>

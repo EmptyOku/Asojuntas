@@ -9,7 +9,333 @@
 @theme {
     --color-aso-primary: #1e8f4d;
     --color-aso-primary-dark: #166f3b;
-    --color-aso-bg: #f3f5f2;
-    --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
+    --color-aso-primary-light: #3fae6a;
+    --color-aso-deep: #0c3d22;
+    --color-aso-bg: #f4f6f3;
+    --color-aso-field: #f1f3f0;
+
+    --font-sans: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
         'Segoe UI Symbol', 'Noto Color Emoji';
+    --font-display: 'Outfit', 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
+
+    --shadow-soft: 0 1px 2px rgb(16 40 24 / 0.04), 0 8px 24px -12px rgb(16 40 24 / 0.10);
+    --shadow-lift: 0 2px 4px rgb(16 40 24 / 0.05), 0 18px 40px -18px rgb(16 40 24 / 0.22);
+
+    --animate-rise: rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+    --animate-fade: fade 0.35s ease-out both;
+
+    @keyframes rise {
+        from { opacity: 0; transform: translateY(12px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes fade {
+        from { opacity: 0; }
+        to { opacity: 1; }
+    }
+}
+
+@layer base {
+    h1, h2, h3, .font-display {
+        font-family: var(--font-display);
+        letter-spacing: -0.01em;
+    }
+
+    ::selection {
+        background: rgb(30 143 77 / 0.18);
+    }
+}
+
+/*
+ * Sistema visual de Asojuntas
+ * ---------------------------
+ * Clases reutilizables para tarjetas, tablas, formularios, botones e
+ * insignias. Viven en la capa `components`: cualquier utilidad de Tailwind
+ * que se agregue al lado (p. ej. `field w-80`) sigue teniendo prioridad.
+ */
+@layer components {
+    /* --- Tarjetas --- */
+    .card {
+        @apply rounded-2xl border border-gray-200/70 bg-white;
+        box-shadow: var(--shadow-soft);
+    }
+
+    .card-header {
+        @apply flex flex-col gap-3 border-b border-gray-100 px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-6;
+    }
+
+    .card-title {
+        @apply font-display text-lg font-semibold text-gray-900 sm:text-xl;
+    }
+
+    .card-subtitle {
+        @apply mt-0.5 text-sm text-gray-500;
+    }
+
+    .page-title {
+        @apply font-display text-2xl font-bold tracking-tight text-gray-900 sm:text-[1.75rem];
+    }
+
+    .page-subtitle {
+        @apply mt-1 text-sm text-gray-500 sm:text-[0.95rem];
+    }
+
+    /* --- Tarjetas de indicadores (dashboard) --- */
+    .stat-card {
+        @apply relative overflow-hidden rounded-2xl border border-white/80 p-5 transition-all duration-300 sm:p-6;
+        background: linear-gradient(135deg, var(--stat-from) 0%, #ffffff 70%);
+        box-shadow: var(--shadow-soft);
+    }
+
+    .stat-card::before {
+        content: '';
+        @apply absolute inset-x-0 top-0 h-1;
+        background: linear-gradient(90deg, var(--stat-accent), var(--stat-accent-2));
+    }
+
+    .stat-card:hover {
+        @apply -translate-y-1;
+        box-shadow: var(--shadow-lift);
+    }
+
+    .stat-card--green { --stat-from: #e3f5e9; --stat-accent: #1e8f4d; --stat-accent-2: #7fd39f; }
+    .stat-card--blue { --stat-from: #e2f1fb; --stat-accent: #2f80c9; --stat-accent-2: #8cc8f0; }
+    .stat-card--rose { --stat-from: #fde8e8; --stat-accent: #d64545; --stat-accent-2: #f5a3a3; }
+    .stat-card--amber { --stat-from: #fdf3d8; --stat-accent: #d99a12; --stat-accent-2: #f5d27a; }
+
+    .stat-icon {
+        @apply flex h-10 w-10 items-center justify-center rounded-xl bg-white/80 shadow-sm ring-1 ring-black/5;
+        color: var(--stat-accent);
+    }
+
+    /* --- Formularios --- */
+    .field-label {
+        @apply mb-1.5 block text-[11px] font-bold uppercase tracking-[0.06em] text-gray-600;
+    }
+
+    .field {
+        @apply block w-full rounded-xl border border-transparent bg-aso-field px-3.5 py-2.5 text-sm font-normal tracking-normal normal-case text-gray-900 transition-all duration-200 placeholder:text-gray-400;
+    }
+
+    .field:hover:not(:disabled) {
+        @apply border-gray-200;
+    }
+
+    .field:focus {
+        @apply border-aso-primary bg-white outline-none;
+        box-shadow: 0 0 0 4px rgb(30 143 77 / 0.12);
+    }
+
+    .field:disabled {
+        @apply cursor-not-allowed opacity-60;
+    }
+
+    select.field {
+        @apply appearance-none bg-no-repeat pr-10;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%234b5563' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+        background-position: right 0.85rem center;
+        background-size: 1rem;
+    }
+
+    .field-search {
+        @apply pl-10;
+    }
+
+    /* Campo opcional: blanco con borde, para distinguirlo de los obligatorios */
+    .field-optional {
+        @apply border-gray-200 bg-white placeholder:italic;
+    }
+
+    .field-error {
+        @apply border-red-300 bg-red-50/40;
+    }
+
+    .field-icon {
+        @apply pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400;
+    }
+
+    /* Titulo de seccion de formulario con barra de color a la izquierda */
+    .form-section-title {
+        @apply mb-5 flex items-center justify-between gap-3 border-b border-gray-100 pb-3;
+    }
+
+    .form-section-title > h3 {
+        @apply flex items-center gap-3 font-display text-sm font-bold uppercase tracking-[0.1em] text-gray-600;
+    }
+
+    .form-section-title > h3::before {
+        content: '';
+        @apply h-6 w-1 rounded-full;
+        background: var(--section-accent, #5b9bd5);
+    }
+
+    .form-section-title--amber {
+        --section-accent: #f2c21b;
+    }
+
+    /* --- Botones --- */
+    .btn,
+    .btn-primary,
+    .btn-secondary,
+    .btn-danger {
+        @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all duration-200 select-none disabled:cursor-not-allowed disabled:opacity-60;
+    }
+
+    .btn-primary {
+        @apply text-white;
+        background: linear-gradient(135deg, var(--color-aso-primary-light), var(--color-aso-primary) 55%, var(--color-aso-primary-dark));
+        box-shadow: 0 6px 16px -6px rgb(30 143 77 / 0.55);
+    }
+
+    .btn-primary:hover:not(:disabled) {
+        @apply -translate-y-px;
+        box-shadow: 0 10px 22px -8px rgb(30 143 77 / 0.6);
+    }
+
+    .btn-primary:active:not(:disabled) {
+        @apply translate-y-0;
+    }
+
+    .btn-secondary {
+        @apply border border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50;
+    }
+
+    .btn-danger {
+        @apply bg-red-600 text-white hover:bg-red-700;
+    }
+
+    /* Botones cuadrados de accion en tablas (editar / roles / eliminar) */
+    .icon-btn-blue,
+    .icon-btn-amber,
+    .icon-btn-red,
+    .icon-btn-green,
+    .icon-btn-gray {
+        @apply inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ring-1 transition-all duration-200 hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50;
+    }
+
+    .icon-btn-blue { @apply bg-sky-50 text-sky-600 ring-sky-100 hover:bg-sky-100; }
+    .icon-btn-amber { @apply bg-amber-50 text-amber-600 ring-amber-100 hover:bg-amber-100; }
+    .icon-btn-red { @apply bg-red-50 text-red-500 ring-red-100 hover:bg-red-100; }
+    .icon-btn-green { @apply bg-emerald-50 text-emerald-600 ring-emerald-100 hover:bg-emerald-100; }
+    .icon-btn-gray { @apply bg-gray-50 text-gray-600 ring-gray-200 hover:bg-gray-100; }
+
+    /* --- Insignias de estado --- */
+    .badge-green,
+    .badge-amber,
+    .badge-red,
+    .badge-blue,
+    .badge-gray {
+        @apply inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 text-[10.5px] font-bold uppercase tracking-wide ring-1;
+    }
+
+    .badge-green { @apply bg-emerald-50 text-emerald-700 ring-emerald-200; }
+    .badge-amber { @apply bg-amber-50 text-amber-700 ring-amber-200; }
+    .badge-red { @apply bg-red-50 text-red-700 ring-red-200; }
+    .badge-blue { @apply bg-sky-50 text-sky-700 ring-sky-200; }
+    .badge-gray { @apply bg-gray-100 text-gray-600 ring-gray-200; }
+
+    .badge-dot {
+        @apply h-1.5 w-1.5 rounded-full bg-current;
+    }
+
+    /* --- Avatar con iniciales --- */
+    .avatar {
+        @apply flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-xs font-bold text-white;
+        background: linear-gradient(135deg, var(--color-aso-primary-light), var(--color-aso-primary-dark));
+    }
+
+    /* --- Paginacion --- */
+    .pager-btn {
+        @apply inline-flex h-9 min-w-9 items-center justify-center rounded-xl border border-gray-200 bg-white px-3 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-white;
+    }
+}
+
+/*
+ * Tablas: fuera de las capas a proposito. Asi el estilo comun gana sobre las
+ * utilidades de relleno/color que ya traen los <th>/<td> de cada vista, y
+ * basta con poner `data-table` en la <table> para unificarlas todas.
+ */
+.table-wrap {
+    overflow-x: auto;
+    border-radius: 1rem;
+}
+
+.data-table {
+    width: 100%;
+    font-size: 0.875rem;
+    color: var(--color-gray-700);
+    border-collapse: separate;
+    border-spacing: 0;
+}
+
+.data-table thead th {
+    background: #f6f7f5;
+    color: var(--color-gray-500);
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    text-align: left;
+    white-space: nowrap;
+    padding: 0.9rem 1.25rem;
+    border-bottom: 1px solid var(--color-gray-100);
+}
+
+.data-table tbody td {
+    padding: 1rem 1.25rem;
+    vertical-align: middle;
+    border-bottom: 1px solid #f0f2ef;
+}
+
+.data-table tbody tr:last-child td {
+    border-bottom: 0;
+}
+
+.data-table tbody tr {
+    transition: background-color 0.15s ease;
+}
+
+.data-table tbody tr:hover td {
+    background: #f8fbf8;
+}
+
+.data-table th.text-right,
+.data-table td.text-right {
+    text-align: right;
+}
+
+.data-table th.text-center,
+.data-table td.text-center {
+    text-align: center;
+}
+
+/* Tablas compactas (dentro de acordeones o tarjetas pequeñas) */
+.data-table--compact thead th {
+    padding: 0.6rem 0.9rem;
+}
+
+.data-table--compact tbody td {
+    padding: 0.65rem 0.9rem;
+}
+
+/* Entrada escalonada: cada hijo aparece un poco despues del anterior */
+.stagger > * {
+    animation: var(--animate-rise);
+}
+
+.stagger > *:nth-child(2) { animation-delay: 60ms; }
+.stagger > *:nth-child(3) { animation-delay: 120ms; }
+.stagger > *:nth-child(4) { animation-delay: 180ms; }
+.stagger > *:nth-child(5) { animation-delay: 240ms; }
+.stagger > *:nth-child(6) { animation-delay: 300ms; }
+
+.data-table tbody tr.row-enter {
+    animation: var(--animate-fade);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .stagger > *,
+    .data-table tbody tr.row-enter {
+        animation: none;
+    }
 }

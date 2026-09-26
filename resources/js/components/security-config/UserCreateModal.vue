@@ -1,11 +1,11 @@
 <template>
   <Teleport to="body">
     <div v-if="open" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/50 backdrop-blur-sm">
-      <div class="w-full max-w-lg rounded-2xl bg-white shadow-2xl border border-gray-100 overflow-hidden">
+      <div class="w-full max-w-lg rounded-3xl bg-white shadow-2xl ring-1 ring-black/5 overflow-hidden animate-rise">
         <div class="px-6 py-5 border-b border-gray-100 flex items-start justify-between gap-4">
           <div>
             <p class="text-xs font-bold uppercase tracking-[0.2em] text-gray-400">Nuevo Usuario</p>
-            <h2 class="mt-1 text-lg font-bold text-gray-900">Crear Usuario</h2>
+            <h2 class="mt-1 font-display text-xl font-bold text-gray-900">Crear Usuario</h2>
           </div>
           <button type="button" class="text-gray-400 hover:text-gray-700" @click="close">
             <X class="w-5 h-5" />
@@ -17,7 +17,7 @@
         <form @submit.prevent="submit">
           <div class="px-6 py-5 space-y-4 max-h-[70vh] overflow-y-auto">
             <div>
-              <label class="block text-sm text-gray-700 mb-1 font-semibold">Persona Física</label>
+              <label class="field-label">Persona Física</label>
               <div class="relative" ref="personSearchContainer">
                 <div class="relative">
                   <Search class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -27,8 +27,8 @@
                     @input="handlePersonSearch"
                     @focus="isPersonDropdownOpen = true"
                     placeholder="Buscar por cédula o nombre..."
-                    class="w-full pl-9 pr-10 py-2 rounded-lg border bg-white text-sm focus:ring-2 focus:ring-aso-primary focus:border-aso-primary"
-                    :class="errors.person_id ? 'border-red-400 ring-1 ring-red-300' : 'border-gray-200'"
+                    class="field pl-9 pr-10"
+                    :class="errors.person_id ? 'border-red-400 ring-1 ring-red-300' : ''"
                   >
                   <button v-if="form.person_id" type="button" @click="clearPersonSelection" class="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-red-500 rounded-full hover:bg-gray-100">
                     <X class="w-4 h-4" />
@@ -59,7 +59,7 @@
             </div>
 
             <div>
-              <label class="block text-sm text-gray-700 mb-1">Usuario</label>
+              <label class="field-label">Usuario</label>
               <input
                 v-model="form.username"
                 required
@@ -68,34 +68,34 @@
                 maxlength="50"
                 pattern="[A-Za-z0-9_.\-]{4,50}"
                 title="Entre 4 y 50 caracteres: letras, números, punto, guion o guion bajo."
-                class="w-full px-3 py-2 rounded-lg border bg-white text-sm"
-                :class="errors.username ? 'border-red-400 ring-1 ring-red-300' : 'border-gray-200'"
+                class="field"
+                :class="errors.username ? 'border-red-400 ring-1 ring-red-300' : ''"
               />
               <p v-if="errors.username" class="text-xs text-red-600 mt-1">{{ errors.username }}</p>
             </div>
 
             <div>
-              <label class="block text-sm text-gray-700 mb-1">Correo</label>
+              <label class="field-label">Correo</label>
               <input
                 v-model="form.email"
                 required
                 type="email"
                 maxlength="150"
-                class="w-full px-3 py-2 rounded-lg border bg-white text-sm"
-                :class="errors.email ? 'border-red-400 ring-1 ring-red-300' : 'border-gray-200'"
+                class="field"
+                :class="errors.email ? 'border-red-400 ring-1 ring-red-300' : ''"
               />
               <p v-if="errors.email" class="text-xs text-red-600 mt-1">{{ errors.email }}</p>
             </div>
 
             <div>
-              <label class="block text-sm text-gray-700 mb-1">Contraseña</label>
+              <label class="field-label">Contraseña</label>
               <div class="relative">
                 <input
                   v-model="form.password"
                   required
                   :type="showPassword ? 'text' : 'password'"
                   minlength="8"
-                  class="w-full px-3 py-2 pr-10 rounded-lg border border-gray-200 bg-white text-sm"
+                  class="field pr-10"
                   :class="passwordTooShort || errors.password ? 'border-red-300' : ''"
                 />
                 <button type="button" class="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100" @click="showPassword = !showPassword" tabindex="-1">
@@ -108,14 +108,14 @@
             </div>
 
             <div>
-              <label class="block text-sm text-gray-700 mb-1">Confirmar contraseña</label>
+              <label class="field-label">Confirmar contraseña</label>
               <div class="relative">
                 <input
                   v-model="form.password_confirmation"
                   required
                   :type="showPasswordConfirm ? 'text' : 'password'"
                   minlength="8"
-                  class="w-full px-3 py-2 pr-10 rounded-lg border border-gray-200 bg-white text-sm"
+                  class="field pr-10"
                   :class="passwordMismatch ? 'border-red-300' : ''"
                 />
                 <button type="button" class="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100" @click="showPasswordConfirm = !showPasswordConfirm" tabindex="-1">
@@ -127,17 +127,17 @@
             </div>
 
             <div>
-              <label class="block text-sm text-gray-700 mb-2">Rol asignado</label>
+              <label class="field-label">Rol asignado</label>
               <RoleDirectoryPicker v-model="selectedRoleId" :roles="roles" radio-name="user-create-role" />
               <p v-if="errors.roles" class="text-xs text-red-600 mt-1">{{ errors.roles }}</p>
             </div>
           </div>
 
           <div class="px-6 py-4 bg-gray-50 flex flex-wrap items-center justify-end gap-3">
-            <button type="button" class="px-4 py-2 rounded-xl border border-gray-200 text-sm font-semibold text-gray-700 hover:bg-white transition-colors" @click="close">Cancelar</button>
+            <button type="button" class="btn-secondary" @click="close">Cancelar</button>
             <button
               type="submit"
-              class="px-4 py-2 rounded-xl text-sm font-semibold text-white bg-aso-primary hover:bg-aso-primary-dark transition-colors disabled:opacity-60"
+              class="btn-primary"
               :disabled="loading || !form.person_id || !selectedRoleId || passwordTooShort || passwordMismatch"
             >
               Crear cuenta

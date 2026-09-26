@@ -9,7 +9,7 @@
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
       
       <div class="flex flex-col justify-end">
-        <label class="block text-sm font-medium text-gray-600 mb-1.5 truncate">Nombre Completo</label>
+        <label class="field-label truncate">Nombre Completo</label>
         <input 
           type="text" 
           :value="nombre"
@@ -20,7 +20,7 @@
       </div>
 
       <div class="flex flex-col justify-end">
-        <label class="block text-sm font-medium text-gray-600 mb-1.5 truncate">No. Identificación</label>
+        <label class="field-label truncate">No. Identificación</label>
         <input 
           type="text" 
           :value="identificacion"
@@ -31,7 +31,7 @@
       </div>
 
       <div class="flex flex-col justify-end">
-        <label class="block text-sm font-medium text-gray-600 mb-1.5 truncate">Celular</label>
+        <label class="field-label truncate">Celular</label>
         <input 
           type="tel" 
           :value="celular"
@@ -42,7 +42,7 @@
       </div>
 
       <div class="flex flex-col justify-end">
-        <label class="block text-sm font-medium text-gray-600 mb-1.5 truncate">Correo Electrónico</label>
+        <label class="field-label truncate">Correo Electrónico</label>
         <input 
           type="email" 
           :value="correo"
