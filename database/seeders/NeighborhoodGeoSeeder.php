@@ -5,17 +5,29 @@ namespace Database\Seeders;
 use App\Models\Neighborhood;
 use Illuminate\Database\Seeder;
 
-/**
- * Carga la ubicacion (lat/lng) de los barrios / JAC desde los archivos
- * database/data/comuna-*-barrios.geojson (FeatureCollection de puntos con
- * properties.code y properties.commune_code).
- */
 class NeighborhoodGeoSeeder extends Seeder
 {
     public function run(): void
     {
-        foreach (glob(database_path('data/comuna-*-barrios.geojson')) as $file) {
-            $geojson = json_decode((string) file_get_contents($file), true);
+        $pattern = database_path('data/comuna-*-barrios.geojson');
+        $files = glob($pattern);
+
+        if (empty($files)) {
+            $this->command?->error("No se encontraron archivos geojson con el patrón: {$pattern}");
+            return;
+        }
+
+        foreach ($files as $file) {
+            $this->command?->info("Procesando archivo: " . basename($file));
+            
+            $content = file_get_contents($file);
+            $geojson = json_decode($content, true);
+            
+            if (!isset($geojson['features'])) {
+                $this->command?->warn("El archivo " . basename($file) . " no tiene la propiedad 'features'.");
+                continue;
+            }
+
             $order = 0;
 
             foreach ($geojson['features'] ?? [] as $feature) {
@@ -23,24 +35,23 @@ class NeighborhoodGeoSeeder extends Seeder
                     continue;
                 }
 
-                // El orden dentro del archivo es el mismo en que se entregaron
-                // los barrios; se conserva para listarlos igual en el mapa.
                 $mapOrder = $order++;
-
                 [$lng, $lat] = $feature['geometry']['coordinates'];
                 $props = $feature['properties'] ?? [];
 
+                $communeCode = $props['commune_code'] ?? null;
+                $neighborhoodCode = $props['code'] ?? null;
+
                 $barrio = Neighborhood::query()
                     ->when(
-                        ! empty($props['commune_code']),
-                        fn ($q) => $q->whereHas('commune', fn ($c) => $c->where('code', $props['commune_code']))
+                        ! empty($communeCode),
+                        fn ($q) => $q->whereHas('commune', fn ($c) => $c->where('code', $communeCode))
                     )
-                    ->where('code', $props['code'] ?? null)
+                    ->where('code', $neighborhoodCode)
                     ->first();
 
                 if (! $barrio) {
-                    $this->command?->warn("Barrio no encontrado: {$props['commune_code']}/{$props['code']}");
-
+                    $this->command?->warn("Barrio no encontrado en BD -> Comuna: {$communeCode} | Barrio Code: {$neighborhoodCode}");
                     continue;
                 }
 
@@ -49,6 +60,8 @@ class NeighborhoodGeoSeeder extends Seeder
                     'longitude' => (float) $lng,
                     'map_order' => $mapOrder,
                 ]);
+
+                $this->command?->line("Actualizado con éxito: {$barrio->name}");
             }
         }
     }
