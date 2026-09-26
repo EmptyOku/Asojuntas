@@ -16,6 +16,7 @@ use App\Models\ScrutinyRecord;
 use App\Models\Candidate;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -49,19 +50,15 @@ class NeighborhoodDirectoryController extends Controller
             ->values()
             ->toArray();
 
-        // Conteos masivos para indicadores superiores
-        $bulkBaseQuery = $this->filteredNeighborhoodQuery($request);
-        $bulkCreateCount = (clone $bulkBaseQuery)
-            ->whereDoesntHave('elections', function ($electionQuery): void {
-                $electionQuery->where('is_active', true);
-            })
-            ->count();
-
-        $bulkCloseCount = (clone $bulkBaseQuery)
+        // Conteos masivos para indicadores superiores. El paginador ya contó
+        // el total con el mismo filtro: los barrios sin elección activa son
+        // ese total menos los que sí la tienen (una consulta menos).
+        $bulkCloseCount = $this->filteredNeighborhoodQuery($request)
             ->whereHas('elections', function ($electionQuery): void {
                 $electionQuery->where('is_active', true);
             })
             ->count();
+        $bulkCreateCount = $neighborhoodsPaginator->total() - $bulkCloseCount;
 
         $communes = Commune::query()
             ->select('id', 'name')
@@ -553,6 +550,48 @@ class NeighborhoodDirectoryController extends Controller
             return [($index + 1) => $block];
         });
 
+        // Todo lo que el bucle por bloque necesita se precarga una sola vez
+        // por elección (antes eran ~10 consultas por bloque).
+        $electionBlockIds = $electionBlocks->pluck('id')->all();
+
+        $resultsByBlock = ScrutinyBlockResult::with(['slateBlock.slate'])
+            ->where('election_id', $election->id)
+            ->whereIn('status', ['approved', 'reviewed'])
+            ->get()
+            ->groupBy('election_block_id');
+
+        $vacanciesByBlock = ElectionBlockPosition::query()
+            ->whereIn('election_block_id', $electionBlockIds)
+            ->select('election_block_id', DB::raw('COALESCE(SUM(vacancies), 0) AS total_vacancies'))
+            ->groupBy('election_block_id')
+            ->pluck('total_vacancies', 'election_block_id');
+
+        $positionsByBlock = ElectionBlockPosition::with('position')
+            ->whereIn('election_block_id', $electionBlockIds)
+            ->orderBy('id')
+            ->get()
+            ->groupBy('election_block_id');
+
+        $candidatesByBlock = Candidate::with([
+            'person',
+            'electionBlockPosition.position',
+            'slateBlock.slate',
+        ])
+            ->where('election_id', $election->id)
+            ->get()
+            ->filter(fn ($candidate) => $candidate->electionBlockPosition !== null)
+            ->groupBy(fn ($candidate) => $candidate->electionBlockPosition->election_block_id);
+
+        $slateBlockIdByBlockAndName = [];
+        \App\Models\SlateBlock::query()
+            ->join('slates', 'slates.id', '=', 'slate_blocks.slate_id')
+            ->where('slate_blocks.election_id', $election->id)
+            ->orderBy('slate_blocks.id')
+            ->get(['slate_blocks.id', 'slate_blocks.election_block_id', 'slates.name'])
+            ->each(function ($row) use (&$slateBlockIdByBlockAndName): void {
+                $slateBlockIdByBlockAndName[$row->election_block_id][mb_strtolower(trim((string) $row->name))] ??= $row->id;
+            });
+
         $resultadosFormateados = [];
         $overallSlateVotes = [];
         $processedBlockNames = [];
@@ -564,11 +603,9 @@ class NeighborhoodDirectoryController extends Controller
                 $processedBlockNames[$blockNormalizedName] = true;
             }
 
-            $resultadosBloque = ScrutinyBlockResult::with(['slateBlock.slate'])
-                ->where('election_id', $election->id)
-                ->where('election_block_id', $eb->id)
-                ->whereIn('status', ['approved', 'reviewed'])
-                ->get();
+            $resultadosBloque = $resultsByBlock->get($eb->id, collect());
+            $blockCandidates = $candidatesByBlock->get($eb->id, collect());
+            $blockPositions = $positionsByBlock->get($eb->id, collect());
 
             $slateVotes = [];
             foreach ($resultadosBloque as $res) {
@@ -621,9 +658,7 @@ class NeighborhoodDirectoryController extends Controller
                 continue;
             }
 
-            $cargosAProveer = (int) ElectionBlockPosition::query()
-                ->where('election_block_id', $eb->id)
-                ->sum('vacancies');
+            $cargosAProveer = (int) ($vacanciesByBlock[$eb->id] ?? 0);
             $allocation = $this->allocateSeatsByQuota(array_values($slateVotes), $cargosAProveer, $blancos);
 
             foreach ($allocation['planchas'] as $voteRow) {
@@ -645,38 +680,13 @@ class NeighborhoodDirectoryController extends Controller
                 }
 
                 $planchaNombre = (string) ($planchaCurules['plancha'] ?? '—');
-                $slateBlockId = $this->resolveSlateBlockIdByPlanchaName($election->id, $eb->id, $planchaNombre);
-                $candidatos = collect();
-
-                if ($slateBlockId) {
-                    $candidatos = Candidate::with([
-                        'person',
-                        'electionBlockPosition.position',
-                        'slateBlock.slate',
-                    ])
-                        ->where('election_id', $election->id)
-                        ->where('slate_block_id', $slateBlockId)
-                        ->whereHas('electionBlockPosition', function ($query) use ($eb): void {
-                            $query->where('election_block_id', $eb->id);
-                        })
-                        ->orderByRaw('COALESCE(ballot_number, \'\') ASC')
-                        ->orderBy('id')
-                        ->get();
-                }
+                $slateBlockId = $slateBlockIdByBlockAndName[$eb->id][mb_strtolower(trim($planchaNombre))] ?? null;
+                $candidatos = $slateBlockId
+                    ? $blockCandidates->where('slate_block_id', $slateBlockId)
+                    : collect();
 
                 if ($candidatos->isNotEmpty()) {
-                    $candidatos = $candidatos
-                        ->sort(function ($left, $right): int {
-                            $leftOrder = (int) data_get($left, 'electionBlockPosition.position.order_number', PHP_INT_MAX);
-                            $rightOrder = (int) data_get($right, 'electionBlockPosition.position.order_number', PHP_INT_MAX);
-
-                            return $leftOrder <=> $rightOrder
-                                ?: strcmp((string) ($left->ballot_number ?? ''), (string) ($right->ballot_number ?? ''))
-                                ?: ($left->id <=> $right->id);
-                        })
-                        ->unique(function ($candidate) {
-                            return $candidate->election_block_position_id;
-                        })
+                    $candidatos = $this->orderCandidatesForSeats($candidatos)
                         ->take($seatsForSlate)
                         ->values();
 
@@ -704,8 +714,7 @@ class NeighborhoodDirectoryController extends Controller
                 }
 
                 $cargosPlancha = $this->buildCargosFromPlanchaName(
-                    $election->id,
-                    $eb->id,
+                    $blockCandidates,
                     $planchaNombre,
                     $seatsForSlate
                 );
@@ -717,16 +726,16 @@ class NeighborhoodDirectoryController extends Controller
 
                 $cargos = array_merge(
                     $cargos,
-                    $this->buildEmptyCargoEntries($eb->id, $planchaNombre, $seatsForSlate)
+                    $this->buildEmptyCargoEntries($blockPositions, $planchaNombre, $seatsForSlate)
                 );
             }
 
             if (empty($cargos) && $cargosAProveer > 0) {
-                $cargos = $this->buildCargosFromCandidates($election->id, $eb->id, $cargosAProveer);
+                $cargos = $this->buildCargosFromCandidates($blockCandidates, $cargosAProveer);
             }
 
             if (empty($cargos) && $cargosAProveer > 0) {
-                $cargos = $this->buildEmptyCargoEntries($eb->id, (string) $blockName, $cargosAProveer);
+                $cargos = $this->buildEmptyCargoEntries($blockPositions, (string) $blockName, $cargosAProveer);
             }
 
             if (count($cargos) > $cargosAProveer) {
@@ -788,9 +797,7 @@ class NeighborhoodDirectoryController extends Controller
             $codigoBloque = null;
 
             if ($resolvedElectionBlock) {
-                $cargosAProveer = (int) ElectionBlockPosition::query()
-                    ->where('election_block_id', $resolvedElectionBlock->id)
-                    ->sum('vacancies');
+                $cargosAProveer = (int) ($vacanciesByBlock[$resolvedElectionBlock->id] ?? 0);
 
                 $nombreBloque = $resolvedElectionBlock->block->name ?? $nombreBloque;
                 $codigoBloque = $resolvedElectionBlock->block->code ?? null;
@@ -1278,24 +1285,18 @@ class NeighborhoodDirectoryController extends Controller
             ->pluck('polling_table_id')
             ->flip();
 
-        $electionIdsConResultados = DB::table('scrutiny_block_results')
-            ->whereIn('election_id', $electionIds)
-            ->distinct()
-            ->pluck('election_id')
-            ->flip();
+        $winnersByElection = $this->winningPresidents($electionIds->all());
 
         $today = now()->toDateString();
         $cutoffReached = now()->hour >= (int) config('electoral.acta_cutoff_hour', 16);
-        $winnersCache = [];
 
         $features = $barrios->map(function (Neighborhood $barrio) use (
             $elections,
             $pollingTableIdsByElection,
             $pollingTablesConActa,
-            $electionIdsConResultados,
+            $winnersByElection,
             $today,
-            $cutoffReached,
-            &$winnersCache
+            $cutoffReached
         ) {
             $election = $elections->get($barrio->id);
             $hasActa = false;
@@ -1313,10 +1314,7 @@ class NeighborhoodDirectoryController extends Controller
                 $venceHoy = $electionDate === $today && $cutoffReached;
                 $atrasada = ! $hasActa && ($electionDate < $today || $venceHoy);
 
-                if ($electionIdsConResultados->has($election->id)) {
-                    $winnersCache[$election->id] ??= $this->winningPresident($election->id);
-                    $winner = $winnersCache[$election->id];
-                }
+                $winner = $winnersByElection[$election->id] ?? null;
             }
 
             return [
@@ -1348,31 +1346,56 @@ class NeighborhoodDirectoryController extends Controller
 
     /**
      * Nombre del presidente de la plancha ganadora (mas votos en el bloque
-     * Directiva) para una elección dada, o null si aun no se puede
-     * determinar.
+     * Directiva) de cada elección, en dos consultas para todas a la vez
+     * (antes eran 2-3 consultas por elección, en cada refresco del mapa).
+     *
+     * @param  array<int, int>  $electionIds
+     * @return array<int, string>  election_id => nombre
      */
-    private function winningPresident(int $electionId): ?string
+    private function winningPresidents(array $electionIds): array
     {
-        $winningResult = ScrutinyBlockResult::where('election_id', $electionId)
-            ->whereHas('electionBlock.block', fn ($q) => $q->where('code', 'DIR'))
-            ->orderByDesc('votes')
-            ->first();
-
-        if (! $winningResult || ! $winningResult->slate_block_id) {
-            return null;
+        if ($electionIds === []) {
+            return [];
         }
 
-        $winner = Candidate::where('election_id', $electionId)
-            ->where('slate_block_id', $winningResult->slate_block_id)
-            ->whereHas('electionBlockPosition.position', fn ($q) => $q->where('code', 'DIR_PRES'))
-            ->with('person')
-            ->first();
+        // Ordenado por votos: el primer resultado de cada elección es el ganador.
+        $winningSlateBlocks = DB::table('scrutiny_block_results as sbr')
+            ->join('election_blocks as eb', 'eb.id', '=', 'sbr.election_block_id')
+            ->join('blocks as b', 'b.id', '=', 'eb.block_id')
+            ->where('b.code', 'DIR')
+            ->whereIn('sbr.election_id', $electionIds)
+            ->orderByDesc('sbr.votes')
+            ->get(['sbr.election_id', 'sbr.slate_block_id'])
+            ->unique('election_id')
+            ->filter(fn ($row) => $row->slate_block_id !== null)
+            ->pluck('slate_block_id', 'election_id');
 
-        if (! $winner || ! $winner->person) {
-            return null;
+        if ($winningSlateBlocks->isEmpty()) {
+            return [];
         }
 
-        return trim($winner->person->first_name.' '.$winner->person->last_name);
+        $presidents = DB::table('candidates as c')
+            ->join('election_block_positions as ebp', 'ebp.id', '=', 'c.election_block_position_id')
+            ->join('positions as p', 'p.id', '=', 'ebp.position_id')
+            ->join('persons as pe', 'pe.id', '=', 'c.person_id')
+            ->where('p.code', 'DIR_PRES')
+            ->whereIn('c.election_id', $winningSlateBlocks->keys())
+            ->whereIn('c.slate_block_id', $winningSlateBlocks->values())
+            ->orderBy('c.id')
+            ->get(['c.election_id', 'c.slate_block_id', 'pe.first_name', 'pe.last_name']);
+
+        $winners = [];
+        foreach ($presidents as $row) {
+            $electionId = (int) $row->election_id;
+
+            if (isset($winners[$electionId]) || (int) $winningSlateBlocks[$electionId] !== (int) $row->slate_block_id) {
+                continue;
+            }
+
+            $winners[$electionId] = trim($row->first_name.' '.$row->last_name);
+        }
+
+        return $winners;
     }
 
     /**
@@ -1701,18 +1724,13 @@ class NeighborhoodDirectoryController extends Controller
         return $normalized;
     }
 
-    private function buildCargosFromCandidates(int $electionId, int $electionBlockId, int $limit): array
+    /**
+     * Orden de asignación de curules: por orden del cargo, luego número en el
+     * tarjetón y luego id; un candidato por cargo.
+     */
+    private function orderCandidatesForSeats(Collection $candidates): Collection
     {
-        $candidatos = Candidate::with([
-            'person',
-            'electionBlockPosition.position',
-            'slateBlock.slate',
-        ])
-            ->where('election_id', $electionId)
-            ->whereHas('electionBlockPosition', function ($query) use ($electionBlockId): void {
-                $query->where('election_block_id', $electionBlockId);
-            })
-            ->get()
+        return $candidates
             ->sort(function ($left, $right): int {
                 $leftOrder = (int) data_get($left, 'electionBlockPosition.position.order_number', PHP_INT_MAX);
                 $rightOrder = (int) data_get($right, 'electionBlockPosition.position.order_number', PHP_INT_MAX);
@@ -1721,7 +1739,16 @@ class NeighborhoodDirectoryController extends Controller
                     ?: strcmp((string) ($left->ballot_number ?? ''), (string) ($right->ballot_number ?? ''))
                     ?: ($left->id <=> $right->id);
             })
-            ->unique('election_block_position_id')
+            ->unique('election_block_position_id');
+    }
+
+    /**
+     * @param  Collection  $blockCandidates  candidatos del bloque, con person,
+     *                                       electionBlockPosition.position y slateBlock.slate cargados
+     */
+    private function buildCargosFromCandidates(Collection $blockCandidates, int $limit): array
+    {
+        $candidatos = $this->orderCandidatesForSeats($blockCandidates)
             ->take($limit)
             ->values();
 
@@ -1747,13 +1774,11 @@ class NeighborhoodDirectoryController extends Controller
         })->all();
     }
 
-    private function buildEmptyCargoEntries(int $electionBlockId, string $planchaName, int $limit): array
+    /**
+     * @param  Collection  $positions  cargos del bloque (con position cargado), ordenados por id
+     */
+    private function buildEmptyCargoEntries(Collection $positions, string $planchaName, int $limit): array
     {
-        $positions = ElectionBlockPosition::with('position')
-            ->where('election_block_id', $electionBlockId)
-            ->orderBy('id')
-            ->get();
-
         if ($positions->isEmpty()) {
             return array_fill(0, max(1, $limit), [
                 'cargo' => 'Sin cargo',
@@ -1785,37 +1810,24 @@ class NeighborhoodDirectoryController extends Controller
         ->all();
     }
 
-    private function buildCargosFromPlanchaName(int $electionId, int $electionBlockId, string $planchaName, int $limit): array
+    /**
+     * @param  Collection  $blockCandidates  candidatos del bloque, con person,
+     *                                       electionBlockPosition.position y slateBlock.slate cargados
+     */
+    private function buildCargosFromPlanchaName(Collection $blockCandidates, string $planchaName, int $limit): array
     {
         $normalizedPlancha = mb_strtolower(trim($planchaName));
         if ($normalizedPlancha === '') {
             return [];
         }
 
-        $candidatos = Candidate::with([
-            'person',
-            'electionBlockPosition.position',
-            'slateBlock.slate',
-        ])
-            ->where('election_id', $electionId)
-            ->whereHas('electionBlockPosition', function ($query) use ($electionBlockId): void {
-                $query->where('election_block_id', $electionBlockId);
-            })
-            ->whereHas('slateBlock.slate', function ($query) use ($normalizedPlancha): void {
-                $query->whereRaw('LOWER(name) = ?', [$normalizedPlancha]);
-            })
-            ->orderByRaw('COALESCE(ballot_number, \'\') ASC')
-            ->orderBy('id')
-            ->get()
-            ->sort(function ($left, $right): int {
-                $leftOrder = (int) data_get($left, 'electionBlockPosition.position.order_number', PHP_INT_MAX);
-                $rightOrder = (int) data_get($right, 'electionBlockPosition.position.order_number', PHP_INT_MAX);
+        $delaPlancha = $blockCandidates->filter(function ($candidate) use ($normalizedPlancha): bool {
+            $slateName = $candidate->slateBlock?->slate?->name;
 
-                return $leftOrder <=> $rightOrder
-                    ?: strcmp((string) ($left->ballot_number ?? ''), (string) ($right->ballot_number ?? ''))
-                    ?: ($left->id <=> $right->id);
-            })
-            ->unique('election_block_position_id')
+            return $slateName !== null && mb_strtolower((string) $slateName) === $normalizedPlancha;
+        });
+
+        $candidatos = $this->orderCandidatesForSeats($delaPlancha)
             ->take(max(1, $limit))
             ->values();
 
@@ -1841,15 +1853,6 @@ class NeighborhoodDirectoryController extends Controller
         })->all();
     }
 
-    private function resolveSlateBlockIdByPlanchaName(int $electionId, int $electionBlockId, string $planchaName): ?int
-    {
-        return \App\Models\SlateBlock::query()
-            ->join('slates', 'slates.id', '=', 'slate_blocks.slate_id')
-            ->where('slate_blocks.election_id', $electionId)
-            ->where('slate_blocks.election_block_id', $electionBlockId)
-            ->whereRaw('LOWER(slates.name) = ?', [mb_strtolower(trim($planchaName))])
-            ->value('slate_blocks.id');
-    }
     /**
      * Endpoint ligero para el autocompletado de barrios al crear una Persona.
      */

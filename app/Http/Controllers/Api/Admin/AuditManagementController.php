@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\ScrutinyRecord;
-use App\Models\ScrutinyBlockResult;
 use App\Models\ScrutinyRecordFile;
 use App\Models\ScrutinyReview;
 use App\Services\AuditTrailLogger;
@@ -98,16 +97,26 @@ class AuditManagementController extends Controller
                 ];
             });
 
-        $statsBase = ScrutinyRecord::query();
-        $totalCount = (clone $statsBase)->count();
-        $processedCount = (clone $statsBase)->whereIn('status', ['reviewed', 'approved', 'consolidated'])->count();
-        $reviewCount = (clone $statsBase)->whereIn('status', ['draft', 'pending', 'pending_review'])->count();
-        $activeJuriesCount = (clone $statsBase)
-            ->whereIn('status', ['draft', 'pending', 'pending_review'])
-            ->whereNotNull('created_by_user_id')
-            ->distinct('created_by_user_id')
-            ->count('created_by_user_id');
-        $validVotesTotal = (int) ScrutinyBlockResult::sum('votes');
+        // Todos los indicadores en una sola consulta (antes eran 5 viajes a la BD).
+        $processed = ['reviewed', 'approved', 'consolidated'];
+        $review = ['draft', 'pending', 'pending_review'];
+        $processedIn = implode(', ', array_fill(0, count($processed), '?'));
+        $reviewIn = implode(', ', array_fill(0, count($review), '?'));
+
+        $stats = ScrutinyRecord::query()
+            ->selectRaw('COUNT(*) AS total_count')
+            ->selectRaw("COALESCE(SUM(CASE WHEN status IN ({$processedIn}) THEN 1 ELSE 0 END), 0) AS processed_count", $processed)
+            ->selectRaw("COALESCE(SUM(CASE WHEN status IN ({$reviewIn}) THEN 1 ELSE 0 END), 0) AS review_count", $review)
+            ->selectRaw("COUNT(DISTINCT CASE WHEN status IN ({$reviewIn}) THEN created_by_user_id END) AS active_juries_count", $review)
+            ->selectRaw('(SELECT COALESCE(SUM(votes), 0) FROM scrutiny_block_results) AS valid_votes_total')
+            ->toBase()
+            ->first();
+
+        $totalCount = (int) $stats->total_count;
+        $processedCount = (int) $stats->processed_count;
+        $reviewCount = (int) $stats->review_count;
+        $activeJuriesCount = (int) $stats->active_juries_count;
+        $validVotesTotal = (int) $stats->valid_votes_total;
 
         return response()->json([
             'success' => true,
@@ -377,6 +386,10 @@ class AuditManagementController extends Controller
 
     public function showFile(ScrutinyRecordFile $scrutinyRecordFile): StreamedResponse
     {
+        // Las actas pueden venir de un disco SFTP remoto: bajarlas puede tardar
+        // más que el límite por defecto de 30s.
+        set_time_limit(120);
+
         $storageDisk = $this->resolveStorageDisk($scrutinyRecordFile->storage_path);
 
         if ($storageDisk === null) {
@@ -396,6 +409,9 @@ class AuditManagementController extends Controller
             }
         }, 200, [
             'Content-Type' => $scrutinyRecordFile->mime_type ?: 'application/octet-stream',
+            // Solo el navegador del usuario (private) guarda la imagen un rato: al
+            // volver a la misma acta no se descarga otra vez desde el SFTP.
+            'Cache-Control' => 'private, max-age=600',
             // El nombre viene del cliente: hay que escaparlo, no interpolarlo.
             'Content-Disposition' => HeaderUtils::makeDisposition(
                 HeaderUtils::DISPOSITION_INLINE,
