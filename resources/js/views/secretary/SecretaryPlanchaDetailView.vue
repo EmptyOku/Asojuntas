@@ -368,10 +368,21 @@ const composeDraftFullName = (draft) => {
   return rawName.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
 };
 const extractCargoFromNotes = (notes) => { const match = String(notes || '').match(/Cargo:\s*(.+)$/i); return match ? match[1].trim() : ''; };
-const resolveDraftCargoLabel = (draft) => draft?.position?.name || draft?.position?.code || extractCargoFromNotes(draft?.notes) || '';
+// El suplente comparte cargo con su principal (p. ej. ambos "Presidente"): se
+// distingue con is_substitute. Sin esto el suplente caía en la casilla del
+// principal y la suya quedaba vacía.
+const resolveDraftCargoLabel = (draft) => {
+  const fromNotes = extractCargoFromNotes(draft?.notes);
+  const base = /^\s*suplente/i.test(fromNotes)
+    ? fromNotes
+    : (draft?.position?.name || fromNotes || draft?.position?.code || '');
+  const label = normalizeCargoLabel(base).replace(/^SUPLENTE DE /, 'SUPLENTE ');
+  if (draft?.is_substitute && !label.startsWith('SUPLENTE')) return `SUPLENTE ${label}`;
+  return label;
+};
 
 const applyDraftToPlancha = (draft) => {
-  const label = normalizeCargoLabel(resolveDraftCargoLabel(draft));
+  const label = resolveDraftCargoLabel(draft);
   const lookup = {
     PRESIDENTE: planchaData.bloque1.presidente,
     VICEPRESIDENTE: planchaData.bloque1.vicepresidente,

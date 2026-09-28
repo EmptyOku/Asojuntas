@@ -144,7 +144,14 @@ class PlanchaDraftController extends Controller
             'replace_pending' => 'sometimes|boolean',
         ]);
 
-        $electionId = $this->resolveElectionId($validated['election_id'] ?? null);
+        // Si el lote ya existe, su elección manda: al corregir desde el detalle
+        // la pantalla puede no enviar election_id y, sin esto, se caía a "la
+        // elección activa más reciente" (la de OTRO barrio) y se guardaba ahí.
+        $batchElectionId = ! empty($validated['capture_batch_uuid'])
+            ? CandidateDraft::query()->where('capture_batch_uuid', $validated['capture_batch_uuid'])->value('election_id')
+            : null;
+
+        $electionId = $batchElectionId ?: $this->resolveElectionId($validated['election_id'] ?? null);
         if (! $electionId) {
             return response()->json([
                 'success' => false,
@@ -208,6 +215,7 @@ class PlanchaDraftController extends Controller
                     'election_id' => $electionId,
                     'block_id' => $positionContext['block_id'],
                     'position_id' => $positionContext['position_id'],
+                    'is_substitute' => $this->isSubstituteCargo((string) ($cargo['puesto'] ?? '')),
                     'slate_id' => $positionContext['slate_id'],
                     'slate_block_id' => $positionContext['slate_block_id'],
                     'capture_batch_uuid' => $captureBatchUuid,
@@ -228,19 +236,41 @@ class PlanchaDraftController extends Controller
                     'notes' => $this->buildDraftNote($blockTitle, (string) ($cargo['puesto'] ?? '')),
                 ];
 
-                $existing = CandidateDraft::query()
+                // Cada fila del lote es un cargo de la plancha: se identifica por el
+                // cargo (y si es suplente), no por el nombre. Así, corregir en el
+                // detalle un nombre o un documento mal leído por el OCR actualiza
+                // ese mismo borrador en vez de crear uno duplicado. Antes solo se
+                // reconocían borradores pendientes con el MISMO nombre y documento.
+                $slotDrafts = CandidateDraft::query()
                     ->where('election_id', $electionId)
-                    ->where('review_status', CandidateDraftWorkflow::STATUS_PENDING)
-                    ->where('is_processed', false)
-                    ->where('source_type', $baseData['source_type'])
-                    ->where('first_name', $baseData['first_name'])
-                    ->where('last_name', $baseData['last_name'])
                     ->where('capture_batch_uuid', $captureBatchUuid)
-                    ->when($documentNumber !== null, fn ($q) => $q->where('document_number', $documentNumber))
-                    ->first();
+                    ->where('is_substitute', $baseData['is_substitute'])
+                    ->when(
+                        $baseData['position_id'] !== null,
+                        fn ($q) => $q->where('position_id', $baseData['position_id']),
+                        fn ($q) => $q->whereNull('position_id')->where('notes', $baseData['notes'])
+                    )
+                    ->orderBy('id')
+                    ->get();
+
+                // Ya oficializado como candidato: no se toca ni se duplica.
+                if ($slotDrafts->contains(fn ($d) => $d->is_processed && $d->review_status !== CandidateDraftWorkflow::STATUS_REJECTED)) {
+                    $skipped++;
+                    continue;
+                }
+
+                $existing = $slotDrafts->first(fn ($d) => ! $d->is_processed);
 
                 if ($existing) {
-                    $existing->update($baseData);
+                    // Se corrigen los datos pero se conserva la decisión de revisión
+                    // (si ya estaba aprobado, sigue aprobado y listo para oficializar).
+                    // La plancha ya asignada tampoco cambia: el número que envía la
+                    // pantalla sale de la posición de la pestaña, no de la plancha real.
+                    $keep = ['review_status', 'is_processed', 'processed_at'];
+                    if ($existing->slate_id) {
+                        array_push($keep, 'slate_id', 'slate_block_id');
+                    }
+                    $existing->update(collect($baseData)->except($keep)->all());
                     $updated++;
                     $rows[] = $existing;
                     continue;
@@ -405,7 +435,10 @@ class PlanchaDraftController extends Controller
             'review_status' => 'nullable|string|in:pending,approved,rejected',
             'is_processed' => 'nullable|boolean',
             'search' => 'nullable|string|max:100',
-            'per_page' => 'nullable|integer|min:1|max:20',
+            // Hasta 100: el detalle de un lote pide la plancha completa de una vez
+            // (con suplentes son ~22 cargos). Antes el máximo era 20 y la pantalla
+            // de detalle recibía un 422 que confundía con "OCR aún procesando".
+            'per_page' => 'nullable|integer|min:1|max:100',
         ]);
 
         $isDetailedRequest = $request->filled('draft_id') || $request->filled('capture_batch_uuid');
@@ -471,8 +504,15 @@ class PlanchaDraftController extends Controller
             });
         }
 
-        $perPage = max(1, min(20, (int) $request->integer('per_page', 15)));
-        $drafts = $query->orderByDesc('candidate_drafts.id')->simplePaginate($perPage);
+        // Un lote se pide completo y con total (el contador de "promovibles" lo
+        // usa); la bandeja general sigue paginando de a 20 sin contar.
+        if ($isDetailedRequest) {
+            $perPage = max(1, min(100, (int) $request->integer('per_page', 100)));
+            $drafts = $query->orderByDesc('candidate_drafts.id')->paginate($perPage);
+        } else {
+            $perPage = max(1, min(20, (int) $request->integer('per_page', 15)));
+            $drafts = $query->orderByDesc('candidate_drafts.id')->simplePaginate($perPage);
+        }
 
         return response()->json([
             'success' => true,
@@ -1092,6 +1132,9 @@ class PlanchaDraftController extends Controller
                     $personsCreated++;
                 }
 
+                $isSubstitute = (bool) $draft->is_substitute
+                    || $this->isSubstituteCargo((string) $this->extractCargoLabelFromNotes((string) ($draft->notes ?? '')));
+
                 $candidate = Candidate::query()->updateOrCreate(
                     [
                         'election_id' => $draft->election_id,
@@ -1100,6 +1143,7 @@ class PlanchaDraftController extends Controller
                     [
                         'slate_block_id' => $slateBlockId,
                         'election_block_position_id' => $electionBlockPositionId,
+                        'is_substitute' => $isSubstitute,
                         'ballot_number' => null,
                         'is_active' => true,
                     ]
@@ -1114,6 +1158,7 @@ class PlanchaDraftController extends Controller
                 $draft->update([
                     'document_type_id' => $documentTypeId,
                     'position_id' => $positionId,
+                    'is_substitute' => $isSubstitute,
                     'slate_block_id' => $slateBlockId,
                     'person_id' => $person->id,
                     'is_processed' => true,
@@ -1339,6 +1384,16 @@ class PlanchaDraftController extends Controller
         ];
     }
 
+    /**
+     * "SUPLENTE DE PRESIDENTE", "Suplente Fiscal"...: se guarda en el mismo
+     * cargo que el principal, pero marcado como suplente para que no cuente
+     * como un segundo presidente al asignar curules.
+     */
+    private function isSubstituteCargo(string $cargoLabel): bool
+    {
+        return Str::of($cargoLabel)->ascii()->upper()->squish()->startsWith('SUPLENTE');
+    }
+
     private function resolvePositionAndBlockCodeForCargo(string $normalizedCargo): array
     {
         $map = [
@@ -1441,12 +1496,29 @@ class PlanchaDraftController extends Controller
             ->where('block_id', $block->id)
             ->first();
 
+        // Jerarquía dentro del bloque: define qué cargo se provee primero al
+        // asignar curules (antes quedaba en null y se perdía el orden).
+        $positionOrder = [
+            'DIR_PRES' => 1,
+            'DIR_VICE' => 2,
+            'DIR_TESO' => 3,
+            'DIR_SECR' => 4,
+            'DEL_AJ_1' => 1,
+            'DEL_AJ_2' => 2,
+            'DEL_AJ_3' => 3,
+            'FIS_PRIN' => 1,
+            'CYC_CONC_1' => 1,
+            'CYC_CONC_2' => 2,
+            'CYC_CONC_3' => 3,
+            'CYC_EMP_COORD' => 4,
+        ];
+
         if (! $position) {
             $position = Position::query()->create([
                 'block_id' => $block->id,
                 'name' => $positionNames[$positionCode] ?? $positionCode,
                 'code' => $positionCode,
-                'order_number' => null,
+                'order_number' => $positionOrder[$positionCode] ?? null,
                 'description' => 'Creado automaticamente por mapeo de planchas OCR.',
                 'is_active' => true,
             ]);
@@ -1621,8 +1693,14 @@ class PlanchaDraftController extends Controller
             }
         }
 
+        // Cada lote de captura es una plancha. Si el lote todavía no tiene
+        // plancha se le crea la siguiente (antes se reutilizaba la primera de
+        // la elección y todas las planchas terminaban fusionadas en
+        // "Plancha 1"). Un borrador suelto, sin lote, sí usa la existente.
         if (! $slateId) {
-            $slateId = $this->ensureAutoSlateForElection($electionId);
+            $slateId = $draft->capture_batch_uuid
+                ? $this->createNextSlateForElection($electionId)
+                : $this->ensureAutoSlateForElection($electionId);
         }
 
         $slateBlockId = $draft->slate_block_id;
@@ -1685,6 +1763,11 @@ class PlanchaDraftController extends Controller
             return (int) $existingAny->id;
         }
 
+        return $this->createNextSlateForElection($electionId);
+    }
+
+    private function createNextSlateForElection(int $electionId): int
+    {
         $nextNumber = $this->nextSlateNumberForElection($electionId);
         while (Slate::query()->where('election_id', $electionId)->where('code', 'P'.$nextNumber)->exists()) {
             $nextNumber++;

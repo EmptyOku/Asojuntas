@@ -16,6 +16,7 @@ class CandidateDraft extends Model
         'election_id',
         'block_id',
         'position_id',
+        'is_substitute',
         'slate_id',
         'slate_block_id',
         'capture_batch_uuid',
@@ -38,6 +39,7 @@ class CandidateDraft extends Model
 
     protected $casts = [
         'confidence_score' => 'decimal:2',
+        'is_substitute' => 'boolean',
         'is_processed' => 'boolean',
         'processed_at' => 'datetime',
     ];

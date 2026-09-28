@@ -41,8 +41,9 @@ class NeighborhoodDirectoryController extends Controller
             'elections.candidates.electionBlockPosition.position'
         ]);
 
-        // 🔥 PAGINACIÓN DE SERVIDOR: Solo procesamos 15 registros por consulta
-        $neighborhoodsPaginator = $query->orderBy('name', 'asc')->paginate(15);
+        // Paginación de servidor: 15 por defecto; la vista puede pedir entre 5 y 50.
+        $perPage = min(50, max(5, (int) $request->integer('per_page', 15)));
+        $neighborhoodsPaginator = $query->orderBy('name', 'asc')->paginate($perPage);
 
         // Transformamos solo los 15 registros de la página actual
         $neighborhoodsItems = collect($neighborhoodsPaginator->items())
@@ -50,25 +51,36 @@ class NeighborhoodDirectoryController extends Controller
             ->values()
             ->toArray();
 
+        // Extras opcionales: la vista que ya tiene las comunas o no usa los
+        // conteos masivos (el Directorio al buscar) los omite con
+        // with_communes=0 / with_bulk_counts=0 y se ahorra dos consultas.
+        // Por defecto se incluyen, como antes.
+        $withCommunes = $request->boolean('with_communes', true);
+        $withBulkCounts = $request->boolean('with_bulk_counts', true);
+
         // Conteos masivos para indicadores superiores. El paginador ya contó
         // el total con el mismo filtro: los barrios sin elección activa son
         // ese total menos los que sí la tienen (una consulta menos).
-        $bulkCloseCount = $this->filteredNeighborhoodQuery($request)
-            ->whereHas('elections', function ($electionQuery): void {
-                $electionQuery->where('is_active', true);
-            })
-            ->count();
-        $bulkCreateCount = $neighborhoodsPaginator->total() - $bulkCloseCount;
+        $bulkCloseCount = $withBulkCounts
+            ? $this->filteredNeighborhoodQuery($request)
+                ->whereHas('elections', function ($electionQuery): void {
+                    $electionQuery->where('is_active', true);
+                })
+                ->count()
+            : null;
+        $bulkCreateCount = $bulkCloseCount === null ? null : $neighborhoodsPaginator->total() - $bulkCloseCount;
 
-        $communes = Commune::query()
-            ->select('id', 'name')
-            ->orderBy('name')
-            ->get()
-            ->map(fn($commune) => [
-                'id' => $commune->id,
-                'name' => $commune->name,
-            ])
-            ->toArray();
+        $communes = $withCommunes
+            ? Commune::query()
+                ->select('id', 'name')
+                ->orderBy('name')
+                ->get()
+                ->map(fn($commune) => [
+                    'id' => $commune->id,
+                    'name' => $commune->name,
+                ])
+                ->toArray()
+            : null;
 
         $response = [
             'success' => true,
@@ -79,6 +91,8 @@ class NeighborhoodDirectoryController extends Controller
                     'last_page'    => $neighborhoodsPaginator->lastPage(),
                     'per_page'     => $neighborhoodsPaginator->perPage(),
                     'total'        => $neighborhoodsPaginator->total(),
+                    'from'         => $neighborhoodsPaginator->firstItem() ?? 0,
+                    'to'           => $neighborhoodsPaginator->lastItem() ?? 0,
                 ],
                 'communes' => $communes,
                 'bulk_counts' => [
@@ -428,15 +442,19 @@ class NeighborhoodDirectoryController extends Controller
         $vicepresidentName = null;
 
         if ($latestElection) {
-            $president = $latestElection->candidates->first(function ($candidate) {
-                $positionName = strtolower((string) data_get($candidate, 'electionBlockPosition.position.name', ''));
-                return str_contains($positionName, 'presidente') && ! str_contains($positionName, 'vice');
-            });
+            // Solo principales (el suplente no es "el presidente") y en orden
+            // fijo, para que no cambie entre recargas.
+            $principals = $latestElection->candidates
+                ->reject(fn ($candidate) => (bool) $candidate->is_substitute)
+                ->sortBy('id');
 
-            $vicepresident = $latestElection->candidates->first(function ($candidate) {
-                $positionName = strtolower((string) data_get($candidate, 'electionBlockPosition.position.name', ''));
-                return str_contains($positionName, 'vicepresidente');
-            });
+            $president = $principals->first(
+                fn ($candidate) => $this->candidateHoldsPosition($candidate, 'DIR_PRES', 'presidente')
+            );
+
+            $vicepresident = $principals->first(
+                fn ($candidate) => $this->candidateHoldsPosition($candidate, 'DIR_VICE', 'vicepresidente')
+            );
 
             if ($president && $president->person) {
                 $presidentName = trim(implode(' ', array_filter([
@@ -472,6 +490,25 @@ class NeighborhoodDirectoryController extends Controller
                 'period_year' => $latestElection->period_year,
             ] : null,
         ];
+    }
+
+    /**
+     * Por código de cargo (DIR_PRES / DIR_VICE); si el cargo no tiene código,
+     * por nombre exacto ("Presidente" no debe coincidir con "Vicepresidente").
+     */
+    private function candidateHoldsPosition($candidate, string $code, string $name): bool
+    {
+        $position = data_get($candidate, 'electionBlockPosition.position');
+
+        if (! $position) {
+            return false;
+        }
+
+        if ($position->code) {
+            return strtoupper((string) $position->code) === $code;
+        }
+
+        return mb_strtolower(trim((string) $position->name)) === $name;
     }
 
     public function show($id, Request $request): JsonResponse
@@ -666,77 +703,12 @@ class NeighborhoodDirectoryController extends Controller
             }
 
             $winner = $allocation['winner'];
-            $cargos = [];
-            $planchasCurules = collect($allocation['planchas'])
-                ->filter(function (array $plancha): bool {
-                    return (int) ($plancha['curules'] ?? 0) > 0;
-                })
-                ->values();
-
-            foreach ($planchasCurules as $planchaCurules) {
-                $seatsForSlate = max(0, (int) ($planchaCurules['curules'] ?? 0));
-                if ($seatsForSlate === 0) {
-                    continue;
-                }
-
-                $planchaNombre = (string) ($planchaCurules['plancha'] ?? '—');
-                $slateBlockId = $slateBlockIdByBlockAndName[$eb->id][mb_strtolower(trim($planchaNombre))] ?? null;
-                $candidatos = $slateBlockId
-                    ? $blockCandidates->where('slate_block_id', $slateBlockId)
-                    : collect();
-
-                if ($candidatos->isNotEmpty()) {
-                    $candidatos = $this->orderCandidatesForSeats($candidatos)
-                        ->take($seatsForSlate)
-                        ->values();
-
-                    foreach ($candidatos as $c) {
-                        $person = $c->person;
-                        $position = $c->electionBlockPosition->position ?? null;
-
-                        $cargos[] = [
-                            'cargo' => $position->name ?? 'Sin cargo',
-                            'plancha' => data_get($c, 'slateBlock.slate.name', $planchaNombre),
-                            'persona' => [
-                                'nombre' => trim(
-                                    $person->first_name . ' ' .
-                                    ($person->middle_name ? $person->middle_name . ' ' : '') .
-                                    $person->last_name . ' ' .
-                                    ($person->second_last_name ?? '')
-                                ),
-                                'identificacion' => $person->document_number ?? '—',
-                                'celular' => $person->phone ?? '—',
-                                'correo' => $person->email ?? '—',
-                            ],
-                        ];
-                    }
-                    continue;
-                }
-
-                $cargosPlancha = $this->buildCargosFromPlanchaName(
-                    $blockCandidates,
-                    $planchaNombre,
-                    $seatsForSlate
-                );
-
-                if (! empty($cargosPlancha)) {
-                    $cargos = array_merge($cargos, $cargosPlancha);
-                    continue;
-                }
-
-                $cargos = array_merge(
-                    $cargos,
-                    $this->buildEmptyCargoEntries($blockPositions, $planchaNombre, $seatsForSlate)
-                );
-            }
-
-            if (empty($cargos) && $cargosAProveer > 0) {
-                $cargos = $this->buildCargosFromCandidates($blockCandidates, $cargosAProveer);
-            }
-
-            if (empty($cargos) && $cargosAProveer > 0) {
-                $cargos = $this->buildEmptyCargoEntries($blockPositions, (string) $blockName, $cargosAProveer);
-            }
+            $cargos = $this->assignCargosBySeats(
+                $allocation['planchas'],
+                $blockPositions,
+                $blockCandidates,
+                $slateBlockIdByBlockAndName[$eb->id] ?? []
+            );
 
             if (count($cargos) > $cargosAProveer) {
                 $cargos = array_slice($cargos, 0, $cargosAProveer);
@@ -1683,10 +1655,14 @@ class NeighborhoodDirectoryController extends Controller
                 ?: strcmp($left['plancha'], $right['plancha']);
         });
 
-        $countPlanchas = count($normalizedPlanchas);
-        if ($countPlanchas > 0 && $cargosRestantes > 0) {
+        // Las curules que no alcanzaron cuociente entero van a los mayores
+        // residuos. Solo compiten planchas con votos: antes el reparto rotaba
+        // por todas y una plancha con 0 votos podía quedarse con una curul.
+        $conVotos = array_keys(array_filter($normalizedPlanchas, fn (array $plancha): bool => $plancha['votos'] > 0));
+        $countConVotos = count($conVotos);
+        if ($countConVotos > 0 && $cargosRestantes > 0) {
             for ($seat = 0; $seat < $cargosRestantes; $seat++) {
-                $normalizedPlanchas[$seat % $countPlanchas]['curules']++;
+                $normalizedPlanchas[$conVotos[$seat % $countConVotos]]['curules']++;
             }
         }
 
@@ -1718,139 +1694,110 @@ class NeighborhoodDirectoryController extends Controller
 
     private function normalizeBlockName(string $name): string
     {
-        $normalized = mb_strtolower(trim($name));
+        // Sin tildes: el OCR lee "COMISIÓN ... CONCILIACIÓN" y el catálogo
+        // guarda "Comision ... conciliacion"; deben ser el mismo bloque.
+        $normalized = mb_strtolower(trim(Str::ascii($name)));
         $normalized = preg_replace('/\s+/', ' ', $normalized) ?? $normalized;
 
         return $normalized;
     }
 
     /**
-     * Orden de asignación de curules: por orden del cargo, luego número en el
-     * tarjetón y luego id; un candidato por cargo.
+     * Provee cada cargo del bloque UNA sola vez.
+     *
+     * Las planchas llegan ordenadas como las deja allocateSeatsByQuota (más
+     * curules y más votos primero). Cada curul ocupa el siguiente cargo en
+     * jerarquía (order_number): la plancha mayoritaria provee la presidencia y
+     * los primeros cargos; la siguiente continúa donde quedó la anterior. Para
+     * cada cargo se toma al candidato PRINCIPAL que esa plancha inscribió para
+     * ese mismo cargo; su suplente se informa aparte.
+     *
+     * Antes cada plancha llenaba cargos desde el primero: dos planchas con
+     * curules daban dos presidentes y nadie quedaba de tesorero o secretario.
+     *
+     * @param  array<int, array<string, mixed>>  $planchas
+     * @param  Collection  $blockPositions  cargos del bloque (ElectionBlockPosition con position)
+     * @param  Collection  $blockCandidates  candidatos del bloque, con person cargado
+     * @param  array<string, int>  $slateBlockIdByName  nombre de plancha (minúsculas) => slate_block_id
      */
-    private function orderCandidatesForSeats(Collection $candidates): Collection
-    {
-        return $candidates
-            ->sort(function ($left, $right): int {
-                $leftOrder = (int) data_get($left, 'electionBlockPosition.position.order_number', PHP_INT_MAX);
-                $rightOrder = (int) data_get($right, 'electionBlockPosition.position.order_number', PHP_INT_MAX);
-
-                return $leftOrder <=> $rightOrder
-                    ?: strcmp((string) ($left->ballot_number ?? ''), (string) ($right->ballot_number ?? ''))
-                    ?: ($left->id <=> $right->id);
-            })
-            ->unique('election_block_position_id');
-    }
-
-    /**
-     * @param  Collection  $blockCandidates  candidatos del bloque, con person,
-     *                                       electionBlockPosition.position y slateBlock.slate cargados
-     */
-    private function buildCargosFromCandidates(Collection $blockCandidates, int $limit): array
-    {
-        $candidatos = $this->orderCandidatesForSeats($blockCandidates)
-            ->take($limit)
+    private function assignCargosBySeats(
+        array $planchas,
+        Collection $blockPositions,
+        Collection $blockCandidates,
+        array $slateBlockIdByName
+    ): array {
+        // Un puesto por vacante, en orden jerárquico (sin orden, al final).
+        $slots = $blockPositions
+            ->sort(fn ($a, $b) => [$a->position?->order_number ?? PHP_INT_MAX, $a->id]
+                <=> [$b->position?->order_number ?? PHP_INT_MAX, $b->id])
+            ->flatMap(fn ($ebp) => array_fill(0, max(0, (int) $ebp->vacancies), $ebp))
             ->values();
 
-        return $candidatos->map(function ($candidate): array {
-            $person = $candidate->person;
-            $position = $candidate->electionBlockPosition->position ?? null;
+        $cargos = [];
+        $usedCandidateIds = [];
+        $slotIndex = 0;
 
-            return [
-                'cargo' => $position->name ?? 'Sin cargo',
-                'plancha' => data_get($candidate, 'slateBlock.slate.name', '—'),
-                'persona' => [
-                    'nombre' => trim(
-                        $person->first_name . ' ' .
-                        ($person->middle_name ? $person->middle_name . ' ' : '') .
-                        $person->last_name . ' ' .
-                        ($person->second_last_name ?? '')
-                    ),
-                    'identificacion' => $person->document_number ?? '—',
-                    'celular' => $person->phone ?? '—',
-                    'correo' => $person->email ?? '—',
-                ],
-            ];
-        })->all();
-    }
+        foreach ($planchas as $plancha) {
+            $seats = max(0, (int) ($plancha['curules'] ?? 0));
+            $nombrePlancha = (string) ($plancha['plancha'] ?? '—');
+            $slateBlockId = $plancha['slate_block_id']
+                ?? ($slateBlockIdByName[mb_strtolower(trim($nombrePlancha))] ?? null);
 
-    /**
-     * @param  Collection  $positions  cargos del bloque (con position cargado), ordenados por id
-     */
-    private function buildEmptyCargoEntries(Collection $positions, string $planchaName, int $limit): array
-    {
-        if ($positions->isEmpty()) {
-            return array_fill(0, max(1, $limit), [
-                'cargo' => 'Sin cargo',
-                'plancha' => $planchaName,
-                'persona' => [
-                    'nombre' => '—',
-                    'identificacion' => '—',
-                    'celular' => '—',
-                    'correo' => '—',
-                ],
-            ]);
+            $delaPlancha = $slateBlockId
+                ? $blockCandidates->where('slate_block_id', (int) $slateBlockId)->sortBy('id')
+                : collect();
+
+            for ($seat = 0; $seat < $seats && $slotIndex < $slots->count(); $seat++, $slotIndex++) {
+                $ebp = $slots[$slotIndex];
+                $delCargo = $delaPlancha->where('election_block_position_id', $ebp->id);
+
+                $principal = $delCargo->first(
+                    fn ($c) => ! $c->is_substitute && ! isset($usedCandidateIds[$c->id])
+                );
+                $suplente = $delCargo->first(
+                    fn ($c) => $c->is_substitute && ! isset($usedCandidateIds[$c->id])
+                );
+
+                foreach ([$principal, $suplente] as $used) {
+                    if ($used) {
+                        $usedCandidateIds[$used->id] = true;
+                    }
+                }
+
+                $cargos[] = [
+                    'cargo' => $ebp->position->name ?? 'Sin cargo',
+                    'plancha' => $nombrePlancha,
+                    'persona' => $principal?->person
+                        ? $this->personaPayload($principal->person)
+                        : ['nombre' => '—', 'identificacion' => '—', 'celular' => '—', 'correo' => '—'],
+                    'suplente' => $suplente?->person ? $this->personFullName($suplente->person) : null,
+                    // La plancha ganó la curul pero no tiene inscrito a nadie para este cargo.
+                    'sin_candidato' => $principal === null,
+                ];
+            }
         }
 
-        return $positions
-            ->take(max(1, $limit))
-            ->map(function ($position) use ($planchaName): array {
-            return [
-                'cargo' => $position->position->name ?? 'Sin cargo',
-                'plancha' => $planchaName,
-                'persona' => [
-                    'nombre' => '—',
-                    'identificacion' => '—',
-                    'celular' => '—',
-                    'correo' => '—',
-                ],
-            ];
-        })
-        ->values()
-        ->all();
+        return $cargos;
     }
 
-    /**
-     * @param  Collection  $blockCandidates  candidatos del bloque, con person,
-     *                                       electionBlockPosition.position y slateBlock.slate cargados
-     */
-    private function buildCargosFromPlanchaName(Collection $blockCandidates, string $planchaName, int $limit): array
+    private function personaPayload($person): array
     {
-        $normalizedPlancha = mb_strtolower(trim($planchaName));
-        if ($normalizedPlancha === '') {
-            return [];
-        }
+        return [
+            'nombre' => $this->personFullName($person),
+            'identificacion' => $person->document_number ?? '—',
+            'celular' => $person->phone ?? '—',
+            'correo' => $person->email ?? '—',
+        ];
+    }
 
-        $delaPlancha = $blockCandidates->filter(function ($candidate) use ($normalizedPlancha): bool {
-            $slateName = $candidate->slateBlock?->slate?->name;
-
-            return $slateName !== null && mb_strtolower((string) $slateName) === $normalizedPlancha;
-        });
-
-        $candidatos = $this->orderCandidatesForSeats($delaPlancha)
-            ->take(max(1, $limit))
-            ->values();
-
-        return $candidatos->map(function ($candidate) use ($planchaName): array {
-            $person = $candidate->person;
-            $position = $candidate->electionBlockPosition->position ?? null;
-
-            return [
-                'cargo' => $position->name ?? 'Sin cargo',
-                'plancha' => data_get($candidate, 'slateBlock.slate.name', $planchaName),
-                'persona' => [
-                    'nombre' => trim(
-                        $person->first_name . ' ' .
-                        ($person->middle_name ? $person->middle_name . ' ' : '') .
-                        $person->last_name . ' ' .
-                        ($person->second_last_name ?? '')
-                    ),
-                    'identificacion' => $person->document_number ?? '—',
-                    'celular' => $person->phone ?? '—',
-                    'correo' => $person->email ?? '—',
-                ],
-            ];
-        })->all();
+    private function personFullName($person): string
+    {
+        return trim(implode(' ', array_filter([
+            $person->first_name ?? null,
+            $person->middle_name ?? null,
+            $person->last_name ?? null,
+            $person->second_last_name ?? null,
+        ])));
     }
 
     /**

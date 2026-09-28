@@ -16,11 +16,14 @@ class Candidate extends Model
         'person_id',
         'slate_block_id',
         'election_block_position_id',
+        // Suplente del cargo (no principal): no ocupa curul por sí mismo.
+        'is_substitute',
         'ballot_number',
         'is_active',
     ];
 
     protected $casts = [
+        'is_substitute' => 'boolean',
         'is_active' => 'boolean',
     ];
 
