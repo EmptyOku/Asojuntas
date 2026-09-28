@@ -10,6 +10,7 @@ use App\Services\AuditTrailLogger;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\HeaderUtils;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -20,18 +21,34 @@ class AuditManagementController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
+        // Comuna y nombre del jurado se traen como subconsultas de la misma
+        // consulta principal: antes eran 5 consultas más (elección, barrio,
+        // comuna, usuario y persona) solo para mostrar dos textos.
         $query = ScrutinyRecord::query()
             ->with([
                 'pollingTable:id,election_id,name,code,location',
-                'createdByUser.person:id,first_name,last_name',
-                'createdByUser:id,person_id,username',
-                'election:id,neighborhood_id,name',
-                'election.neighborhood:id,commune_id,name',
-                'election.neighborhood.commune:id,name',
                 'extractions:id,scrutiny_record_id,status,confidence_score,created_at,normalized_payload',
                 'reviews:id,scrutiny_record_id,decision,reviewed_at,changes_payload,created_at',
             ])
-            ->withSum('blockResults as valid_votes_sum', 'votes');
+            ->withSum('blockResults as valid_votes_sum', 'votes')
+            ->addSelect([
+                'commune_name' => DB::table('communes')
+                    ->select('communes.name')
+                    ->join('neighborhoods', 'neighborhoods.commune_id', '=', 'communes.id')
+                    ->join('elections', 'elections.neighborhood_id', '=', 'neighborhoods.id')
+                    ->whereColumn('elections.id', 'scrutiny_records.election_id')
+                    ->whereNull('neighborhoods.deleted_at')
+                    ->limit(1),
+                'jury_username' => DB::table('users')
+                    ->select('users.username')
+                    ->whereColumn('users.id', 'scrutiny_records.created_by_user_id')
+                    ->limit(1),
+                'jury_person_name' => DB::table('persons')
+                    ->selectRaw("TRIM(COALESCE(persons.first_name, '') || ' ' || COALESCE(persons.last_name, ''))")
+                    ->join('users', 'users.person_id', '=', 'persons.id')
+                    ->whereColumn('users.id', 'scrutiny_records.created_by_user_id')
+                    ->limit(1),
+            ]);
 
         if ($request->filled('search')) {
             $search = $request->string('search')->toString();
@@ -72,9 +89,7 @@ class AuditManagementController extends Controller
                     : null;
 
                 $statusTag = $this->buildStatusTag($record->status, $confidence);
-                $userName = $record->createdByUser?->person
-                    ? trim(($record->createdByUser->person->first_name ?? '').' '.($record->createdByUser->person->last_name ?? ''))
-                    : null;
+                $userName = trim((string) ($record->jury_person_name ?? ''));
                 $validVotes = $this->resolveValidVotesForIndex($record);
 
                 return [
@@ -85,10 +100,10 @@ class AuditManagementController extends Controller
                         'code' => $record->pollingTable?->code,
                         'location' => $record->pollingTable?->location,
                     ],
-                    'commune_name' => $record->election?->neighborhood?->commune?->name,
-                    'jury_name' => $userName !== null && $userName !== ''
+                    'commune_name' => $record->commune_name,
+                    'jury_name' => $userName !== ''
                         ? $userName
-                        : ($record->createdByUser?->username ?? 'Sin usuario'),
+                        : ($record->jury_username ?? 'Sin usuario'),
                     'transmitted_at_human' => $record->updated_at?->diffForHumans(),
                     'valid_votes' => $validVotes,
                     'status' => $record->status,

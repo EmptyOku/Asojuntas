@@ -14,24 +14,33 @@ class UserSeeder extends Seeder
     {
         $now = now();
 
-        // Usuarios base para producción.
+        // La contraseña inicial no vive en el código (quedaría publicada en el
+        // repositorio): se lee del .env y solo se usa al CREAR cada usuario.
+        $password = (string) env('SEED_USER_PASSWORD', '');
+
+        if (mb_strlen($password) < 8) {
+            throw new \RuntimeException(
+                'Define SEED_USER_PASSWORD en el .env (mínimo 8 caracteres) antes de ejecutar UserSeeder.'
+            );
+        }
+
+        // Usuarios base.
         $seedUsers = [
             [
                 'username' => 'superadmin',
                 'email' => 'superadmin@jac.local',
-                'password' => 'Admin123*',
                 'roles' => ['super_admin'],
             ],
             [
                 'username' => 'electoraladmin',
                 'email' => 'electoraladmin@jac.local',
-                'password' => 'Admin123*',
                 'roles' => ['admin_electoral'],
             ],
             [
+                // Rol territorial: para que pueda cargar actas hay que
+                // vincularlo a una persona con barrio desde la aplicación.
                 'username' => 'jurado',
                 'email' => 'digitizer1@jac.local',
-                'password' => 'Admin123*',
                 'roles' => ['digitizer'],
             ],
         ];
@@ -42,17 +51,9 @@ class UserSeeder extends Seeder
         foreach ($seedUsers as $entry) {
             $existingId = DB::table('users')->where('email', $entry['email'])->value('id');
 
+            // Si ya existe no se toca su contraseña: volver a correr los
+            // seeders no debe reemplazar la que el usuario haya cambiado.
             if ($existingId) {
-                DB::table('users')
-                    ->where('id', $existingId)
-                    ->update([
-                        'username' => $entry['username'],
-                        'password' => Hash::make($entry['password']),
-                        'is_active' => true,
-                        'email_verified_at' => $now,
-                        'updated_at' => $now,
-                    ]);
-
                 $userIdsByEmail[$entry['email']] = $existingId;
                 continue;
             }
@@ -61,7 +62,7 @@ class UserSeeder extends Seeder
                 'person_id' => null,
                 'username' => $entry['username'],
                 'email' => $entry['email'],
-                'password' => Hash::make($entry['password']),
+                'password' => Hash::make($password),
                 'email_verified_at' => $now,
                 'is_active' => true,
                 'last_login_at' => null,

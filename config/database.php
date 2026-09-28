@@ -95,8 +95,16 @@ return [
             'charset' => env('DB_CHARSET', 'utf8'),
             'prefix' => '',
             'prefix_indexes' => true,
-            'search_path' => 'public',
+            // Sin valor no se ejecuta "SET search_path" al conectar (un viaje
+            // más a la BD en cada petición); PostgreSQL ya usa "public".
+            'search_path' => env('DB_SEARCH_PATH') ?: null,
             'sslmode' => env('DB_SSLMODE', 'prefer'),
+            // Reutiliza la conexión entre peticiones del mismo proceso PHP
+            // (p. ej. php artisan serve). Con una BD remota ahorra ~1 s por
+            // petición. Apagado por defecto.
+            'options' => extension_loaded('pdo_pgsql') && filter_var(env('DB_PERSISTENT', false), FILTER_VALIDATE_BOOL)
+                ? [PDO::ATTR_PERSISTENT => true]
+                : [],
         ],
 
         'sqlsrv' => [

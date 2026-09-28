@@ -28,9 +28,11 @@ class PersonController extends Controller
                     ->orWhereLike('first_name', "%{$search}%")
                     ->orWhereLike('last_name', "%{$search}%")
                     ->orWhereLike('email', "%{$search}%")
-                    ->orWhereRaw(
-                        "CONCAT(first_name, ' ', COALESCE(middle_name, ''), ' ', last_name, ' ', COALESCE(second_last_name, '')) ILIKE ?",
-                        ["%{$search}%"]
+                    // Nombre completo con ||: funciona igual en PostgreSQL y SQLite
+                    // (CONCAT e ILIKE no existen en todas las versiones de SQLite).
+                    ->orWhereLike(
+                        "first_name || ' ' || COALESCE(middle_name, '') || ' ' || last_name || ' ' || COALESCE(second_last_name, '')",
+                        "%{$search}%"
                     );
             });
         }

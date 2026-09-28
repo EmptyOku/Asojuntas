@@ -6,11 +6,16 @@ use Illuminate\Database\Seeder;
 
 class DatabaseSeeder extends Seeder
 {
+    /**
+     * Solo lo que la aplicación necesita para funcionar: catálogos, seguridad
+     * base, geografía (con los contornos y puntos del mapa) y una elección
+     * activa con su mesa por barrio. No crea personas, actas, candidatos ni
+     * resultados: esos datos se registran desde la aplicación.
+     */
     public function run(): void
     {
-        // Seeders principales (entorno real limpio)
-        // - Cargan catalogos, seguridad base y geografia
-        // - NO crean actas, extracciones OCR, resultados ni candidatos de prueba
+        // El orden importa: los usuarios necesitan los roles, los barrios
+        // necesitan sus comunas y la cobertura electoral necesita los barrios.
         $this->call([
             DocumentTypeSeeder::class,
             RolesAndPermissionsSeeder::class,
@@ -23,48 +28,5 @@ class DatabaseSeeder extends Seeder
             NeighborhoodElectionCoverageSeeder::class,
             ElectoralCatalogSeeder::class,
         ]);
-
-        if (! $this->shouldSeedDemoData()) {
-            return;
-        }
-
-        // Datos simulados: candidatos, actas, extracciones OCR y votos.
-        // El orden importa: los bloques y planchas deben existir antes de
-        // inscribir candidatos, y los candidatos antes de consolidar.
-        $this->call([
-            ElectionMvpSeeder::class,
-            ElectionExtendedBlocksSeeder::class,
-            CandidateSeeder::class,
-            CandidateDraftSeeder::class,
-            ScrutinyExtractionSeeder::class,
-            // Extiende planchas, candidatos, actas y votos al resto de
-            // elecciones: los seeders anteriores solo cubren una.
-            DemoElectionDataSeeder::class,
-            DemoConsolidationSeeder::class,
-        ]);
-
-        // Excluidos a proposito:
-        // - GeographicDemoSeeder: sus 4 barrios de ejemplo son redundantes
-        //   frente a los 117 reales de NeighborhoodSeeder, y su upsert falla
-        //   contra los indices unicos parciales de neighborhoods.
-        // - GlobalElectionsSeeder: duplica las elecciones que ya crea
-        //   NeighborhoodElectionCoverageSeeder (choca con elections.code).
-    }
-
-    /**
-     * Los datos de demostracion nunca deben entrar a produccion: son actas
-     * y resultados electorales falsos. En cualquier otro entorno se cargan
-     * salvo que se pida lo contrario con SEED_DEMO_DATA=false.
-     */
-    private function shouldSeedDemoData(): bool
-    {
-        if (app()->environment('production')) {
-            return false;
-        }
-
-        return filter_var(
-            env('SEED_DEMO_DATA', true),
-            FILTER_VALIDATE_BOOL
-        );
     }
 }

@@ -67,6 +67,11 @@ return [
             'password' => env('SFTP_PASSWORD'),
             'port' => (int) env('SFTP_PORT', 22),
             'root' => env('SFTP_ROOT', '/var/www/proyecto-jac/storage/app/private'),
+            // Segundos por intento de conexión y número de intentos (los
+            // valores por defecto son los de la librería). En la prueba local
+            // sin acceso al VPS conviene bajarlos o usar EXTRACTOR_STORAGE_DISK=local.
+            'timeout' => (int) env('SFTP_TIMEOUT', 10),
+            'maxTries' => (int) env('SFTP_MAX_TRIES', 4),
             'visibility' => 'private',
             'throw' => true,
             'report' => true,
