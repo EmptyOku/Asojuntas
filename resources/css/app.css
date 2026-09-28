@@ -7,12 +7,118 @@
 @source '../**/*.vue';
 
 @theme {
-    --color-aso-primary: #1e8f4d;
-    --color-aso-primary-dark: #166f3b;
-    --color-aso-primary-light: #3fae6a;
-    --color-aso-deep: #0c3d22;
-    --color-aso-bg: #f4f6f3;
-    --color-aso-field: #f1f3f0;
+    /*
+     * Paleta del escudo de Asojuntas Girardot: verde, rojo, amarillo, azul
+     * celeste y negro. Las escalas de Tailwind se redefinen con esos tonos
+     * para que TODA la app los use sin cambiar vista por vista, y conservan
+     * su significado en el CRUD: verde = crear / activo / éxito, azul =
+     * editar / información, rojo = eliminar / deshabilitar / error,
+     * amarillo = advertencia / pendiente / roles.
+     */
+    --color-aso-primary: #45821f;
+    --color-aso-primary-dark: #3c6e1c;
+    --color-aso-primary-light: #62a82e;
+    --color-aso-deep: #1a350b;
+    --color-aso-bg: #f5f6f2;
+    --color-aso-field: #f1f3ee;
+
+    /* Colores puros del escudo (franjas de marca) */
+    --color-aso-green: #62a82e;
+    --color-aso-red: #d0141d;
+    --color-aso-yellow: #f2c81e;
+    --color-aso-blue: #6fb0e8;
+    --color-aso-black: #141414;
+
+    /* Verde Asojuntas (crear, activo, éxito) */
+    --color-green-50: #f3f9ec;
+    --color-green-100: #e3f2d2;
+    --color-green-200: #c8e5a8;
+    --color-green-300: #a5d374;
+    --color-green-400: #82bf48;
+    --color-green-500: #62a82e;
+    --color-green-600: #45821f;
+    --color-green-700: #3c6e1c;
+    --color-green-800: #32581a;
+    --color-green-900: #2a4a18;
+    --color-green-950: #142909;
+    --color-emerald-50: var(--color-green-50);
+    --color-emerald-100: var(--color-green-100);
+    --color-emerald-200: var(--color-green-200);
+    --color-emerald-300: var(--color-green-300);
+    --color-emerald-400: var(--color-green-400);
+    --color-emerald-500: var(--color-green-500);
+    --color-emerald-600: var(--color-green-600);
+    --color-emerald-700: var(--color-green-700);
+    --color-emerald-800: var(--color-green-800);
+    --color-emerald-900: var(--color-green-900);
+    --color-emerald-950: var(--color-green-950);
+    --color-lime-300: var(--color-green-300);
+    --color-lime-500: var(--color-green-500);
+
+    /* Rojo del escudo (eliminar, deshabilitar, error) */
+    --color-red-50: #fef2f2;
+    --color-red-100: #fde3e3;
+    --color-red-200: #fbcbcc;
+    --color-red-300: #f8a5a7;
+    --color-red-400: #f06e72;
+    --color-red-500: #e23a40;
+    --color-red-600: #d0141d;
+    --color-red-700: #ae1118;
+    --color-red-800: #8f1318;
+    --color-red-900: #77161a;
+    --color-red-950: #410608;
+
+    /* Amarillo del escudo (advertencia, pendiente, roles) */
+    --color-amber-50: #fefbe8;
+    --color-amber-100: #fef6c3;
+    --color-amber-200: #fdeb8a;
+    --color-amber-300: #fbda47;
+    --color-amber-400: #f2c81e;
+    --color-amber-500: #dcae0c;
+    --color-amber-600: #b98807;
+    --color-amber-700: #93620a;
+    --color-amber-800: #7a4e10;
+    --color-amber-900: #674013;
+    --color-amber-950: #3c2106;
+    --color-yellow-50: var(--color-amber-50);
+    --color-yellow-100: var(--color-amber-100);
+    --color-yellow-200: var(--color-amber-200);
+    --color-yellow-300: var(--color-amber-300);
+    --color-yellow-400: var(--color-amber-400);
+    --color-yellow-500: var(--color-amber-500);
+    --color-yellow-600: var(--color-amber-600);
+    --color-yellow-700: var(--color-amber-700);
+    --color-orange-50: var(--color-amber-50);
+    --color-orange-100: var(--color-amber-100);
+    --color-orange-200: var(--color-amber-200);
+    --color-orange-300: var(--color-amber-300);
+    --color-orange-400: var(--color-amber-400);
+    --color-orange-500: var(--color-amber-500);
+    --color-orange-600: var(--color-amber-600);
+    --color-orange-700: var(--color-amber-700);
+
+    /* Azul celeste del escudo (editar, información) */
+    --color-blue-50: #f0f7fe;
+    --color-blue-100: #ddedfc;
+    --color-blue-200: #c3e0fa;
+    --color-blue-300: #9accf5;
+    --color-blue-400: #6fb0e8;
+    --color-blue-500: #4a92de;
+    --color-blue-600: #3576d1;
+    --color-blue-700: #2c61bf;
+    --color-blue-800: #2a509b;
+    --color-blue-900: #27457b;
+    --color-blue-950: #1c2b4b;
+    --color-sky-50: var(--color-blue-50);
+    --color-sky-100: var(--color-blue-100);
+    --color-sky-200: var(--color-blue-200);
+    --color-sky-300: var(--color-blue-300);
+    --color-sky-400: var(--color-blue-400);
+    --color-sky-500: var(--color-blue-500);
+    --color-sky-600: var(--color-blue-600);
+    --color-sky-700: var(--color-blue-700);
+    --color-sky-800: var(--color-blue-800);
+    --color-sky-900: var(--color-blue-900);
 
     --font-sans: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
         'Segoe UI Symbol', 'Noto Color Emoji';
@@ -42,7 +148,7 @@
     }
 
     ::selection {
-        background: rgb(30 143 77 / 0.18);
+        background: rgb(98 168 46 / 0.22);
     }
 }
 
@@ -54,6 +160,18 @@
  * que se agregue al lado (p. ej. `field w-80`) sigue teniendo prioridad.
  */
 @layer components {
+    /* --- Franja de marca: los cuatro colores del escudo de Asojuntas --- */
+    .brand-stripe {
+        @apply h-1 w-full shrink-0;
+        background: linear-gradient(
+            90deg,
+            var(--color-aso-red) 0 25%,
+            var(--color-aso-green) 25% 50%,
+            var(--color-aso-yellow) 50% 75%,
+            var(--color-aso-blue) 75% 100%
+        );
+    }
+
     /* --- Tarjetas --- */
     .card {
         @apply rounded-2xl border border-gray-200/70 bg-white;
@@ -98,10 +216,10 @@
         box-shadow: var(--shadow-lift);
     }
 
-    .stat-card--green { --stat-from: #e3f5e9; --stat-accent: #1e8f4d; --stat-accent-2: #7fd39f; }
-    .stat-card--blue { --stat-from: #e2f1fb; --stat-accent: #2f80c9; --stat-accent-2: #8cc8f0; }
-    .stat-card--rose { --stat-from: #fde8e8; --stat-accent: #d64545; --stat-accent-2: #f5a3a3; }
-    .stat-card--amber { --stat-from: #fdf3d8; --stat-accent: #d99a12; --stat-accent-2: #f5d27a; }
+    .stat-card--green { --stat-from: #eaf5dd; --stat-accent: #45821f; --stat-accent-2: #a5d374; }
+    .stat-card--blue { --stat-from: #e4f1fc; --stat-accent: #3576d1; --stat-accent-2: #6fb0e8; }
+    .stat-card--rose { --stat-from: #fde6e6; --stat-accent: #d0141d; --stat-accent-2: #f06e72; }
+    .stat-card--amber { --stat-from: #fef6d0; --stat-accent: #dcae0c; --stat-accent-2: #f2c81e; }
 
     .stat-icon {
         @apply flex h-10 w-10 items-center justify-center rounded-xl bg-white/80 shadow-sm ring-1 ring-black/5;
@@ -123,7 +241,7 @@
 
     .field:focus {
         @apply border-aso-primary bg-white outline-none;
-        box-shadow: 0 0 0 4px rgb(30 143 77 / 0.12);
+        box-shadow: 0 0 0 4px rgb(69 130 31 / 0.14);
     }
 
     .field:disabled {
@@ -184,12 +302,12 @@
     .btn-primary {
         @apply text-white;
         background: linear-gradient(135deg, var(--color-aso-primary-light), var(--color-aso-primary) 55%, var(--color-aso-primary-dark));
-        box-shadow: 0 6px 16px -6px rgb(30 143 77 / 0.55);
+        box-shadow: 0 6px 16px -6px rgb(69 130 31 / 0.55);
     }
 
     .btn-primary:hover:not(:disabled) {
         @apply -translate-y-px;
-        box-shadow: 0 10px 22px -8px rgb(30 143 77 / 0.6);
+        box-shadow: 0 10px 22px -8px rgb(69 130 31 / 0.6);
     }
 
     .btn-primary:active:not(:disabled) {

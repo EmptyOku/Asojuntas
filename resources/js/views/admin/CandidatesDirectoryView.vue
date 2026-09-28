@@ -1,442 +1,391 @@
 <template>
-  <div class="space-y-6">
-    <div class="flex items-center justify-between border-b border-gray-100 pb-4">
+  <div class="space-y-6 lg:space-y-8">
+
+    <!-- Encabezado -->
+    <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
       <div>
-        <h1 class="page-title">Directorio de Juntas de Acción Comunal</h1>
+        <h2 class="page-title">Directorio de Juntas de Acción Comunal</h2>
         <p class="page-subtitle">
-          Listado paginado. Total registros: <span class="font-bold text-aso-primary">{{ pagination.total }}</span>
+          <span class="font-semibold text-aso-primary">{{ pagination.total.toLocaleString('es-CO') }}</span>
+          juntas registradas · dignatarios y resultados por barrio.
         </p>
       </div>
+      <button
+        type="button"
+        class="btn-secondary self-start lg:self-auto"
+        :disabled="loading || reportLoading"
+        @click="generateReport"
+      >
+        <Loader2 v-if="reportLoading" class="w-4 h-4 animate-spin" />
+        <FileBarChart v-else class="w-4 h-4" />
+        {{ reportLoading ? 'Generando…' : 'Generar reporte' }}
+      </button>
     </div>
 
-    <div class="flex flex-col sm:flex-row gap-4">
+    <!-- Filtros -->
+    <section class="card p-4 sm:p-5 flex flex-col md:flex-row gap-3">
       <div class="relative flex-1">
-        <Search class="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+        <Search class="field-icon" />
         <input
           v-model="searchQuery"
-          type="text"
-          placeholder="Buscar por nombre o código del barrio..."
-          class="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-aso-primary/50 focus:border-aso-primary transition-shadow"
+          type="search"
+          placeholder="Buscar por nombre o código del barrio"
+          class="field field-search"
+          @input="queueSearch"
+          @keydown.enter.prevent="fetchBarrios(1)"
         >
       </div>
-
-      <div class="relative w-full sm:w-64">
-        <Filter class="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-        <select
-          v-model="selectedCommune"
-          class="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-aso-primary/50 focus:border-aso-primary appearance-none bg-white transition-shadow cursor-pointer"
-        >
+      <div class="relative md:w-64">
+        <Filter class="field-icon z-10" />
+        <select v-model="selectedCommune" class="field pl-10 cursor-pointer">
           <option value="">Todas las comunas</option>
           <option v-for="comuna in availableCommunes" :key="comuna.id" :value="comuna.id">
             {{ comuna.name }}
           </option>
         </select>
-        <ChevronDown class="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
       </div>
-
       <button
-        @click="fetchBarrios(1)"
+        v-if="searchQuery || selectedCommune"
+        type="button"
+        class="btn px-4 text-gray-500 hover:text-gray-800 hover:bg-gray-100"
         :disabled="loading"
-        class="btn-primary px-6"
-      >
-        Buscar
-      </button>
-
-      <button
         @click="resetFilters"
-        :disabled="loading"
-        class="px-6 py-2 bg-gray-100 text-gray-700 font-semibold rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-60"
       >
+        <X class="w-4 h-4" />
         Limpiar
       </button>
+    </section>
 
-      <button
-        @click="generateReport"
-        :disabled="loading || reportLoading"
-        class="px-6 py-2 bg-emerald-600 text-white font-semibold rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-60"
-      >
-        {{ reportLoading ? 'Generando...' : 'Generar reporte' }}
-      </button>
+    <!-- Reporte -->
+    <div v-if="reportError" class="rounded-2xl bg-red-50 border border-red-200 text-red-700 px-4 py-3 text-sm flex items-center gap-2 animate-rise">
+      <AlertCircle class="w-4 h-4 shrink-0" />
+      {{ reportError }}
     </div>
 
-    <div v-if="reportError" class="bg-red-50 border border-red-200 text-red-700 p-4 rounded-xl flex items-center gap-3">
-      <AlertCircle class="w-5 h-5" />
-      <p>{{ reportError }}</p>
-    </div>
-
-    <div v-if="reportData" class="bg-white border border-gray-200 rounded-xl p-5 space-y-4">
-      <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+    <section v-if="reportData" class="card overflow-hidden animate-rise">
+      <div class="card-header">
         <div>
-          <h2 class="text-lg font-bold text-gray-900">Reporte de planchas y cuocientes por barrio</h2>
-          <p class="text-sm text-gray-500">
-            Generado: {{ reportData.generated_at || 'Sin fecha' }}
+          <h3 class="card-title">Reporte de planchas y cuocientes</h3>
+          <p class="card-subtitle">
+            {{ reportData.summary?.total_neighborhoods || 0 }} barrios · generado {{ reportData.generated_at || 'sin fecha' }}
           </p>
         </div>
-        <div class="text-sm text-gray-600">
-          <span class="font-semibold text-gray-900">{{ reportData.summary?.total_neighborhoods || 0 }}</span> barrios
-        </div>
-      </div>
-
-      <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
-        <div class="bg-gray-50 rounded-lg border border-gray-100 p-3">
-          <p class="text-xs text-gray-500 uppercase tracking-wide">Con planchas registradas</p>
-          <p class="text-xl font-bold text-gray-900">{{ reportData.summary?.with_registered_slates || 0 }}</p>
-        </div>
-        <div class="bg-gray-50 rounded-lg border border-gray-100 p-3">
-          <p class="text-xs text-gray-500 uppercase tracking-wide">Sin planchas registradas</p>
-          <p class="text-xl font-bold text-gray-900">{{ reportData.summary?.without_registered_slates || 0 }}</p>
-        </div>
-        <div class="bg-gray-50 rounded-lg border border-gray-100 p-3">
-          <p class="text-xs text-gray-500 uppercase tracking-wide">Con escrutinio</p>
-          <p class="text-xl font-bold text-gray-900">{{ reportData.summary?.with_scrutiny || 0 }}</p>
-        </div>
-        <div class="bg-gray-50 rounded-lg border border-gray-100 p-3">
-          <p class="text-xs text-gray-500 uppercase tracking-wide">Sin escrutinio</p>
-          <p class="text-xl font-bold text-gray-900">{{ reportData.summary?.without_scrutiny || 0 }}</p>
-        </div>
-      </div>
-
-      <div class="space-y-4">
-        <div
-          v-for="row in reportData.rows || []"
-          :key="row.neighborhood_id"
-          class="border border-gray-200 rounded-lg overflow-hidden"
-        >
-          <div class="px-4 py-3 bg-gray-50 border-b border-gray-200">
-            <p class="font-semibold text-gray-900">{{ row.neighborhood_name }}</p>
-            <p class="text-xs text-gray-500">{{ row.commune_name || 'Sin comuna' }}</p>
-          </div>
-
-          <div class="p-4 space-y-3">
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
-              <div class="p-3 rounded-lg border" :class="row.has_active_election ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'">
-                <p class="font-semibold">Elección activa</p>
-                <p>{{ row.has_active_election ? 'Sí' : 'No' }}</p>
-              </div>
-              <div class="p-3 rounded-lg border" :class="row.has_registered_slate ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'">
-                <p class="font-semibold">Planchas registradas</p>
-                <p>{{ row.has_registered_slate ? 'Sí' : 'No' }}</p>
-              </div>
-              <div class="p-3 rounded-lg border" :class="row.has_scrutiny ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'">
-                <p class="font-semibold">Escrutinio hecho</p>
-                <p>{{ row.has_scrutiny ? 'Sí' : 'No' }}</p>
-              </div>
-            </div>
-
-            <div v-if="(row.warnings || []).length > 0" class="space-y-2">
-              <p
-                v-for="(warning, index) in row.warnings"
-                :key="`${row.neighborhood_id}-warning-${index}`"
-                class="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-3 py-2"
-              >
-                {{ warning }}
-              </p>
-            </div>
-
-            <div>
-              <p class="text-sm font-semibold text-gray-900 mb-2">Planchas</p>
-              <div class="overflow-x-auto">
-                <table class="data-table data-table--compact border border-gray-200 rounded-xl overflow-hidden">
-                  <thead class="bg-gray-50 text-gray-600">
-                    <tr>
-                      <th class="text-left px-3 py-2 border-b border-gray-200">Plancha</th>
-                      <th class="text-left px-3 py-2 border-b border-gray-200">Registrada</th>
-                      <th class="text-left px-3 py-2 border-b border-gray-200">Candidatos</th>
-                      <th class="text-left px-3 py-2 border-b border-gray-200">Mensaje</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-for="slate in row.slates || []" :key="slate.id" class="border-b border-gray-100 last:border-b-0">
-                      <td class="px-3 py-2">{{ slate.name }}</td>
-                      <td class="px-3 py-2">{{ slate.registered ? 'Sí' : 'No' }}</td>
-                      <td class="px-3 py-2">{{ slate.total_candidates }}</td>
-                      <td class="px-3 py-2">{{ slate.message }}</td>
-                    </tr>
-                    <tr v-if="(row.slates || []).length === 0">
-                      <td colspan="4" class="px-3 py-2 text-gray-500">Sin planchas disponibles.</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            <div>
-              <p class="text-sm font-semibold text-gray-900 mb-2">Cuocientes por bloque</p>
-              <div v-if="(row.cuocientes || []).length === 0" class="text-sm text-gray-500 bg-gray-50 border border-gray-200 rounded-md px-3 py-2">
-                No se realizó cálculo de cuocientes para este barrio.
-              </div>
-
-              <div v-else class="space-y-3">
-                <div
-                  v-for="(bloque, blockIndex) in row.cuocientes"
-                  :key="`${row.neighborhood_id}-block-${blockIndex}`"
-                  class="border border-gray-200 rounded-md"
-                >
-                  <div class="px-3 py-2 bg-gray-50 border-b border-gray-200">
-                    <p class="font-semibold text-gray-900">{{ bloque.block_name }}</p>
-                    <p class="text-xs text-gray-500">
-                      Válidos: {{ bloque.votos_validos }} | Cuociente: {{ formatQuota(bloque.cuociente_electoral) }}
-                    </p>
-                  </div>
-                  <div class="overflow-x-auto">
-                    <table class="data-table data-table--compact">
-                      <thead class="bg-white text-gray-600">
-                        <tr>
-                          <th class="text-left px-3 py-2 border-b border-gray-200">Plancha</th>
-                          <th class="text-left px-3 py-2 border-b border-gray-200">Votos</th>
-                          <th class="text-left px-3 py-2 border-b border-gray-200">Curules</th>
-                          <th class="text-left px-3 py-2 border-b border-gray-200">Residuo</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        <tr
-                          v-for="(plancha, slateIndex) in bloque.planchas || []"
-                          :key="`${row.neighborhood_id}-block-${blockIndex}-slate-${slateIndex}`"
-                          class="border-b border-gray-100 last:border-b-0"
-                        >
-                          <td class="px-3 py-2">{{ plancha.plancha }}</td>
-                          <td class="px-3 py-2">{{ plancha.votos }}</td>
-                          <td class="px-3 py-2">{{ plancha.curules }}</td>
-                          <td class="px-3 py-2">{{ formatQuota(plancha.residuo) }}</td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div v-if="loading && barrios.length === 0" class="flex flex-col justify-center items-center py-20 space-y-4">
-      <Loader2 class="w-8 h-8 text-aso-primary animate-spin" />
-      <p class="text-gray-500 font-medium">Conectando con la base de datos...</p>
-    </div>
-
-    <div v-else-if="error" class="bg-red-50 border border-red-200 text-red-700 p-4 rounded-xl flex items-center gap-3">
-      <AlertCircle class="w-5 h-5" />
-      <p>{{ error }}</p>
-      <button @click="fetchBarrios(1)" class="ml-auto text-sm font-bold underline">Reintentar</button>
-    </div>
-
-    <div v-else class="space-y-6">
-      
-      <div v-if="barrios.length === 0" class="text-center py-10 bg-white border border-gray-200 rounded-xl">
-        <Building2 class="w-10 h-10 text-gray-300 mx-auto mb-3" />
-        <p class="text-gray-500 font-medium">No se encontraron barrios.</p>
-        <button v-if="searchQuery || selectedCommune" @click="resetFilters" class="mt-3 text-aso-primary hover:underline font-medium text-sm">
-          Limpiar filtros
+        <button type="button" class="btn px-3 text-gray-500 hover:text-gray-800 hover:bg-gray-100" @click="reportData = null">
+          <X class="w-4 h-4" />
+          Cerrar
         </button>
       </div>
 
-      <div class="space-y-4 transition-opacity duration-200" :class="{ 'opacity-50 pointer-events-none': loading }">
-        <div
-          v-for="barrio in barrios"
-          :key="barrio.id"
-          class="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm transition-all duration-200 hover:border-aso-primary/30"
-          :class="{'ring-2 ring-aso-primary/20 border-aso-primary/30': openCardId === barrio.id}"
-        >
-          <button
-            @click="toggleCard(barrio.id)"
-            class="w-full flex items-center justify-between p-5 bg-white hover:bg-gray-50 transition-colors focus:outline-none"
-          >
-            <div class="flex items-center gap-3">
-              <div class="p-2 bg-blue-50 text-blue-600 rounded-lg">
-                <MapPin class="w-5 h-5" />
-              </div>
-              <div class="text-left">
-                <span class="block font-bold text-lg text-gray-900">{{ barrio.name }}</span>
-                <span class="block text-xs font-medium text-gray-500 mt-0.5 uppercase tracking-wide">
-                  {{ barrio.commune?.name || 'Ubicación no especificada' }}
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 p-5 sm:p-6 border-b border-gray-100">
+        <div v-for="item in reportSummary" :key="item.label" class="rounded-2xl px-4 py-3" :class="item.bg">
+          <p class="text-[11px] font-bold uppercase tracking-wide" :class="item.text">{{ item.label }}</p>
+          <p class="font-display text-2xl font-bold text-gray-900 tabular-nums">{{ item.value }}</p>
+        </div>
+      </div>
+
+      <div class="divide-y divide-gray-100 max-h-[32rem] overflow-y-auto">
+        <details v-for="row in reportData.rows || []" :key="row.neighborhood_id" class="group">
+          <summary class="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 sm:px-6 py-3.5 cursor-pointer list-none hover:bg-gray-50/70">
+            <ChevronRight class="w-4 h-4 text-gray-400 transition-transform group-open:rotate-90" />
+            <div class="min-w-0 flex-1">
+              <p class="font-semibold text-gray-900 truncate">{{ row.neighborhood_name }}</p>
+              <p class="text-xs text-gray-500">{{ row.commune_name || 'Sin comuna' }}</p>
+            </div>
+            <div class="flex flex-wrap gap-1.5">
+              <span :class="row.has_active_election ? 'badge-green' : 'badge-gray'">Elección</span>
+              <span :class="row.has_registered_slate ? 'badge-green' : 'badge-amber'">Planchas</span>
+              <span :class="row.has_scrutiny ? 'badge-green' : 'badge-gray'">Escrutinio</span>
+            </div>
+          </summary>
+
+          <div class="px-5 sm:px-6 pb-5 pl-12 space-y-4">
+            <ul v-if="(row.warnings || []).length" class="space-y-1.5">
+              <li
+                v-for="(warning, index) in row.warnings"
+                :key="`${row.neighborhood_id}-w-${index}`"
+                class="flex items-start gap-2 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800"
+              >
+                <AlertTriangle class="w-4 h-4 mt-0.5 shrink-0" />
+                {{ warning }}
+              </li>
+            </ul>
+
+            <div>
+              <p class="field-label">Planchas</p>
+              <div v-if="(row.slates || []).length" class="flex flex-wrap gap-2">
+                <span
+                  v-for="slate in row.slates"
+                  :key="slate.id"
+                  class="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm ring-1"
+                  :class="slate.registered ? 'bg-emerald-50 ring-emerald-100 text-emerald-800' : 'bg-gray-50 ring-gray-200 text-gray-600'"
+                >
+                  <span class="font-semibold">{{ slate.name }}</span>
+                  <span class="text-xs">{{ slate.total_candidates }} candidatos</span>
                 </span>
               </div>
+              <p v-else class="text-sm text-gray-400">Sin planchas disponibles.</p>
             </div>
-            <ChevronDown
-              class="w-5 h-5 text-gray-400 transition-transform duration-300"
-              :class="{'rotate-180': openCardId === barrio.id}"
-            />
-          </button>
 
-          <div v-show="openCardId === barrio.id" class="p-6 border-t border-gray-100 bg-gray-50/30">
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-              <div class="flex items-start gap-3">
-                <div class="p-2 bg-white border border-gray-200 rounded-full shadow-sm mt-1">
-                  <User class="w-4 h-4 text-gray-500" />
-                </div>
-                <div>
-                  <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-0.5">Presidente</p>
-                  <p class="font-semibold text-gray-900">{{ barrio.president_name || 'Pendiente de asignar' }}</p>
+            <div v-if="(row.cuocientes || []).length">
+              <p class="field-label">Cuocientes por bloque</p>
+              <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                <div
+                  v-for="(bloque, blockIndex) in row.cuocientes"
+                  :key="`${row.neighborhood_id}-b-${blockIndex}`"
+                  class="rounded-2xl ring-1 ring-gray-100 overflow-hidden"
+                >
+                  <div class="flex items-center justify-between gap-2 bg-gray-50 px-4 py-2.5">
+                    <p class="font-semibold text-gray-900 text-sm">{{ bloque.block_name }}</p>
+                    <p class="text-xs text-gray-500">Cuociente <span class="font-semibold text-gray-700">{{ formatQuota(bloque.cuociente_electoral) }}</span></p>
+                  </div>
+                  <table class="data-table data-table--compact">
+                    <thead>
+                      <tr><th>Plancha</th><th class="text-right">Votos</th><th class="text-right">Curules</th><th class="text-right">Residuo</th></tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="(plancha, slateIndex) in bloque.planchas || []" :key="slateIndex">
+                        <td class="font-medium text-gray-800">{{ plancha.plancha }}</td>
+                        <td class="text-right tabular-nums">{{ plancha.votos }}</td>
+                        <td class="text-right tabular-nums font-semibold">{{ plancha.curules }}</td>
+                        <td class="text-right tabular-nums text-gray-500">{{ formatQuota(plancha.residuo) }}</td>
+                      </tr>
+                    </tbody>
+                  </table>
                 </div>
               </div>
-
-              <div class="flex items-start gap-3">
-                <div class="p-2 bg-white border border-gray-200 rounded-full shadow-sm mt-1">
-                  <User class="w-4 h-4 text-gray-500" />
-                </div>
-                <div>
-                  <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-0.5">Vicepresidente</p>
-                  <p class="font-semibold text-gray-900">{{ barrio.vicepresident_name || 'Pendiente de asignar' }}</p>
-                </div>
-              </div>
-            </div>
-
-            <div class="flex justify-end pt-4 border-t border-gray-100">
-              <router-link
-                :to="{ name: 'admin.neighborhood.results', params: { id: barrio.id } }"
-                class="btn-primary px-5"
-              >
-                Ver resultados totales
-                <ArrowRight class="w-4 h-4" />
-              </router-link>
             </div>
           </div>
-        </div>
+        </details>
       </div>
+    </section>
 
-      <div v-if="pagination.last_page > 1" class="flex flex-col sm:flex-row items-center justify-between border-t border-gray-100 pt-6 mt-4 gap-4">
-        <p class="text-sm text-gray-500">
-          Página <span class="font-bold text-gray-900">{{ pagination.current_page }}</span> de 
-          <span class="font-bold text-gray-900">{{ pagination.last_page }}</span> ({{ pagination.total }} barrios)
-        </p>
-
-        <div class="flex items-center gap-2">
-          <button
-            @click="changePage(pagination.current_page - 1)"
-            :disabled="pagination.current_page === 1 || loading"
-            class="p-2 border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-gray-600"
-          >
-            <ChevronLeft class="w-5 h-5" />
-          </button>
-
-          <div class="flex gap-1">
-            <button
-              v-for="page in pagination.last_page"
-              :key="page"
-              @click="changePage(page)"
-              :disabled="loading"
-              class="w-10 h-10 rounded-lg text-sm font-medium transition-colors"
-              :class="pagination.current_page === page 
-                ? 'bg-aso-primary text-white shadow-sm' 
-                : 'border border-gray-200 text-gray-600 hover:bg-gray-50'"
-            >
-              {{ page }}
-            </button>
-          </div>
-
-          <button
-            @click="changePage(pagination.current_page + 1)"
-            :disabled="pagination.current_page === pagination.last_page || loading"
-            class="p-2 border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-gray-600"
-          >
-            <ChevronRight class="w-5 h-5" />
-          </button>
-        </div>
-      </div>
-
+    <!-- Error -->
+    <div v-if="error" class="card p-6 flex flex-col sm:flex-row items-center gap-3 text-sm">
+      <span class="flex h-10 w-10 items-center justify-center rounded-xl bg-red-50 text-red-500"><AlertCircle class="w-5 h-5" /></span>
+      <p class="flex-1 text-gray-700">{{ error }}</p>
+      <button type="button" class="btn-primary" @click="fetchBarrios(1)">Reintentar</button>
     </div>
+
+    <!-- Tarjetas de juntas -->
+    <template v-else>
+      <div v-if="loading && barrios.length === 0" class="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-4 lg:gap-5">
+        <div v-for="n in 6" :key="n" class="card h-52 animate-pulse"></div>
+      </div>
+
+      <div v-else-if="barrios.length === 0" class="card p-10 flex flex-col items-center text-center gap-3">
+        <span class="flex h-14 w-14 items-center justify-center rounded-2xl bg-gray-100 text-gray-400"><Building2 class="w-7 h-7" /></span>
+        <p class="font-display text-lg font-semibold text-gray-900">No se encontraron juntas</p>
+        <p class="text-sm text-gray-500">Prueba con otro nombre o comuna.</p>
+        <button v-if="searchQuery || selectedCommune" type="button" class="btn-secondary" @click="resetFilters">Limpiar filtros</button>
+      </div>
+
+      <div
+        v-else
+        class="stagger grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-4 lg:gap-5 transition-opacity duration-200"
+        :class="{ 'opacity-50 pointer-events-none': loading }"
+      >
+        <article
+          v-for="barrio in barrios"
+          :key="barrio.id"
+          class="card flex flex-col overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:shadow-[var(--shadow-lift)]"
+        >
+          <div class="flex items-start gap-3 p-5 pb-4">
+            <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-aso-primary">
+              <MapPin class="w-5 h-5" />
+            </span>
+            <div class="min-w-0 flex-1">
+              <h3 class="font-display text-lg font-bold text-gray-900 truncate" :title="barrio.name">{{ barrio.name }}</h3>
+              <p class="text-xs font-semibold uppercase tracking-wide text-gray-400 truncate">
+                {{ barrio.commune?.name || 'Sin comuna' }} · {{ barrio.code }}
+              </p>
+            </div>
+            <span :class="barrio.has_active_election ? 'badge-green' : 'badge-gray'" class="shrink-0">
+              <span class="badge-dot"></span>
+              {{ barrio.has_active_election ? 'Activa' : 'Sin elección' }}
+            </span>
+          </div>
+
+          <dl class="mx-5 grid grid-cols-2 gap-3 rounded-2xl bg-gray-50/80 p-3.5">
+            <div v-for="role in dignitaries(barrio)" :key="role.label" class="min-w-0">
+              <dt class="text-[10.5px] font-bold uppercase tracking-wider text-gray-400">{{ role.label }}</dt>
+              <dd class="mt-1 flex items-center gap-2 min-w-0">
+                <span v-if="role.name" class="avatar h-7 w-7 rounded-lg text-[10px]">{{ initials(role.name) }}</span>
+                <span v-else class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white text-gray-300 ring-1 ring-gray-200"><User class="w-3.5 h-3.5" /></span>
+                <span class="text-sm truncate" :class="role.name ? 'font-semibold text-gray-900' : 'text-gray-400 italic'">
+                  {{ role.name || 'Pendiente' }}
+                </span>
+              </dd>
+            </div>
+          </dl>
+
+          <div class="mt-auto flex items-center justify-between gap-3 p-5 pt-4">
+            <p class="text-xs text-gray-400 truncate">
+              <template v-if="barrio.active_election?.election_date">
+                <CalendarDays class="w-3.5 h-3.5 inline -mt-0.5 mr-1" />{{ formatDate(barrio.active_election.election_date) }}
+              </template>
+            </p>
+            <router-link
+              :to="{ name: 'admin.neighborhood.results', params: { id: barrio.id } }"
+              class="inline-flex items-center gap-1.5 text-sm font-semibold text-aso-primary hover:text-aso-primary-dark group/link"
+            >
+              Ver resultados
+              <ArrowRight class="w-4 h-4 transition-transform group-hover/link:translate-x-0.5" />
+            </router-link>
+          </div>
+        </article>
+      </div>
+
+      <div v-if="barrios.length" class="card overflow-hidden">
+        <PaginationBar
+          :current="pagination.current_page"
+          :last="pagination.last_page"
+          :total="pagination.total"
+          :from="pagination.from"
+          :to="pagination.to"
+          :loading="loading"
+          label="juntas"
+          @change="changePage"
+        />
+      </div>
+    </template>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import axios from '@/services/axios';
 import {
-  ChevronDown, MapPin, User, ArrowRight, Loader2, AlertCircle, 
-  Building2, Search, Filter, ChevronLeft, ChevronRight
+  AlertCircle, AlertTriangle, ArrowRight, Building2, CalendarDays, ChevronRight, FileBarChart,
+  Filter, Loader2, MapPin, Search, User, X
 } from 'lucide-vue-next';
+import PaginationBar from '@/components/ui/PaginationBar.vue';
 
-// --- ESTADO ---
 const router = useRouter();
 const barrios = ref([]);
 const availableCommunes = ref([]);
-const openCardId = ref(null);
 const loading = ref(false);
 const error = ref(null);
 const reportLoading = ref(false);
 const reportError = ref(null);
 const reportData = ref(null);
 
-// Paginación y Filtros de Servidor
 const searchQuery = ref('');
 const selectedCommune = ref('');
-const pagination = ref({
-  current_page: 1,
-  last_page: 1,
-  per_page: 15,
-  total: 0
-});
+const pagination = ref({ current_page: 1, last_page: 1, per_page: 15, total: 0, from: 0, to: 0 });
 
-let communesCached = false; // Flag para cachear comunas una sola vez
+let communesCached = false;
+let searchTimer = null;
 
-// --- MÉTODOS ---
+// Solo vale la respuesta de la última búsqueda: si se escribe de nuevo, la
+// petición anterior se cancela y, si igual llega, se descarta.
+let activeController = null;
+let requestSeq = 0;
+let lastQueryKey = '';
 
-/**
- * Obtiene los barrios desde Laravel enviando filtros y número de página
- */
 const fetchBarrios = async (page = 1) => {
+  clearTimeout(searchTimer);
+  activeController?.abort();
+  activeController = new AbortController();
+  const seq = ++requestSeq;
+  lastQueryKey = `${searchQuery.value.trim()}|${selectedCommune.value}|${page}`;
+
   loading.value = true;
   error.value = null;
 
   try {
     const response = await axios.get('/admin/neighborhoods', {
       params: {
-        page: page,
-        search: searchQuery.value,
-        commune_id: selectedCommune.value
+        page,
+        search: searchQuery.value.trim() || undefined,
+        commune_id: selectedCommune.value || undefined,
+        // El directorio no usa los conteos de "crear/cerrar todas" y las
+        // comunas solo se piden una vez: dos consultas menos por búsqueda.
+        with_bulk_counts: 0,
+        with_communes: communesCached ? 0 : 1,
       },
+      signal: activeController.signal,
       skipGlobalLoading: true,
     });
 
-    if (response.data.success) {
-      // Sincronizamos los datos con la respuesta del Controlador Paginated
-      barrios.value = response.data.data.neighborhoods;
-      pagination.value = response.data.data.pagination;
+    if (seq !== requestSeq) return;
 
-      // ✅ Cargamos las comunas solo la primera vez para llenar el select
+    if (response.data.success) {
+      barrios.value = response.data.data.neighborhoods;
+      pagination.value = { from: 0, to: 0, ...response.data.data.pagination };
+
       if (!communesCached && response.data.data.communes) {
         availableCommunes.value = response.data.data.communes;
         communesCached = true;
       }
     }
   } catch (err) {
-    console.error("Error en Directorio:", err);
+    // Cancelada a propósito por una búsqueda más nueva: no es un error.
+    if (axios.isCancel?.(err) || err?.name === 'CanceledError' || seq !== requestSeq) return;
+
+    console.error('Error en Directorio:', err);
     if (err?.response?.status === 401) {
       router.push({ name: 'login' });
     } else {
-      error.value = "Error al conectar con el servidor.";
+      error.value = 'Error al conectar con el servidor.';
     }
   } finally {
-    loading.value = false;
+    if (seq === requestSeq) loading.value = false;
   }
 };
 
-/**
- * Cambia la página y sube el scroll suavemente
- */
+// Busca solo al dejar de escribir (no una petición por tecla) y no repite
+// una búsqueda idéntica a la última.
+const queueSearch = () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => {
+    if (`${searchQuery.value.trim()}|${selectedCommune.value}|1` === lastQueryKey) return;
+    fetchBarrios(1);
+  }, 600);
+};
+
 const changePage = (page) => {
-  if (page >= 1 && page <= pagination.value.last_page) {
-    openCardId.value = null;
-    fetchBarrios(page);
-    // El scroll vive en el contenedor del layout (AppLayout), no en window.
-    document.querySelector('[data-app-scroll]')?.scrollTo({ top: 0, behavior: 'smooth' });
-  }
+  fetchBarrios(page);
+  // El scroll vive en el contenedor del layout (AppLayout), no en window.
+  document.querySelector('[data-app-scroll]')?.scrollTo({ top: 0, behavior: 'smooth' });
 };
 
-/**
- * Limpia todos los filtros y reinicia la búsqueda
- */
+// Antes solo recargaba si cambiaba la comuna: con solo texto no hacía nada.
 const resetFilters = () => {
+  const communeChanged = selectedCommune.value !== '';
   searchQuery.value = '';
   selectedCommune.value = '';
-  fetchBarrios(1);
+  if (!communeChanged) fetchBarrios(1);
 };
 
-const toggleCard = (id) => {
-  openCardId.value = openCardId.value === id ? null : id;
+const dignitaries = (barrio) => [
+  { label: 'Presidente', name: barrio.president_name },
+  { label: 'Vicepresidente', name: barrio.vicepresident_name },
+];
+
+const initials = (name) => String(name || '?')
+  .split(/\s+/)
+  .filter(Boolean)
+  .slice(0, 2)
+  .map((part) => part.charAt(0).toUpperCase())
+  .join('');
+
+const formatDate = (value) => {
+  const date = new Date(`${value}T00:00:00`);
+  return Number.isNaN(date.getTime())
+    ? value
+    : date.toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' });
 };
+
+const reportSummary = computed(() => {
+  const summary = reportData.value?.summary ?? {};
+  return [
+    { label: 'Con planchas', value: summary.with_registered_slates || 0, bg: 'bg-emerald-50', text: 'text-emerald-700' },
+    { label: 'Sin planchas', value: summary.without_registered_slates || 0, bg: 'bg-amber-50', text: 'text-amber-700' },
+    { label: 'Con escrutinio', value: summary.with_scrutiny || 0, bg: 'bg-sky-50', text: 'text-sky-700' },
+    { label: 'Sin escrutinio', value: summary.without_scrutiny || 0, bg: 'bg-gray-100', text: 'text-gray-600' },
+  ];
+});
 
 const generateReport = async () => {
   reportLoading.value = true;
@@ -444,14 +393,8 @@ const generateReport = async () => {
 
   try {
     const params = {};
-
-    if (searchQuery.value?.trim()) {
-      params.search = searchQuery.value.trim();
-    }
-
-    if (selectedCommune.value) {
-      params.commune_id = selectedCommune.value;
-    }
+    if (searchQuery.value?.trim()) params.search = searchQuery.value.trim();
+    if (selectedCommune.value) params.commune_id = selectedCommune.value;
 
     const response = await axios.get('/admin/neighborhoods/report', {
       params,
@@ -484,22 +427,7 @@ const formatQuota = (value) => {
   return Number.isFinite(numeric) ? numeric.toFixed(2) : '0.00';
 };
 
-// --- WATCHERS (OBSERVADORES) ---
+watch(selectedCommune, () => fetchBarrios(1));
 
-// Al cambiar la comuna: Petición inmediata
-watch(selectedCommune, () => {
-  fetchBarrios(1);
-});
-
-// --- INICIO ---
-onMounted(() => {
-  fetchBarrios(1);
-});
+onMounted(() => fetchBarrios(1));
 </script>
-
-<style scoped>
-/* Para evitar parpadeos visuales al cambiar de página */
-.space-y-4 {
-  min-height: 400px;
-}
-</style>

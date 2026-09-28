@@ -46,21 +46,35 @@
         </div>
 
         <div class="flex-1 bg-gray-900 p-4 lg:p-8 flex items-center justify-center overflow-auto mt-12 relative">
+          <div
+            v-if="fileLoading && currentFileKind === 'image' && !fileLoadFailed"
+            class="absolute inset-0 flex flex-col items-center justify-center gap-3 text-gray-400"
+          >
+            <div class="h-8 w-8 rounded-full border-2 border-gray-600 border-t-white animate-spin"></div>
+            <p class="text-xs">Cargando imagen del acta…</p>
+          </div>
           <img
-            v-if="currentFileKind === 'image' && currentImageUrl"
+            v-if="currentFileKind === 'image' && currentImageUrl && !fileLoadFailed"
             :src="currentImageUrl"
             class="max-h-full max-w-full object-contain rounded-lg shadow-2xl bg-white"
             alt="Acta de escrutinio"
+            @load="fileLoading = false"
+            @error="fileLoading = false; fileLoadFailed = true"
           >
           <iframe
-            v-else-if="currentFileKind === 'pdf' && currentImageUrl"
+            v-else-if="currentFileKind === 'pdf' && currentImageUrl && !fileLoadFailed"
             :src="currentImageUrl"
             class="w-full h-full min-h-[420px] rounded-lg shadow-2xl bg-white border-0"
             title="Acta de escrutinio"
           />
           <div v-else class="w-full max-w-md aspect-[3/4] bg-white rounded shadow-2xl p-4 lg:p-6 relative flex flex-col items-center justify-center min-h-[400px]">
             <FileText class="w-10 h-10 text-gray-300 mb-2" />
-            <p class="text-gray-400 font-medium text-xs text-center">No hay archivo visible para esta acta.</p>
+            <!-- El archivo no llegó: p. ej. en la prueba local las imágenes siguen en el almacenamiento del servidor. -->
+            <template v-if="fileLoadFailed">
+              <p class="text-gray-600 font-semibold text-sm text-center">No se pudo cargar la imagen del acta</p>
+              <p class="text-gray-400 text-xs text-center mt-1">El archivo no está disponible en este almacenamiento. Los votos se pueden revisar igual.</p>
+            </template>
+            <p v-else class="text-gray-400 font-medium text-xs text-center">No hay archivo visible para esta acta.</p>
           </div>
         </div>
       </div>
@@ -112,7 +126,7 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ArrowLeft, ChevronLeft, ChevronRight, FileText, Users, Save } from 'lucide-vue-next';
 import axios from '@/services/axios';
@@ -137,6 +151,10 @@ const detail = ref({
 
 const editableBlocks = ref([]);
 const currentImageIndex = ref(0);
+// Estado de la imagen del acta: cargando (puede tardar si viene del SFTP) o
+// fallida (se muestra un aviso en vez de un recuadro vacío).
+const fileLoading = ref(true);
+const fileLoadFailed = ref(false);
 // Refresco en segundo plano mientras el OCR termina de procesar el acta. Con
 // 5s y una BD lenta las peticiones se encimaban y bloqueaban el servidor.
 const AUTO_REFRESH_MS = 20000;
@@ -151,6 +169,11 @@ const hasUnsavedEdits = () => JSON.stringify(editableBlocks.value || []) !== las
 const files = computed(() => detail.value.files || []);
 const currentFile = computed(() => files.value[currentImageIndex.value] || null);
 const currentImageUrl = computed(() => currentFile.value?.url || '');
+// Cada archivo nuevo (otra página o refresco con otra URL) vuelve a "cargando".
+watch(currentImageUrl, () => {
+  fileLoading.value = true;
+  fileLoadFailed.value = false;
+});
 const currentFileKind = computed(() => {
   const mimeType = String(currentFile.value?.mime_type || '').toLowerCase();
 

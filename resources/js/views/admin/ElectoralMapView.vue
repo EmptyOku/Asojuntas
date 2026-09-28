@@ -474,8 +474,8 @@
   font-weight: 600;
   line-height: 1.3;
 }
-:deep(.jac-status-verde) { color: #16a34a; }
-:deep(.jac-status-rojo) { color: #dc2626; }
+:deep(.jac-status-verde) { color: #3c6e1c; }
+:deep(.jac-status-rojo) { color: #ae1118; }
 :deep(.jac-status-gris) { color: #9ca3af; }
 :deep(.jac-card-link) {
   display: block;
@@ -541,8 +541,8 @@
   box-shadow: 0 0 0 2.5px #fff;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
-:deep(.jac-dot-atrasada) { background: #dc2626; border-style: dashed; }
-:deep(.jac-dot-recibida) { background: #16a34a; }
+:deep(.jac-dot-atrasada) { background: #d0141d; border-style: dashed; }
+:deep(.jac-dot-recibida) { background: #45821f; }
 :deep(.jac-dot-pendiente) { background: #ffffff; }
 :deep(.jac-dot-flash) {
   transform: scale(1.5);
@@ -620,7 +620,8 @@ function communeColor(code) {
 }
 
 // Semaforizacion por comuna segun el envio de actas (backend: communesGeo).
-const SEMAFORO_COLORS = { verde: '#16a34a', amarillo: '#f59e0b', rojo: '#dc2626' };
+// Semáforo con los colores del escudo de Asojuntas.
+const SEMAFORO_COLORS = { verde: '#45821f', amarillo: '#dcae0c', rojo: '#d0141d' };
 function semaforoColor(semaforo) {
   return SEMAFORO_COLORS[semaforo] || '#9ca3af';
 }
@@ -675,7 +676,8 @@ function pctBadgeIconFor(feature) {
   const pct = feature?.properties?.actas_pct ?? 0;
   return L.divIcon({
     className: 'comuna-badge-wrap',
-    html: `<div class="comuna-badge-pill" style="--badge-bg:${color}">${pct}%</div>`,
+    // Sobre el amarillo el texto blanco no se lee: ahí va oscuro.
+    html: `<div class="comuna-badge-pill" style="--badge-bg:${color};color:${feature?.properties?.semaforo === 'amarillo' ? '#3c2106' : '#fff'}">${pct}%</div>`,
     iconSize: [46, 20],
     iconAnchor: [23, -6],
   });
@@ -1027,7 +1029,7 @@ function drawGirardotMask(features) {
   maskLayer = L.polygon([WORLD_RING, ...holes], {
     pane: 'mask',
     stroke: false,
-    fillColor: '#0f2a1c',
+    fillColor: '#1a350b',
     fillOpacity: 0.3,
     fillRule: 'evenodd',
     interactive: false,

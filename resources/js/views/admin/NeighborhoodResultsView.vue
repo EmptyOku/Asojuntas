@@ -1,226 +1,240 @@
 <template>
-  <div class="results-page">
+  <div class="space-y-6 lg:space-y-8">
 
-    <!-- ── Header ── -->
-    <div class="results-header">
-      <button type="button" class="back-btn" @click="goBack">
+    <!-- Encabezado -->
+    <section class="card p-5 sm:p-7 flex flex-col lg:flex-row lg:items-center gap-5">
+      <button type="button" class="btn-secondary self-start shrink-0" @click="goBack">
         <ArrowLeft class="w-4 h-4" />
-        <span>Volver</span>
+        Volver
       </button>
-      <div class="header-content">
-        <div class="header-eyebrow">
-          <span class="eyebrow-dot"></span>
-          Escrutinio Consolidado
+
+      <div class="min-w-0 flex-1">
+        <p class="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.12em] text-aso-primary">
+          <span class="h-2 w-2 rounded-full bg-aso-primary"></span>
+          Resultados del escrutinio
+        </p>
+        <h2 v-if="barrio" class="page-title mt-1 truncate">{{ barrio.name }}</h2>
+        <div v-else class="mt-2 h-8 w-64 rounded-lg bg-gray-100 animate-pulse"></div>
+        <p class="page-subtitle">Cuociente electoral, curules y dignatarios por bloque.</p>
+      </div>
+
+      <div v-if="barrio?.plancha_ganadora" class="shrink-0 flex items-center gap-3 rounded-2xl bg-emerald-50 px-4 py-3 ring-1 ring-emerald-100">
+        <span class="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-amber-500 shadow-sm">
+          <Trophy class="w-5 h-5" />
+        </span>
+        <div>
+          <p class="text-[11px] font-bold uppercase tracking-wide text-emerald-700">Mayor votación</p>
+          <p class="font-display text-lg font-bold text-gray-900 leading-tight">{{ barrio.plancha_ganadora.plancha }}</p>
         </div>
-        <h1 class="header-title">
-          <span v-if="barrio">{{ barrio.name }}</span>
-          <span v-else class="skeleton-title"></span>
-        </h1>
-        <p class="header-subtitle">Resultados matemáticos de las actas procesadas</p>
       </div>
-      <div v-if="barrio" class="header-badge">
-        <BarChart2 class="w-4 h-4" />
-        {{ totalVotos }} votos totales
+    </section>
+
+    <!-- Cargando -->
+    <div v-if="loading" class="space-y-4">
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div v-for="n in 3" :key="n" class="card h-28 animate-pulse"></div>
       </div>
+      <div class="card h-80 animate-pulse"></div>
     </div>
 
-    <!-- ── Loading ── -->
-    <div v-if="loading" class="loading-state">
-      <div class="loading-spinner">
-        <div class="spinner-ring"></div>
-        <div class="spinner-ring delay-1"></div>
-        <div class="spinner-ring delay-2"></div>
-      </div>
-      <p class="loading-text">Extrayendo resultados matemáticos...</p>
-    </div>
-
-    <!-- ── Error ── -->
-    <div v-else-if="error" class="error-state">
-      <div class="error-icon-wrap"><AlertCircle class="w-6 h-6" /></div>
+    <!-- Error -->
+    <div v-else-if="error" class="card p-8 flex flex-col items-center text-center gap-3">
+      <span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-red-50 text-red-500"><AlertCircle class="w-6 h-6" /></span>
       <div>
-        <p class="error-title">No se pudieron cargar los resultados</p>
-        <p class="error-message">{{ error }}</p>
+        <p class="font-display text-lg font-semibold text-gray-900">No se pudieron cargar los resultados</p>
+        <p class="text-sm text-gray-500">{{ error }}</p>
       </div>
-      <button @click="fetchResultados" class="retry-btn">
-        <RefreshCw class="w-4 h-4" /> Reintentar
+      <button type="button" class="btn-primary" @click="fetchResultados">
+        <RefreshCw class="w-4 h-4" />
+        Reintentar
       </button>
     </div>
 
-    <!-- ── Empty ── -->
-    <div v-else-if="!barrio?.resultados?.length" class="empty-state">
-      <div class="empty-icon"><FileX class="w-8 h-8" /></div>
-      <p class="empty-title">Sin actas procesadas</p>
-      <p class="empty-subtitle">Este barrio aún no tiene actas de escrutinio registradas.</p>
+    <!-- Sin actas -->
+    <div v-else-if="!barrio?.resultados?.length" class="card p-10 flex flex-col items-center text-center gap-3">
+      <span class="flex h-14 w-14 items-center justify-center rounded-2xl bg-gray-100 text-gray-400"><FileX class="w-7 h-7" /></span>
+      <p class="font-display text-lg font-semibold text-gray-900">Sin actas procesadas</p>
+      <p class="text-sm text-gray-500 max-w-sm">Este barrio aún no tiene actas de escrutinio registradas.</p>
     </div>
 
-    <!-- ── Results ── -->
-    <div v-else class="results-content">
-
-      <!-- Summary Bar -->
-      <div class="summary-bar">
-        <div class="summary-item">
-          <span class="summary-label">Bloques electorales</span>
-          <span class="summary-value">{{ barrio.resultados.length }}</span>
-        </div>
-        <div class="summary-divider"></div>
-        <div class="summary-item">
-          <span class="summary-label">Total votos válidos</span>
-          <span class="summary-value highlight">{{ totalVotos }}</span>
-        </div>
-        <div class="summary-divider"></div>
-        <div class="summary-item">
-          <span class="summary-label">Cargos a proveer</span>
-          <span class="summary-value">{{ totalCargos }}</span>
-        </div>
+    <template v-else>
+      <!-- Resumen -->
+      <div class="stagger grid grid-cols-1 sm:grid-cols-3 gap-4 lg:gap-6">
+        <article class="stat-card stat-card--green">
+          <div class="flex items-start justify-between">
+            <p class="text-sm font-semibold text-gray-600">Votos válidos</p>
+            <span class="stat-icon"><Vote class="w-5 h-5" /></span>
+          </div>
+          <p class="mt-3 font-display text-4xl font-bold text-gray-900 tabular-nums">{{ votosValidos.toLocaleString('es-CO') }}</p>
+          <p class="mt-1 text-xs font-semibold text-emerald-700">Por bloque (cada persona vota en todos)</p>
+        </article>
+        <article class="stat-card stat-card--blue">
+          <div class="flex items-start justify-between">
+            <p class="text-sm font-semibold text-gray-600">Bloques electorales</p>
+            <span class="stat-icon"><Layers class="w-5 h-5" /></span>
+          </div>
+          <p class="mt-3 font-display text-4xl font-bold text-gray-900 tabular-nums">{{ barrio.resultados.length }}</p>
+          <p class="mt-1 text-xs font-semibold text-sky-700">Directiva, delegados, fiscal…</p>
+        </article>
+        <article class="stat-card stat-card--amber">
+          <div class="flex items-start justify-between">
+            <p class="text-sm font-semibold text-gray-600">Cargos a proveer</p>
+            <span class="stat-icon"><Users class="w-5 h-5" /></span>
+          </div>
+          <p class="mt-3 font-display text-4xl font-bold text-gray-900 tabular-nums">{{ totalCargos }}</p>
+          <p class="mt-1 text-xs font-semibold text-amber-700">
+            {{ cargosSinCandidato ? `${cargosSinCandidato} sin candidato inscrito` : 'Todos con candidato' }}
+          </p>
+        </article>
       </div>
 
-      <!-- ── Bloque Card ── -->
-      <div
-        v-for="(bloque, bIndex) in barrio.resultados"
-        :key="bIndex"
-        class="bloque-card"
-        :style="`--delay: ${bIndex * 80}ms`"
-      >
-        <!-- Block Header -->
-        <div class="bloque-header">
-          <div class="bloque-header-left">
-            <div class="bloque-number">{{ String(bIndex + 1).padStart(2, '0') }}</div>
+      <!-- Pestañas de bloques -->
+      <nav class="flex items-center gap-1 p-1 rounded-2xl bg-white border border-gray-200/70 overflow-x-auto w-fit max-w-full shadow-sm" aria-label="Bloques electorales">
+        <button
+          v-for="(bloque, bIndex) in barrio.resultados"
+          :key="bIndex"
+          type="button"
+          class="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold whitespace-nowrap transition-all duration-200"
+          :class="activeIndex === bIndex ? 'bg-aso-primary text-white shadow-md shadow-aso-primary/25' : 'text-gray-500 hover:text-gray-800 hover:bg-gray-100'"
+          :aria-current="activeIndex === bIndex ? 'true' : undefined"
+          @click="activeIndex = bIndex"
+        >
+          {{ blockTitle(bloque) }}
+          <span
+            class="rounded-full px-1.5 text-[11px] tabular-nums"
+            :class="activeIndex === bIndex ? 'bg-white/20' : 'bg-gray-100 text-gray-500'"
+          >{{ bloque.cargos_a_proveer }}</span>
+        </button>
+      </nav>
+
+      <!-- Bloque activo -->
+      <div v-if="activeBlock" :key="activeIndex" class="grid grid-cols-1 xl:grid-cols-5 gap-6 items-start animate-rise">
+
+        <!-- Votación -->
+        <section class="card xl:col-span-2 overflow-hidden">
+          <div class="card-header">
             <div>
-              <p class="bloque-label">Bloque Electoral</p>
-              <h3 class="bloque-name">{{ bloque.nombre_bloque }}</h3>
+              <h3 class="card-title">Votación</h3>
+              <p class="card-subtitle">
+                Cuociente <span class="font-semibold text-gray-700">{{ formatQuotient(activeBlock.cuociente_electoral) }}</span>
+                · {{ activeBlock.cargos_a_proveer }} {{ activeBlock.cargos_a_proveer === 1 ? 'cargo' : 'cargos' }}
+              </p>
             </div>
+            <span :class="winnerInfo(activeBlock).tie ? 'badge-amber' : 'badge-green'">
+              <Trophy class="w-3 h-3" />
+              {{ winnerInfo(activeBlock).label }}
+            </span>
           </div>
-          <div class="bloque-header-right">
-            <span class="consolidado-badge">Consolidado Final</span>
-            <div class="bloque-total-badge">
-              {{ bloque.cargos_a_proveer }}<span>cargos</span>
-            </div>
-            <div class="bloque-total-badge">
-              {{ formatQuotient(bloque.cuociente_electoral) }}<span>cuociente</span>
-            </div>
-            <div class="bloque-total-badge">
-              {{ formatWinnerLabel(bloque) }}<span>{{ bloque.plancha_ganadora ? 'ganadora' : 'resultado' }}</span>
-            </div>
-          </div>
-        </div>
 
-        <!-- Votos por plancha -->
-        <div class="votos-section">
-          <h4 class="section-label">
-            <BarChart2 class="w-3.5 h-3.5" /> Resultados de Votación
-          </h4>
-          <p class="section-helper">
-            Votos válidos: {{ bloque.votos_validos }} | Cuociente: {{ formatQuotient(bloque.cuociente_electoral) }}
-          </p>
-          <div class="planchas-list">
-            <div
-              v-for="(plancha, pIndex) in bloque.votos_planchas"
-              :key="plancha.plancha"
-              class="plancha-row"
-              :class="{ winner: pIndex === 0 }"
-            >
-              <div class="plancha-info">
-                <div class="plancha-rank" :class="{ winner: pIndex === 0 }">
-                  <Trophy v-if="pIndex === 0" class="w-3 h-3" />
-                  <span v-else>{{ pIndex + 1 }}</span>
+          <ul class="p-5 sm:p-6 space-y-5">
+            <li v-for="plancha in activeBlock.votos_planchas" :key="plancha.plancha">
+              <div class="flex items-center justify-between gap-3">
+                <div class="flex items-center gap-2.5 min-w-0">
+                  <span class="h-3 w-3 shrink-0 rounded-full" :style="{ backgroundColor: planchaColor(plancha.plancha) }"></span>
+                  <span class="font-semibold text-gray-900 truncate">{{ plancha.plancha }}</span>
                 </div>
-                <span class="plancha-name">{{ plancha.plancha }}</span>
-                <span class="plancha-votes-inline">{{ plancha.votos }} votos</span>
+                <p class="shrink-0 text-sm tabular-nums">
+                  <span class="font-display font-bold text-gray-900">{{ plancha.votos.toLocaleString('es-CO') }}</span>
+                  <span class="text-gray-400"> · {{ getPercent(plancha.votos, activeBlock.estadisticas.total) }}%</span>
+                </p>
               </div>
-              <div class="plancha-allocation">
-                <span>Ent. {{ plancha.entero }}</span>
-                <span>Res. {{ plancha.residuo.toFixed(4) }}</span>
-                <span>Curules {{ plancha.curules }}</span>
+
+              <div class="mt-2 h-2.5 w-full rounded-full bg-gray-100 overflow-hidden">
+                <div
+                  class="h-full rounded-full transition-[width] duration-700 ease-out"
+                  :style="{ width: `${getPercent(plancha.votos, activeBlock.estadisticas.total)}%`, backgroundColor: planchaColor(plancha.plancha) }"
+                ></div>
               </div>
-              <div class="plancha-bar-wrap">
-                <div class="plancha-bar-track">
-                  <div
-                    class="plancha-bar-fill"
-                    :class="{ winner: pIndex === 0 }"
-                    :style="`width: ${getPercent(plancha.votos, bloque.estadisticas.total)}%`"
-                  ></div>
-                </div>
-                <span class="plancha-percent">
-                  {{ getPercent(plancha.votos, bloque.estadisticas.total) }}%
+
+              <div class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
+                <span class="flex items-center gap-1" :title="`${plancha.curules} curul(es)`">
+                  <span
+                    v-for="n in Math.max(plancha.curules, 0)"
+                    :key="n"
+                    class="h-2.5 w-2.5 rounded-sm"
+                    :style="{ backgroundColor: planchaColor(plancha.plancha) }"
+                  ></span>
+                  <span class="font-semibold text-gray-700 ml-0.5">{{ plancha.curules }} {{ plancha.curules === 1 ? 'curul' : 'curules' }}</span>
                 </span>
+                <span>Entero {{ plancha.entero }}</span>
+                <span>Residuo {{ Number(plancha.residuo).toFixed(3) }}</span>
               </div>
+            </li>
+          </ul>
+
+          <div class="grid grid-cols-3 border-t border-gray-100 bg-gray-50/60 text-center">
+            <div class="py-3.5">
+              <p class="text-[11px] font-bold uppercase tracking-wide text-gray-500">Válidos</p>
+              <p class="font-display text-lg font-bold text-gray-900 tabular-nums">{{ activeBlock.estadisticas.validos }}</p>
+            </div>
+            <div class="py-3.5 border-x border-gray-100">
+              <p class="text-[11px] font-bold uppercase tracking-wide text-gray-500">Blancos</p>
+              <p class="font-display text-lg font-bold text-gray-900 tabular-nums">{{ activeBlock.estadisticas.blancos }}</p>
+            </div>
+            <div class="py-3.5">
+              <p class="text-[11px] font-bold uppercase tracking-wide text-gray-500">Nulos</p>
+              <p class="font-display text-lg font-bold text-gray-900 tabular-nums">{{ activeBlock.estadisticas.nulos }}</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- Dignatarios -->
+        <section class="card xl:col-span-3 overflow-hidden">
+          <div class="card-header">
+            <div>
+              <h3 class="card-title">Dignatarios electos</h3>
+              <p class="card-subtitle">Cada cargo se provee una vez, en orden, según las curules de cada plancha.</p>
             </div>
           </div>
 
-          <!-- Stats -->
-          <div class="stats-row">
-            <div class="stat-chip valid">
-              <CheckCircle2 class="w-3.5 h-3.5" />
-              <span>Válidos</span><strong>{{ bloque.estadisticas.validos }}</strong>
-            </div>
-            <div class="stat-chip blank">
-              <Minus class="w-3.5 h-3.5" />
-              <span>Blancos</span><strong>{{ bloque.estadisticas.blancos }}</strong>
-            </div>
-            <div class="stat-chip null">
-              <XCircle class="w-3.5 h-3.5" />
-              <span>Nulos</span><strong>{{ bloque.estadisticas.nulos }}</strong>
-            </div>
-          </div>
-        </div>
-
-        <!-- ── Cargos electos (formato acta física) ── -->
-        <div v-if="bloque.cargos && bloque.cargos.length > 0" class="cargos-section">
-          <h4 class="section-label winners">
-            <Trophy class="w-3.5 h-3.5" /> Dignatarios Electos — Asignación por Curules
-          </h4>
-
-          <div class="cargos-grid">
-            <div
-              v-for="(item, cIndex) in bloque.cargos"
+          <ol v-if="activeBlock.cargos?.length" class="divide-y divide-gray-100">
+            <li
+              v-for="(item, cIndex) in activeBlock.cargos"
               :key="cIndex"
-              class="cargo-table"
+              class="flex flex-col sm:flex-row sm:items-center gap-4 px-5 sm:px-6 py-4 transition-colors hover:bg-gray-50/60"
             >
-              <!-- Cargo Header (dark blue like the physical form) -->
-              <div class="cargo-table-header">
-                {{ item.cargo }}
+              <div class="flex items-center gap-3 sm:w-52 shrink-0">
+                <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-100 font-display text-sm font-bold text-gray-500">{{ cIndex + 1 }}</span>
+                <div class="min-w-0">
+                  <p class="font-display font-semibold text-gray-900 truncate">{{ item.cargo }}</p>
+                  <span
+                    class="inline-flex items-center gap-1.5 text-xs font-semibold"
+                    :style="{ color: planchaColor(item.plancha) }"
+                  >
+                    <span class="h-1.5 w-1.5 rounded-full" :style="{ backgroundColor: planchaColor(item.plancha) }"></span>
+                    {{ item.plancha }}
+                  </span>
+                </div>
               </div>
 
-              <!-- Rows -->
-              <div class="cargo-table-body">
-                <div class="cargo-row">
-                  <span class="cargo-row-num">1.</span>
-                  <span class="cargo-row-label">Nombre</span>
-                  <span class="cargo-row-value">{{ item.persona.nombre || '—' }}</span>
-                </div>
-                <div class="cargo-row alt">
-                  <span class="cargo-row-num">2.</span>
-                  <span class="cargo-row-label">No. Identificación</span>
-                  <span class="cargo-row-value">{{ item.persona.identificacion || '—' }}</span>
-                </div>
-                <div class="cargo-row">
-                  <span class="cargo-row-num">3.</span>
-                  <span class="cargo-row-label">Celular</span>
-                  <span class="cargo-row-value">{{ item.persona.celular || '—' }}</span>
-                </div>
-                <div class="cargo-row alt">
-                  <span class="cargo-row-num">4.</span>
-                  <span class="cargo-row-label">Correo Electrónico</span>
-                  <span class="cargo-row-value">{{ item.persona.correo || '—' }}</span>
-                </div>
-                <div class="cargo-row">
-                  <span class="cargo-row-num">5.</span>
-                  <span class="cargo-row-label">Plancha</span>
-                  <span class="cargo-row-value plancha-cell">{{ item.plancha || '—' }}</span>
+              <div v-if="!item.sin_candidato" class="flex items-center gap-3 min-w-0 flex-1">
+                <div class="avatar" :style="{ background: planchaColor(item.plancha) }">{{ initials(item.persona.nombre) }}</div>
+                <div class="min-w-0">
+                  <p class="font-semibold text-gray-900 truncate">{{ item.persona.nombre }}</p>
+                  <p class="flex flex-wrap gap-x-3 text-xs text-gray-500">
+                    <span class="inline-flex items-center gap-1"><IdCard class="w-3.5 h-3.5" />{{ item.persona.identificacion }}</span>
+                    <span v-if="hasValue(item.persona.celular)" class="inline-flex items-center gap-1"><Phone class="w-3.5 h-3.5" />{{ item.persona.celular }}</span>
+                    <span v-if="hasValue(item.persona.correo)" class="inline-flex items-center gap-1 truncate"><Mail class="w-3.5 h-3.5" />{{ item.persona.correo }}</span>
+                  </p>
+                  <p v-if="item.suplente" class="mt-0.5 text-xs text-gray-400">Suplente: <span class="text-gray-600">{{ item.suplente }}</span></p>
                 </div>
               </div>
-            </div>
+
+              <div v-else class="flex-1 rounded-xl bg-amber-50 px-4 py-2.5 text-sm text-amber-800 ring-1 ring-amber-100">
+                <p class="font-semibold">Sin candidato inscrito</p>
+                <p class="text-xs text-amber-700">{{ item.plancha }} ganó esta curul, pero no registró a nadie para {{ item.cargo }}.</p>
+              </div>
+            </li>
+          </ol>
+
+          <div v-else class="flex flex-col items-center gap-2 px-6 py-12 text-center">
+            <span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-gray-100 text-gray-400"><Users class="w-6 h-6" /></span>
+            <p class="font-semibold text-gray-800">Sin dignatarios para este bloque</p>
+            <p class="text-sm text-gray-500 max-w-sm">No hay cargos configurados o aún no hay votos suficientes para asignar curules.</p>
           </div>
-        </div>
-
-        <!-- Empty cargos -->
-        <div v-else class="cargos-empty">
-          <Users class="w-5 h-5" />
-          <p>No se pudieron determinar dignatarios con los datos disponibles para este bloque.</p>
-        </div>
-
-      </div><!-- end bloque-card -->
-    </div><!-- end results-content -->
+        </section>
+      </div>
+    </template>
   </div>
 </template>
 
@@ -228,8 +242,7 @@
 import { ref, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {
-  ArrowLeft, BarChart2, AlertCircle, RefreshCw,
-  FileX, Trophy, CheckCircle2, Minus, XCircle, Users
+  AlertCircle, ArrowLeft, FileX, IdCard, Layers, Mail, Phone, RefreshCw, Trophy, Users, Vote
 } from 'lucide-vue-next';
 import axios from '@/services/axios';
 
@@ -251,16 +264,53 @@ function goBack() {
 const barrio  = ref(null);
 const loading = ref(true);
 const error   = ref(null);
+const activeIndex = ref(0);
 
-const totalVotos = computed(() => {
-  if (!barrio.value?.resultados) return 0;
-  return barrio.value.resultados.reduce((s, b) => s + (b.estadisticas?.validos ?? 0), 0);
+const activeBlock = computed(() => barrio.value?.resultados?.[activeIndex.value] ?? null);
+
+// Cada persona vota en todos los bloques: sumar los bloques contaria a la
+// misma gente varias veces. Se muestra el total de un bloque (el mayor).
+const votosValidos = computed(() => {
+  const blocks = barrio.value?.resultados ?? [];
+  return blocks.reduce((max, b) => Math.max(max, Number(b.estadisticas?.validos ?? 0)), 0);
 });
 
-const totalCargos = computed(() => {
-  if (!barrio.value?.resultados) return 0;
-  return barrio.value.resultados.reduce((s, b) => s + (b.cargos_a_proveer ?? 0), 0);
-});
+const totalCargos = computed(() => (barrio.value?.resultados ?? [])
+  .reduce((sum, b) => sum + (b.cargos_a_proveer ?? 0), 0));
+
+const cargosSinCandidato = computed(() => (barrio.value?.resultados ?? [])
+  .reduce((sum, b) => sum + (b.cargos ?? []).filter((c) => c.sin_candidato).length, 0));
+
+// Color estable por plancha: el mismo en barras, curules y dignatarios.
+// Colores del escudo primero (verde, azul, amarillo, rojo) y luego neutros de apoyo.
+const PLANCHA_COLORS = ['#45821f', '#3576d1', '#dcae0c', '#d0141d', '#7b5ea7', '#1f8a8a'];
+const planchaColor = (name) => {
+  const match = String(name ?? '').match(/(\d+)/);
+  const index = match ? Number(match[1]) - 1 : 0;
+  return PLANCHA_COLORS[((index % PLANCHA_COLORS.length) + PLANCHA_COLORS.length) % PLANCHA_COLORS.length];
+};
+
+// "COMISIÓN DE CONVIVENCIA..." en mayúsculas desde el OCR: se muestra en formato título.
+const blockTitle = (bloque) => {
+  const name = String(bloque?.nombre_bloque ?? 'Bloque').toLowerCase();
+  return name.charAt(0).toUpperCase() + name.slice(1);
+};
+
+// Con empate en curules, la plancha con más votos es la que provee la
+// presidencia y los primeros cargos: se dice así en vez de solo "Empate".
+const winnerInfo = (bloque) => {
+  if (bloque?.plancha_ganadora?.plancha) {
+    return { label: bloque.plancha_ganadora.plancha, tie: false };
+  }
+
+  const tied = Array.isArray(bloque?.planchas_ganadoras) ? bloque.planchas_ganadoras : [];
+  if (tied.length > 1) {
+    const top = [...tied].sort((a, b) => (b.votos ?? 0) - (a.votos ?? 0))[0];
+    return { label: `${top.plancha} · empate en curules`, tie: true };
+  }
+
+  return { label: 'Sin resultado', tie: true };
+};
 
 const getPercent = (votos, total) => {
   if (!total) return 0;
@@ -269,21 +319,17 @@ const getPercent = (votos, total) => {
 
 const formatQuotient = (value) => {
   if (!value) return '0';
-  return Number(value).toLocaleString('es-CO', { maximumFractionDigits: 4 });
+  return Number(value).toLocaleString('es-CO', { maximumFractionDigits: 2 });
 };
 
-const formatWinnerLabel = (bloque) => {
-  if (bloque?.plancha_ganadora?.plancha) {
-    return bloque.plancha_ganadora.plancha;
-  }
+const hasValue = (value) => value && value !== '—' && value !== 'N/A';
 
-  const tied = Array.isArray(bloque?.planchas_ganadoras) ? bloque.planchas_ganadoras : [];
-  if (tied.length > 1) {
-    return `Empate (${tied.map((p) => p.plancha).join(' / ')})`;
-  }
-
-  return '—';
-};
+const initials = (name) => String(name || '?')
+  .split(/\s+/)
+  .filter(Boolean)
+  .slice(0, 2)
+  .map((part) => part.charAt(0).toUpperCase())
+  .join('');
 
 const fetchResultados = async () => {
   const barrioId = route.params.id;
@@ -295,6 +341,7 @@ const fetchResultados = async () => {
     });
     if (response.data?.success) {
       barrio.value = response.data.data;
+      activeIndex.value = 0;
     } else {
       error.value = response.data?.message || 'No se encontraron resultados.';
     }
@@ -308,393 +355,3 @@ const fetchResultados = async () => {
 
 onMounted(() => fetchResultados());
 </script>
-
-<style scoped>
-/* ── Base ── */
-.results-page {
-  font-family: 'DM Sans', 'Outfit', system-ui, sans-serif;
-  background: #f4f6f9;
-  padding: 2rem;
-  display: flex;
-  flex-direction: column;
-  gap: 1.75rem;
-  min-height: 100vh;
-}
-
-/* ── Header ── */
-.results-header {
-  display: flex;
-  align-items: flex-start;
-  gap: 1.25rem;
-  background: #fff;
-  border: 1px solid #e4e8ef;
-  border-radius: 16px;
-  padding: 1.5rem 1.75rem;
-  box-shadow: 0 1px 4px rgba(0,0,0,.04);
-}
-.back-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.5rem 0.9rem;
-  background: #f4f6f9;
-  border: 1px solid #e4e8ef;
-  border-radius: 8px;
-  color: #64748b;
-  font: inherit;
-  font-size: 0.8rem;
-  font-weight: 600;
-  text-decoration: none;
-  white-space: nowrap;
-  cursor: pointer;
-  transition: background .15s, color .15s;
-  margin-top: .2rem;
-  flex-shrink: 0;
-}
-.back-btn:hover { background: #eef0f5; color: #1e293b; }
-.header-content { flex: 1; }
-.header-eyebrow {
-  display: flex;
-  align-items: center;
-  gap: .5rem;
-  font-size: .72rem;
-  font-weight: 700;
-  letter-spacing: .08em;
-  text-transform: uppercase;
-  color: #94a3b8;
-  margin-bottom: .4rem;
-}
-.eyebrow-dot {
-  width: 6px; height: 6px;
-  border-radius: 50%;
-  background: #22c55e;
-  box-shadow: 0 0 0 3px rgba(34,197,94,.15);
-}
-.header-title {
-  font-size: 1.6rem;
-  font-weight: 800;
-  color: #0f172a;
-  letter-spacing: -.02em;
-  line-height: 1.2;
-}
-.skeleton-title {
-  display: inline-block;
-  width: 220px; height: 28px;
-  border-radius: 6px;
-  background: linear-gradient(90deg,#e2e8f0 25%,#f1f5f9 50%,#e2e8f0 75%);
-  background-size: 200% 100%;
-  animation: shimmer 1.2s infinite;
-}
-.header-subtitle { font-size: .82rem; color: #94a3b8; margin-top: .25rem; }
-.header-badge {
-  display: flex;
-  align-items: center;
-  gap: .45rem;
-  padding: .45rem .9rem;
-  background: #f0fdf4;
-  border: 1px solid #bbf7d0;
-  border-radius: 999px;
-  font-size: .78rem;
-  font-weight: 700;
-  color: #16a34a;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
-/* ── Loading ── */
-.loading-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 1.25rem;
-  padding: 5rem 2rem;
-  background: #fff;
-  border: 1px solid #e4e8ef;
-  border-radius: 16px;
-}
-.loading-spinner { position: relative; width: 48px; height: 48px; }
-.spinner-ring {
-  position: absolute; inset: 0;
-  border-radius: 50%;
-  border: 3px solid transparent;
-  border-top-color: #1d4ed8;
-  animation: spin 1s linear infinite;
-}
-.spinner-ring.delay-1 { inset: 6px; border-top-color: #3b82f6; animation-delay: -.2s; }
-.spinner-ring.delay-2 { inset: 12px; border-top-color: #93c5fd; animation-delay: -.4s; }
-.loading-text { font-size: .875rem; font-weight: 500; color: #64748b; }
-
-/* ── Error / Empty ── */
-.error-state {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  background: #fff;
-  border: 1px solid #fecaca;
-  border-left: 4px solid #ef4444;
-  border-radius: 12px;
-  padding: 1.25rem 1.5rem;
-}
-.error-icon-wrap { flex-shrink:0; padding:.6rem; background:#fef2f2; border-radius:8px; color:#ef4444; }
-.error-title { font-size:.9rem; font-weight:700; color:#1e293b; }
-.error-message { font-size:.8rem; color:#64748b; margin-top:.2rem; }
-.retry-btn {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: .4rem;
-  padding: .5rem 1rem;
-  background: #1e293b;
-  color: #fff;
-  border: none;
-  border-radius: 8px;
-  font-size: .8rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background .15s;
-}
-.retry-btn:hover { background: #0f172a; }
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: .75rem;
-  padding: 5rem 2rem;
-  background: #fff;
-  border: 1px dashed #cbd5e1;
-  border-radius: 16px;
-  text-align: center;
-}
-.empty-icon { padding:1rem; background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; color:#94a3b8; }
-.empty-title { font-size:1rem; font-weight:700; color:#334155; }
-.empty-subtitle { font-size:.82rem; color:#94a3b8; max-width:340px; }
-
-/* ── Results ── */
-.results-content { display: flex; flex-direction: column; gap: 2rem; }
-
-/* Summary Bar */
-.summary-bar {
-  display: flex;
-  align-items: center;
-  background: #fff;
-  border: 1px solid #e4e8ef;
-  border-radius: 12px;
-  overflow: hidden;
-  box-shadow: 0 1px 3px rgba(0,0,0,.04);
-}
-.summary-item { flex:1; display:flex; flex-direction:column; gap:.2rem; padding:1rem 1.5rem; }
-.summary-label { font-size:.7rem; font-weight:700; text-transform:uppercase; letter-spacing:.07em; color:#94a3b8; }
-.summary-value { font-size:1.25rem; font-weight:800; color:#0f172a; letter-spacing:-.02em; }
-.summary-value.highlight { color:#1d4ed8; }
-.summary-divider { width:1px; height:40px; background:#e4e8ef; flex-shrink:0; }
-
-/* ── Bloque Card ── */
-.bloque-card {
-  background: #fff;
-  border: 1px solid #e4e8ef;
-  border-radius: 20px;
-  overflow: hidden;
-  box-shadow: 0 2px 10px rgba(0,0,0,.06);
-  animation: fadeUp .4s ease both;
-  animation-delay: var(--delay, 0ms);
-}
-
-/* Block Header */
-.bloque-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 1.25rem 1.75rem;
-  background: linear-gradient(135deg, #1e3a5f 0%, #1d4ed8 60%, #3b82f6 100%);
-  gap: 1rem;
-}
-.bloque-header-left { display:flex; align-items:center; gap:1rem; }
-.bloque-number { font-size:2rem; font-weight:900; color:rgba(255,255,255,.2); letter-spacing:-.05em; line-height:1; }
-.bloque-label { font-size:.65rem; font-weight:700; text-transform:uppercase; letter-spacing:.1em; color:rgba(255,255,255,.6); }
-.bloque-name { font-size:1.1rem; font-weight:800; color:#fff; margin-top:.1rem; }
-.bloque-header-right { display:flex; flex-direction:column; align-items:flex-end; gap:.4rem; }
-.consolidado-badge {
-  padding:.25rem .75rem;
-  background:rgba(255,255,255,.15);
-  border:1px solid rgba(255,255,255,.25);
-  border-radius:999px;
-  font-size:.65rem; font-weight:700;
-  letter-spacing:.06em; text-transform:uppercase;
-  color:rgba(255,255,255,.9);
-}
-.bloque-total-badge { font-size:1.5rem; font-weight:900; color:#fff; letter-spacing:-.03em; line-height:1; text-align:right; }
-.bloque-total-badge span { display:block; font-size:.65rem; font-weight:600; color:rgba(255,255,255,.6); letter-spacing:.05em; text-transform:uppercase; }
-
-/* Votos Section */
-.votos-section {
-  padding: 1.5rem 1.75rem;
-  border-bottom: 1px solid #f1f5f9;
-  display: flex;
-  flex-direction: column;
-  gap: 1.25rem;
-}
-.section-label {
-  display: flex;
-  align-items: center;
-  gap: .4rem;
-  font-size: .68rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: .08em;
-  color: #94a3b8;
-  padding-bottom: .75rem;
-  border-bottom: 1px solid #f1f5f9;
-}
-.section-label.winners { color: #b45309; }
-.section-helper {
-  margin-top: -0.75rem;
-  font-size: 0.78rem;
-  color: #64748b;
-}
-
-.planchas-list { display:flex; flex-direction:column; gap:1rem; }
-.plancha-row { display:flex; flex-direction:column; gap:.5rem; }
-.plancha-info { display:flex; align-items:center; gap:.6rem; }
-.plancha-allocation {
-  display: flex;
-  flex-wrap: wrap;
-  gap: .4rem;
-  padding-left: 1.9rem;
-  font-size: .72rem;
-  color: #475569;
-}
-.plancha-allocation span {
-  padding: .2rem .5rem;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 999px;
-}
-.plancha-rank {
-  width:22px; height:22px; border-radius:50%;
-  background:#f1f5f9; border:1px solid #e2e8f0;
-  display:flex; align-items:center; justify-content:center;
-  font-size:.65rem; font-weight:700; color:#64748b; flex-shrink:0;
-}
-.plancha-rank.winner { background:#fef9c3; border-color:#fde047; color:#854d0e; }
-.plancha-name { font-size:.85rem; font-weight:600; color:#334155; flex:1; }
-.plancha-row.winner .plancha-name { color:#0f172a; font-weight:700; }
-.plancha-votes-inline { font-size:.8rem; font-weight:800; color:#475569; white-space:nowrap; }
-.plancha-bar-wrap { display:flex; align-items:center; gap:.75rem; }
-.plancha-bar-track { flex:1; height:8px; background:#f1f5f9; border-radius:999px; overflow:hidden; }
-.plancha-bar-fill { height:100%; background:#cbd5e1; border-radius:999px; transition:width .8s cubic-bezier(.4,0,.2,1); min-width:4px; }
-.plancha-bar-fill.winner { background:linear-gradient(90deg,#1d4ed8,#60a5fa); }
-.plancha-percent { font-size:.72rem; font-weight:700; color:#94a3b8; width:32px; text-align:right; flex-shrink:0; }
-
-.stats-row { display:flex; gap:.5rem; padding-top:1rem; border-top:1px solid #f1f5f9; }
-.stat-chip { flex:1; display:flex; align-items:center; justify-content:center; gap:.3rem; padding:.5rem .4rem; border-radius:8px; font-size:.72rem; }
-.stat-chip strong { font-weight:800; }
-.stat-chip span { opacity:.75; font-weight:500; }
-.stat-chip.valid { background:#f0fdf4; color:#16a34a; }
-.stat-chip.blank { background:#f8fafc; color:#64748b; }
-.stat-chip.null  { background:#fef2f2; color:#dc2626; }
-
-/* ── Cargos Section (formato acta) ── */
-.cargos-section {
-  padding: 1.5rem 1.75rem;
-  display: flex;
-  flex-direction: column;
-  gap: 1.25rem;
-  background: #fafbfc;
-}
-
-.cargos-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 1.25rem;
-}
-
-/* Each cargo = one mini table like the physical form */
-.cargo-table {
-  border: 1px solid #d1d9e6;
-  border-radius: 10px;
-  overflow: hidden;
-  box-shadow: 0 1px 3px rgba(0,0,0,.04);
-}
-
-.cargo-table-header {
-  background: #1e3a5f;
-  color: #fff;
-  font-size: .72rem;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: .08em;
-  text-align: center;
-  padding: .6rem 1rem;
-}
-
-.cargo-table-body { display: flex; flex-direction: column; }
-
-.cargo-row {
-  display: grid;
-  grid-template-columns: 1.4rem 7rem 1fr;
-  align-items: center;
-  gap: .5rem;
-  padding: .45rem .85rem;
-  border-bottom: 1px solid #eef1f7;
-  background: #fff;
-}
-.cargo-row:last-child { border-bottom: none; }
-.cargo-row.alt { background: #f7f9fc; }
-
-.cargo-row-num {
-  font-size: .7rem;
-  font-weight: 700;
-  color: #94a3b8;
-}
-.cargo-row-label {
-  font-size: .72rem;
-  font-weight: 700;
-  color: #334155;
-  text-transform: uppercase;
-  letter-spacing: .04em;
-}
-.cargo-row-value {
-  font-size: .8rem;
-  font-weight: 600;
-  color: #0f172a;
-  text-align: right;
-  word-break: break-word;
-}
-
-.plancha-cell {
-  color: #0f766e;
-}
-
-/* Empty cargos */
-.cargos-empty {
-  display: flex;
-  align-items: center;
-  gap: .75rem;
-  padding: 1.25rem 1.75rem;
-  background: #fffbeb;
-  border-top: 1px solid #fde68a;
-  color: #92400e;
-  font-size: .82rem;
-  font-weight: 500;
-}
-
-/* ── Animations ── */
-@keyframes spin    { to { transform: rotate(360deg); } }
-@keyframes fadeUp  { from { opacity:0; transform:translateY(14px); } to { opacity:1; transform:translateY(0); } }
-@keyframes shimmer { 0% { background-position:200% 0; } 100% { background-position:-200% 0; } }
-
-/* ── Responsive ── */
-@media (max-width: 768px) {
-  .results-page   { padding: 1rem; gap: 1rem; }
-  .results-header { flex-wrap: wrap; }
-  .header-badge   { width: 100%; justify-content: center; }
-  .summary-bar    { flex-direction: column; }
-  .summary-divider { width: 100%; height: 1px; }
-  .bloque-header  { flex-direction: column; align-items: flex-start; }
-  .bloque-header-right { align-items: flex-start; }
-  .cargos-grid    { grid-template-columns: 1fr; }
-  .cargo-row      { grid-template-columns: 1.2rem 6rem 1fr; }
-}
-</style>

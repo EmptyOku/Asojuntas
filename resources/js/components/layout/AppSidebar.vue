@@ -7,10 +7,13 @@
       open ? 'translate-x-0 shadow-2xl lg:shadow-none' : '-translate-x-full'
     ]"
   >
+    <!-- Franja con los colores del escudo (alineada con la del header) -->
+    <div class="brand-stripe"></div>
+
     <!-- Marca -->
     <div class="h-[5.5rem] flex items-center justify-between px-5 border-b border-white/10 shrink-0">
       <div class="flex items-center gap-3 min-w-0">
-        <div class="h-11 w-11 rounded-xl bg-white/10 ring-1 ring-white/20 flex items-center justify-center font-display font-bold text-lg shrink-0 shadow-inner">
+        <div class="h-11 w-11 rounded-xl bg-white/10 ring-1 ring-white/20 flex items-center justify-center font-display font-bold text-lg text-aso-yellow shrink-0 shadow-inner">
           AJ
         </div>
         <div :class="['min-w-0 transition-opacity duration-200', collapsed ? 'lg:opacity-0 lg:pointer-events-none' : '']">
@@ -24,13 +27,14 @@
     </div>
 
     <nav class="sidebar-scroll flex-1 px-3 py-5 overflow-y-auto overflow-x-hidden" aria-label="Menú principal">
-      <div v-for="(group, index) in mainGroups" :key="group.section" :class="index > 0 ? 'mt-6' : ''">
-        <p
-          v-if="showSectionTitles"
-          :class="['px-3 mb-2 text-[10.5px] font-bold uppercase tracking-[0.12em] text-white/40 truncate', collapsed ? 'lg:invisible' : '']"
-        >
-          {{ group.section }}
-        </p>
+      <div v-for="(group, index) in mainGroups" :key="group.section" :class="index > 0 ? (collapsed ? 'mt-6 lg:mt-3' : 'mt-6') : ''">
+        <template v-if="showSectionTitles">
+          <p :class="['px-3 mb-2 text-[10.5px] font-bold uppercase tracking-[0.12em] text-white/40 truncate', collapsed ? 'lg:hidden' : '']">
+            {{ group.section }}
+          </p>
+          <!-- Contraído: una línea fina en vez del título (no ocupa altura de más). -->
+          <hr v-if="collapsed && index > 0" class="hidden lg:block mx-3 mb-3 border-white/10" />
+        </template>
         <div class="space-y-1">
           <router-link
             v-for="item in group.items"
@@ -134,7 +138,7 @@ const linkClass = (item) => [
   'group relative flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-[0.9rem] font-semibold transition-all duration-200',
   props.collapsed ? 'lg:justify-center lg:px-0' : '',
   isActive(item)
-    ? 'bg-white/15 text-white shadow-sm ring-1 ring-white/15 before:absolute before:left-0 before:top-2.5 before:bottom-2.5 before:w-1 before:rounded-r-full before:bg-lime-300'
+    ? 'bg-white/15 text-white shadow-sm ring-1 ring-white/15 before:absolute before:left-0 before:top-2.5 before:bottom-2.5 before:w-1 before:rounded-r-full before:bg-aso-yellow'
     : 'text-white/75 hover:bg-white/10 hover:text-white'
 ];
 </script>
@@ -142,13 +146,17 @@ const linkClass = (item) => [
 <style scoped>
 .sidebar {
   background:
-    radial-gradient(120% 60% at 0% 0%, rgb(63 174 106 / 0.35), transparent 60%),
-    linear-gradient(180deg, #14582f 0%, #0f4726 55%, #0c3d22 100%);
+    radial-gradient(120% 60% at 0% 0%, rgb(98 168 46 / 0.35), transparent 60%),
+    linear-gradient(180deg, #2f5a16 0%, #23460f 55%, #1a350b 100%);
 }
 
 /* Barra de desplazamiento fina y del color del menú (cuando la pantalla es
    baja y no caben todas las opciones), en vez de la gris del navegador. */
 .sidebar-scroll {
+  scrollbar-width: none;
+}
+/* Solo aparece al pasar el mouse por el menú (si hay algo que desplazar). */
+.sidebar-scroll:hover {
   scrollbar-width: thin;
   scrollbar-color: rgb(255 255 255 / 0.22) transparent;
 }

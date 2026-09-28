@@ -18,6 +18,8 @@
     </template>
 
     <div class="flex-1 flex flex-col min-w-0 overflow-hidden">
+      <!-- Franja con los colores del escudo de Asojuntas -->
+      <div class="brand-stripe"></div>
 
       <header class="h-[5.5rem] bg-white/85 backdrop-blur-md border-b border-gray-200/70 flex items-center justify-between px-4 sm:px-8 shrink-0 z-10">
         <div class="flex items-center gap-3 min-w-0">

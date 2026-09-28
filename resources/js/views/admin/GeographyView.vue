@@ -1,168 +1,185 @@
 <template>
-  <div class="space-y-6">
-    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+  <div class="space-y-6 lg:space-y-8">
+    <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
       <div>
-        <h1 class="page-title">Geografía Electoral</h1>
-        <p class="page-subtitle">Filtra por comuna y busca barrios directamente en base de datos.</p>
+        <h2 class="page-title">Geografía Electoral</h2>
+        <p class="page-subtitle">Barrios por comuna y el estado de su elección. Crea o cierra elecciones una a una o en lote.</p>
       </div>
 
-      <div class="flex flex-wrap items-center justify-end gap-2">
+      <div class="flex flex-wrap items-center gap-2">
         <button
           type="button"
           class="btn bg-white text-emerald-700 ring-1 ring-emerald-200 hover:bg-emerald-50"
           :disabled="loading || bulkCreateCount === 0"
           @click="openBulkModal('create')"
         >
+          <CalendarPlus class="w-4 h-4" />
           Crear todas
+          <span class="rounded-full bg-emerald-100 px-1.5 text-[11px] tabular-nums">{{ bulkCreateCount }}</span>
         </button>
-
         <button
           type="button"
           class="btn bg-white text-amber-700 ring-1 ring-amber-200 hover:bg-amber-50"
           :disabled="loading || bulkCloseCount === 0"
           @click="openBulkModal('close')"
         >
+          <CalendarX class="w-4 h-4" />
           Cerrar todas
+          <span class="rounded-full bg-amber-100 px-1.5 text-[11px] tabular-nums">{{ bulkCloseCount }}</span>
         </button>
-
-        <div class="inline-flex items-center gap-2 text-xs sm:text-sm text-gray-500 bg-white border border-gray-200 px-3.5 py-2 rounded-xl">
-          <MapPinned class="w-4 h-4 text-aso-primary" />
-          {{ totalNeighborhoods }} barrios encontrados
-        </div>
       </div>
     </div>
 
-    <div class="card overflow-hidden">
-      <div class="p-5 border-b border-gray-100 grid grid-cols-1 lg:grid-cols-4 gap-3 bg-gray-50/30">
-        <div class="relative lg:col-span-2">
-          <Search class="w-4 h-4 absolute left-3.5 top-1/2 transform -translate-y-1/2 text-gray-400" />
-          <input
-            v-model.trim="search"
-            type="text" 
-            placeholder="Buscar barrio por nombre, código..."
-            class="field field-search"
-          >
+    <!-- Indicadores (según los filtros aplicados) -->
+    <div class="stagger grid grid-cols-1 sm:grid-cols-3 gap-4 lg:gap-6">
+      <article class="stat-card stat-card--blue">
+        <div class="flex items-start justify-between">
+          <p class="text-sm font-semibold text-gray-600">Barrios</p>
+          <span class="stat-icon"><MapPinned class="w-5 h-5" /></span>
         </div>
+        <p class="mt-3 font-display text-4xl font-bold text-gray-900 tabular-nums">{{ totalNeighborhoods }}</p>
+        <p class="mt-1 text-xs font-semibold text-sky-700">{{ selectedCommuneName || 'Todas las comunas' }}</p>
+      </article>
+      <article class="stat-card stat-card--green">
+        <div class="flex items-start justify-between">
+          <p class="text-sm font-semibold text-gray-600">Con elección activa</p>
+          <span class="stat-icon"><CalendarCheck class="w-5 h-5" /></span>
+        </div>
+        <p class="mt-3 font-display text-4xl font-bold text-gray-900 tabular-nums">{{ bulkCloseCount }}</p>
+        <div class="mt-2 h-1.5 w-full rounded-full bg-white/80 overflow-hidden">
+          <div class="h-full rounded-full bg-aso-primary transition-[width] duration-700" :style="{ width: `${activePercent}%` }"></div>
+        </div>
+      </article>
+      <article class="stat-card stat-card--amber">
+        <div class="flex items-start justify-between">
+          <p class="text-sm font-semibold text-gray-600">Sin elección</p>
+          <span class="stat-icon"><CalendarX class="w-5 h-5" /></span>
+        </div>
+        <p class="mt-3 font-display text-4xl font-bold text-gray-900 tabular-nums">{{ bulkCreateCount }}</p>
+        <p class="mt-1 text-xs font-semibold text-amber-700">Pendientes de crear</p>
+      </article>
+    </div>
 
-        <div class="relative">
-          <Filter class="w-4 h-4 text-gray-400 z-10 pointer-events-none absolute left-3.5 top-1/2 transform -translate-y-1/2" />
-          <select
-            v-model="selectedCommuneId"
-            class="field pl-10"
-          >
-            <option value="">Todas las comunas</option>
-            <option
-              v-for="commune in communes"
-              :key="commune.id"
-              :value="String(commune.id)"
+    <section class="card overflow-hidden">
+      <!-- Filtros -->
+      <div class="card-header">
+        <div class="flex flex-col sm:flex-row gap-3 w-full">
+          <div class="relative flex-1">
+            <Search class="field-icon" />
+            <input
+              v-model.trim="search"
+              type="search"
+              placeholder="Buscar barrio por nombre o código"
+              class="field field-search"
+              @input="queueSearch"
+              @keydown.enter.prevent="fetchFirstPage"
             >
-              {{ commune.name }}
-            </option>
-          </select>
-        </div>
-
-        <div class="flex items-center gap-2">
+          </div>
+          <div class="relative sm:w-60">
+            <Filter class="field-icon z-10" />
+            <select v-model="selectedCommuneId" class="field pl-10 cursor-pointer">
+              <option value="">Todas las comunas</option>
+              <option v-for="commune in communes" :key="commune.id" :value="String(commune.id)">
+                {{ commune.name }}
+              </option>
+            </select>
+          </div>
           <button
+            v-if="search || selectedCommuneId"
             type="button"
-            class="btn-primary flex-1 lg:flex-initial"
-            @click="fetchNeighborhoods"
+            class="btn px-4 text-gray-500 hover:text-gray-800 hover:bg-gray-100"
             :disabled="loading"
-          >
-            Buscar
-          </button>
-          <button
-            type="button"
-            class="btn-secondary"
             @click="clearFilters"
-            :disabled="loading"
           >
+            <X class="w-4 h-4" />
             Limpiar
           </button>
         </div>
       </div>
 
-      <div class="overflow-x-auto">
+      <div v-if="error" class="mx-5 sm:mx-6 mt-4 rounded-xl bg-red-50 border border-red-200 text-red-700 px-4 py-3 text-sm">{{ error }}</div>
+
+      <div class="table-wrap rounded-none" :class="{ 'opacity-60 transition-opacity': loading && neighborhoods.length }">
         <table class="data-table">
-          <thead class="bg-gray-50/80 text-gray-500 font-semibold border-b border-gray-100">
+          <thead>
             <tr>
-              <th class="px-6 py-4 whitespace-nowrap">Comuna</th>
-              <th class="px-6 py-4 whitespace-nowrap">Barrio</th>
-              <th class="px-6 py-4 whitespace-nowrap">Código</th>
-              <th class="px-6 py-4 whitespace-nowrap">Presidente</th>
-              <th class="px-6 py-4 whitespace-nowrap">Vicepresidente</th>
-              <th class="px-6 py-4 whitespace-nowrap text-right">Acciones</th>
+              <th>Barrio</th>
+              <th>Comuna</th>
+              <th>Elección</th>
+              <th>Presidente</th>
+              <th>Vicepresidente</th>
+              <th class="text-right">Acciones</th>
             </tr>
           </thead>
-          <tbody v-if="loading" class="divide-y divide-gray-50">
-            <tr>
-              <td colspan="6" class="px-6 py-10 text-center text-gray-500">
-                Cargando barrios...
-              </td>
-            </tr>
-          </tbody>
+          <tbody>
+            <template v-if="loading && !neighborhoods.length">
+              <tr v-for="n in 5" :key="`sk-${n}`">
+                <td colspan="6"><div class="h-4 w-full max-w-md rounded bg-gray-100 animate-pulse"></div></td>
+              </tr>
+            </template>
 
-          <tbody v-else-if="error" class="divide-y divide-gray-50">
-            <tr>
-              <td colspan="6" class="px-6 py-10 text-center text-red-600">
-                {{ error }}
-              </td>
+            <tr v-else-if="!neighborhoods.length">
+              <td colspan="6" class="py-10 text-center text-sm text-gray-500">No hay barrios para los filtros seleccionados.</td>
             </tr>
-          </tbody>
 
-          <tbody v-else-if="neighborhoods.length === 0" class="divide-y divide-gray-50">
-            <tr>
-              <td colspan="6" class="px-6 py-10 text-center text-gray-500">
-                No hay barrios para los filtros seleccionados.
-              </td>
-            </tr>
-          </tbody>
-
-          <tbody v-else class="divide-y divide-gray-50">
-            <tr
-              v-for="neighborhood in neighborhoods"
-              :key="neighborhood.id"
-              class="hover:bg-gray-50/50 transition-colors group"
-            >
-              <td class="px-6 py-4">
-                <p class="font-medium text-gray-800">{{ neighborhood.commune?.name || 'Sin comuna' }}</p>
-              </td>
-              <td class="px-6 py-4">
-                <div class="flex items-center gap-2">
-                  <MapPin class="w-4 h-4 text-aso-primary" />
-                  <span class="font-semibold text-gray-900">{{ neighborhood.name }}</span>
+            <tr v-for="neighborhood in neighborhoods" :key="neighborhood.id" class="row-enter">
+              <td>
+                <div class="flex items-center gap-3 min-w-0">
+                  <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-aso-primary"><MapPin class="w-4 h-4" /></span>
+                  <div class="min-w-0">
+                    <p class="font-semibold text-gray-900 truncate">{{ neighborhood.name }}</p>
+                    <p class="text-xs text-gray-400">{{ neighborhood.code }}</p>
+                  </div>
                 </div>
               </td>
-              <td class="px-6 py-4 text-gray-700">{{ neighborhood.code }}</td>
-              <td class="px-6 py-4 text-gray-700">{{ neighborhood.president_name || 'Sin datos' }}</td>
-              <td class="px-6 py-4 text-gray-700">{{ neighborhood.vicepresident_name || 'Sin datos' }}</td>
-              <td class="px-6 py-4 text-right">
-                <div class="inline-flex flex-wrap items-center justify-end gap-2">
+              <td class="text-gray-700 whitespace-nowrap">{{ neighborhood.commune?.name || 'Sin comuna' }}</td>
+              <td>
+                <span :class="neighborhood.has_active_election ? 'badge-green' : 'badge-gray'">
+                  <span class="badge-dot"></span>
+                  {{ neighborhood.has_active_election ? 'Activa' : 'Sin elección' }}
+                </span>
+              </td>
+              <td>
+                <span v-if="neighborhood.president_name" class="text-gray-800">{{ neighborhood.president_name }}</span>
+                <span v-else class="text-gray-400 italic">Pendiente</span>
+              </td>
+              <td>
+                <span v-if="neighborhood.vicepresident_name" class="text-gray-800">{{ neighborhood.vicepresident_name }}</span>
+                <span v-else class="text-gray-400 italic">Pendiente</span>
+              </td>
+              <td>
+                <div class="flex justify-end gap-2">
                   <button
                     v-if="!neighborhood.has_active_election"
                     type="button"
-                    class="btn px-3 py-2 text-xs bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 hover:bg-emerald-100"
+                    class="icon-btn-green"
+                    title="Crear elección"
+                    aria-label="Crear elección"
                     :disabled="isRowBusy(neighborhood.id)"
                     @click="createElection(neighborhood)"
                   >
-                    {{ isRowBusy(neighborhood.id) ? 'Creando...' : 'Crear eleccion' }}
+                    <Loader2 v-if="isRowBusy(neighborhood.id)" class="w-4 h-4 animate-spin" />
+                    <CalendarPlus v-else class="w-4 h-4" />
                   </button>
-
                   <button
                     v-else
                     type="button"
-                    class="btn px-3 py-2 text-xs bg-amber-50 text-amber-700 ring-1 ring-amber-200 hover:bg-amber-100"
+                    class="icon-btn-amber"
+                    title="Cerrar elección"
+                    aria-label="Cerrar elección"
                     :disabled="isRowBusy(neighborhood.id)"
                     @click="closeElection(neighborhood)"
                   >
-                    {{ isRowBusy(neighborhood.id) ? 'Cerrando...' : 'Cerrar eleccion' }}
+                    <Loader2 v-if="isRowBusy(neighborhood.id)" class="w-4 h-4 animate-spin" />
+                    <CalendarX v-else class="w-4 h-4" />
                   </button>
-
                   <RouterLink
                     :to="`/admin/neighborhood/${neighborhood.id}/results`"
-                    class="btn-secondary px-3 py-2 text-xs hover:border-aso-primary hover:text-aso-primary"
+                    class="icon-btn-blue"
+                    title="Ver resultados"
+                    aria-label="Ver resultados"
                   >
-                    Ver resultados
-                    <ChevronRight class="w-3.5 h-3.5" />
+                    <BarChart3 class="w-4 h-4" />
                   </RouterLink>
                 </div>
               </td>
@@ -171,38 +188,18 @@
         </table>
       </div>
 
-      <div class="px-6 py-4 border-t border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-sm">
-        <p class="text-gray-500">
-          Mostrando <span class="font-semibold text-gray-900">{{ pagination.from || 0 }}</span>
-          a <span class="font-semibold text-gray-900">{{ pagination.to || 0 }}</span>
-          de <span class="font-semibold text-gray-900">{{ pagination.total }}</span> barrios
-        </p>
+      <PaginationBar
+        :current="pagination.current_page"
+        :last="pagination.last_page"
+        :total="pagination.total"
+        :from="pagination.from"
+        :to="pagination.to"
+        :loading="loading"
+        label="barrios"
+        @change="changePage"
+      />
+    </section>
 
-        <div class="flex items-center gap-2">
-          <button
-            type="button"
-            class="pager-btn"
-            :disabled="loading || pagination.current_page <= 1"
-            @click="changePage(pagination.current_page - 1)"
-          >
-            Anterior
-          </button>
-
-          <span class="px-2 text-sm text-gray-600 whitespace-nowrap">
-            Página {{ pagination.current_page }} / {{ pagination.last_page }}
-          </span>
-
-          <button
-            type="button"
-            class="pager-btn"
-            :disabled="loading || pagination.current_page >= pagination.last_page"
-            @click="changePage(pagination.current_page + 1)"
-          >
-            Siguiente
-          </button>
-        </div>
-      </div>
-    </div>
     <Teleport to="body">
       <div v-if="confirmState.open" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/50 backdrop-blur-sm">
         <div class="w-full max-w-md rounded-3xl bg-white shadow-2xl ring-1 ring-black/5 overflow-hidden animate-rise">
@@ -260,9 +257,11 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref, watch, Teleport } from 'vue';
-import { ChevronRight, Filter, MapPin, MapPinned, Search } from 'lucide-vue-next';
-import { X } from 'lucide-vue-next';
+import {
+  BarChart3, CalendarCheck, CalendarPlus, CalendarX, Filter, Loader2, MapPin, MapPinned, Search, X
+} from 'lucide-vue-next';
 import axios from '@/services/axios';
+import PaginationBar from '@/components/ui/PaginationBar.vue';
 
 const neighborhoods = ref([]);
 const communes = ref([]);
@@ -303,9 +302,26 @@ const confirmState = reactive({
 const totalNeighborhoods = computed(() => pagination.value.total || neighborhoods.value.length);
 const bulkCreateCount = computed(() => bulkCounts.value.create);
 const bulkCloseCount = computed(() => bulkCounts.value.close);
+const activePercent = computed(() => (totalNeighborhoods.value
+  ? Math.round((bulkCloseCount.value / totalNeighborhoods.value) * 100)
+  : 0));
+const selectedCommuneName = computed(() => communes.value
+  .find((commune) => String(commune.id) === selectedCommuneId.value)?.name ?? '');
 
 let searchTimer = null;
 let communesCached = false; // Flag para cachear comunas
+
+const fetchFirstPage = () => {
+  clearTimeout(searchTimer);
+  currentPage.value = 1;
+  fetchNeighborhoods();
+};
+
+// Busca al dejar de escribir, no en cada tecla.
+const queueSearch = () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(fetchFirstPage, 450);
+};
 
 const buildParams = () => {
   const params = {};
@@ -377,10 +393,13 @@ const fetchNeighborhoods = async () => {
   }
 };
 
+// Antes solo recargaba si cambiaba la comuna (vía watch): con solo texto
+// escrito, "Limpiar" borraba el campo pero dejaba la lista filtrada.
 const clearFilters = () => {
+  const communeChanged = selectedCommuneId.value !== '';
   search.value = '';
   selectedCommuneId.value = '';
-  currentPage.value = 1;
+  if (!communeChanged) fetchFirstPage();
 };
 
 const closeConfirmModal = () => {

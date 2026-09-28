@@ -165,8 +165,8 @@
             />
             <defs>
               <linearGradient id="progressGradient" x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0%" stop-color="#7fd39f" />
-                <stop offset="100%" stop-color="#1e8f4d" />
+                <stop offset="0%" stop-color="#a5d374" />
+                <stop offset="100%" stop-color="#45821f" />
               </linearGradient>
             </defs>
           </svg>
