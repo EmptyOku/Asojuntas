@@ -53,6 +53,47 @@ class ElectoralAccessGuard
         return $this->permissionsFor($user)->intersect($permissions)->isNotEmpty();
     }
 
+    /**
+     * Regla anti-escalada: nadie puede otorgar permisos que no tiene.
+     *
+     * Aplica al crear o editar un rol y al asignar roles: sin esto, quien
+     * administra roles podía darse a sí mismo (o a otro) el rol Super Admin.
+     *
+     * @param  iterable<int, string>  $permissionNames
+     *
+     * @throws AccessDeniedHttpException
+     */
+    public function assertCanGrant(User $actor, iterable $permissionNames, string $action): void
+    {
+        $missing = collect($permissionNames)->unique()->diff($this->permissionsFor($actor))->values();
+
+        if ($missing->isNotEmpty()) {
+            throw new AccessDeniedHttpException(
+                "No puedes {$action}: incluye permisos que tu cuenta no tiene ({$missing->implode(', ')})."
+            );
+        }
+    }
+
+    /**
+     * Solo se puede administrar (editar, restablecer contraseña, desactivar o
+     * cambiar roles de) un usuario cuyos permisos estén todos dentro de los
+     * propios: un administrador no puede tomar la cuenta de otro con más poder.
+     *
+     * @throws AccessDeniedHttpException
+     */
+    public function assertCanManageUser(User $actor, User $target): void
+    {
+        if ($actor->is($target)) {
+            return;
+        }
+
+        if ($this->permissionsFor($target)->diff($this->permissionsFor($actor))->isNotEmpty()) {
+            throw new AccessDeniedHttpException(
+                'No puedes administrar esta cuenta: tiene permisos que tu cuenta no tiene.'
+            );
+        }
+    }
+
     /** Un revisor o administrador electoral no está limitado a un solo barrio. */
     public function isReviewer(User $user): bool
     {

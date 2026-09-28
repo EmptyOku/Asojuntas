@@ -97,14 +97,16 @@ class RoleManagementController extends Controller
         }
 
         $guard = app(ElectoralAccessGuard::class);
+        $actorPermissions = $guard->permissionsFor(Auth::user());
 
         // requires_neighborhood: el rol solo opera dentro de un barrio, así que
         // quien lo reciba necesita barrio asignado (la UI lo usa para avisar).
-        $roles = $query->get()->each(function (Role $role) use ($guard): void {
-            $role->setAttribute(
-                'requires_neighborhood',
-                $guard->permissionsRequireNeighborhood($role->permissions->pluck('name'))
-            );
+        // grantable: el usuario actual tiene todos sus permisos y por tanto puede
+        // asignarlo o editarlo (regla anti-escalada, ver assertCanGrant).
+        $roles = $query->get()->each(function (Role $role) use ($guard, $actorPermissions): void {
+            $permissionNames = $role->permissions->pluck('name');
+            $role->setAttribute('requires_neighborhood', $guard->permissionsRequireNeighborhood($permissionNames));
+            $role->setAttribute('grantable', $permissionNames->diff($actorPermissions)->isEmpty());
         });
 
         return response()->json([
@@ -119,6 +121,8 @@ class RoleManagementController extends Controller
             $rawPermissions = $request->validated('permissions', []);
 
             $permissions = $this->resolvePermissions($rawPermissions);
+
+            app(ElectoralAccessGuard::class)->assertCanGrant(Auth::user(), $permissions->pluck('name'), 'crear este rol');
 
             $guardName = $permissions->first()?->guard_name ?? 'web';
 
@@ -149,11 +153,17 @@ class RoleManagementController extends Controller
             $role = Role::findOrFail($id);
             $permissionsBefore = $role->permissions()->pluck('display_name')->values()->all();
 
-            $role->update($request->safe()->except('permissions'));
-
             $rawPermissions = $request->validated('permissions', []);
 
             $permissions = $this->resolvePermissions($rawPermissions);
+
+            // Ni editar un rol con más poder que el propio (p. ej. Super Admin)
+            // ni subirle a un rol permisos que uno mismo no tiene.
+            $accessGuard = app(ElectoralAccessGuard::class);
+            $accessGuard->assertCanGrant(Auth::user(), $role->permissions()->pluck('name'), 'editar este rol');
+            $accessGuard->assertCanGrant(Auth::user(), $permissions->pluck('name'), 'asignar esos permisos al rol');
+
+            $role->update($request->safe()->except('permissions'));
 
             $role->syncPermissions($permissions);
             LegacyRbacAuditTrail::syncRolePermissions($role->id, $permissions->pluck('id'), Auth::id());
@@ -175,6 +185,7 @@ class RoleManagementController extends Controller
 
         $role = app(RoleAdministrationGuard::class)->preserve(function () use ($id, &$affectedUsersCount) {
             $role = Role::findOrFail($id);
+            app(ElectoralAccessGuard::class)->assertCanGrant(Auth::user(), $role->permissions()->pluck('name'), 'activar o desactivar este rol');
             $isActiveBefore = $role->is_active;
             $activating = ! $isActiveBefore;
 

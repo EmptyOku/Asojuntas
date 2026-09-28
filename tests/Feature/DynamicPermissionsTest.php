@@ -138,7 +138,8 @@ class DynamicPermissionsTest extends TestCase
     #[Test]
     public function un_rol_nuevo_con_captura_de_actas_exige_barrio_aunque_no_se_llame_digitizer(): void
     {
-        $admin = $this->makeUser(['roles.assign', 'users.update']);
+        // Tiene los permisos que asigna (regla anti-escalada, ver PrivilegeEscalationTest).
+        $admin = $this->makeUser(['roles.assign', 'users.update', 'records.upload', 'records.review']);
         $sinBarrio = $this->makeUser([]);
         $coordinador = $this->roleWith('coordinador_territorial', ['records.upload']);
 
@@ -186,7 +187,8 @@ class DynamicPermissionsTest extends TestCase
     public function al_guardar_un_rol_se_agregan_sus_dependencias(): void
     {
         $this->seed(RolesAndPermissionsSeeder::class);
-        $admin = $this->makeUser(['roles.manage', 'roles.view']);
+        // Tiene los permisos que otorga, incluidas las dependencias que se agregan solas.
+        $admin = $this->makeUser(['roles.manage', 'roles.view', 'slates.promote', 'slates.review', 'geography.manage', 'geography.view']);
 
         $response = $this->actingAs($admin)->postJson('/api/admin/roles', [
             'name' => 'oficializador',
@@ -238,18 +240,22 @@ class DynamicPermissionsTest extends TestCase
     #[Test]
     public function no_se_puede_dejar_sin_roles_de_administracion_al_ultimo_administrador(): void
     {
-        $asignador = $this->makeUser(['roles.assign', 'users.update']);
+        $asignador = $this->makeUser(['roles.assign', 'users.update', 'map.view']);
         $unicoAdmin = $this->makeUser(['roles.manage']);
         $otroRol = $this->roleWith('consulta', ['map.view']);
 
+        // Quien no tiene roles.manage ya no puede administrar a quien sí lo tiene
+        // (regla anti-escalada, 403): lo frena antes del chequeo de "último
+        // administrador", que sigue probado en no_se_puede_quitar_roles_manage_al_ultimo_que_lo_tiene.
         $this->actingAs($asignador)
             ->putJson("/api/admin/users/{$unicoAdmin->id}/roles", ['roles' => [$otroRol->id]])
-            ->assertStatus(422);
+            ->assertForbidden();
 
         $this->actingAs($asignador)
             ->patchJson("/api/admin/users/{$unicoAdmin->id}/toggle-active")
-            ->assertStatus(422);
+            ->assertForbidden();
         $this->assertTrue($unicoAdmin->fresh()->is_active);
+        $this->assertTrue($unicoAdmin->fresh()->roles->pluck('name')->isNotEmpty());
     }
 
     #[Test]

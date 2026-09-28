@@ -23,6 +23,7 @@ class CompleteUserManagementController extends Controller
 
         $guard = app(ElectoralAccessGuard::class);
         $rolePermissions = $guard->permissionsForRoles($data['roles']);
+        $guard->assertCanGrant(Auth::user(), $rolePermissions, 'asignar esos roles');
 
         if ($guard->permissionsRequireNeighborhood($rolePermissions)) {
             if (empty($data['neighborhood_id'])) {

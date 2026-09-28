@@ -214,7 +214,9 @@ const showResult = (success, title, message) => {
 
 const loadRoles = async () => {
   const { data } = await axios.get('/admin/roles', { skipGlobalLoading: true });
-  roles.value = data.data ?? [];
+  // Solo los roles que la cuenta actual puede asignar (no puede otorgar
+  // permisos que no tiene); el backend lo exige igual con un 403.
+  roles.value = (data.data ?? []).filter((role) => role.grantable !== false);
 };
 
 const loadPermissions = async () => {

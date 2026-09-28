@@ -59,18 +59,18 @@ class UserManagementController extends Controller
         if ($request->filled('search')) {
             $search = $request->string('search')->toString();
             $query->where(function ($q) use ($search): void {
-                $q->where('username', 'ilike', "%{$search}%")
-                    ->orWhere('email', 'ilike', "%{$search}%")
+                $q->whereLike('username', "%{$search}%")
+                    ->orWhereLike('email', "%{$search}%")
                     ->orWhereHas('person', function ($personQuery) use ($search): void {
-                        $personQuery->where('document_number', 'ilike', "%{$search}%")
-                            ->orWhere('first_name', 'ilike', "%{$search}%")
-                            ->orWhere('last_name', 'ilike', "%{$search}%");
+                        $personQuery->whereLike('document_number', "%{$search}%")
+                            ->orWhereLike('first_name', "%{$search}%")
+                            ->orWhereLike('last_name', "%{$search}%");
                     })
                     ->orWhereHas('person.neighborhood', function ($neighborhoodQuery) use ($search): void {
-                        $neighborhoodQuery->where('name', 'ilike', "%{$search}%");
+                        $neighborhoodQuery->whereLike('name', "%{$search}%");
                     })
                     ->orWhereHas('person.neighborhood.commune', function ($communeQuery) use ($search): void {
-                        $communeQuery->where('name', 'ilike', "%{$search}%");
+                        $communeQuery->whereLike('name', "%{$search}%");
                     });
             });
         }
@@ -142,10 +142,11 @@ class UserManagementController extends Controller
 
         $query = Neighborhood::query()->select(['id', 'name', 'code', 'commune_id']);
 
+        // Sin comuna se devuelven TODOS los barrios: antes se cortaba en 50 y los
+        // usuarios de barrios fuera de ese corte (alfabético) aparecían con
+        // "Sin mesa activa" aunque sí la tuvieran. Son ~120 filas en 3 consultas.
         if ($commune_id) {
             $query->where('commune_id', $commune_id);
-        } else {
-            $query->limit(50);
         }
 
         $neighborhoods = $query
@@ -225,6 +226,7 @@ class UserManagementController extends Controller
 
         $guard = app(ElectoralAccessGuard::class);
         $rolePermissions = $guard->permissionsForRoles($validated['roles']);
+        $guard->assertCanGrant(Auth::user(), $rolePermissions, 'asignar esos roles');
 
         if ($guard->permissionsRequireNeighborhood($rolePermissions)) {
             $person = Person::find($validated['person_id']);
@@ -297,6 +299,8 @@ class UserManagementController extends Controller
 
     public function update(Request $request, User $user): JsonResponse
     {
+        app(ElectoralAccessGuard::class)->assertCanManageUser(Auth::user(), $user);
+
         $user->loadMissing('person');
         $person = $user->person;
 
@@ -359,6 +363,8 @@ class UserManagementController extends Controller
 
     public function toggleActive(User $user): JsonResponse
     {
+        app(ElectoralAccessGuard::class)->assertCanManageUser(Auth::user(), $user);
+
         if ($user->is_active && $user->is(Auth::user())) {
             return response()->json([
                 'success' => false,
@@ -386,6 +392,8 @@ class UserManagementController extends Controller
 
     public function resetPassword(Request $request, User $user): JsonResponse
     {
+        app(ElectoralAccessGuard::class)->assertCanManageUser(Auth::user(), $user);
+
         $validated = $request->validate([
             'password' => 'required|string|min:8|confirmed',
         ]);
@@ -413,6 +421,8 @@ class UserManagementController extends Controller
         ]);
 
         $guard = app(ElectoralAccessGuard::class);
+        $guard->assertCanManageUser(Auth::user(), $user);
+        $guard->assertCanGrant(Auth::user(), $guard->permissionsForRoles($validated['roles']), 'asignar esos roles');
         if ($guard->permissionsRequireNeighborhood($guard->permissionsForRoles($validated['roles']))) {
             $user->loadMissing('person');
             if (! $user->person || ! $user->person->neighborhood_id) {
@@ -445,6 +455,8 @@ class UserManagementController extends Controller
 
     public function syncNeighborhood(Request $request, User $user): JsonResponse
     {
+        app(ElectoralAccessGuard::class)->assertCanManageUser(Auth::user(), $user);
+
         $validated = $request->validate([
             'neighborhood_id' => [
                 'nullable',
@@ -571,10 +583,12 @@ class UserManagementController extends Controller
 
         if (! empty($term)) {
             $query->where(function ($q) use ($term) {
-                $q->where('first_name', 'ilike', "%{$term}%")
-                    ->orWhere('last_name', 'ilike', "%{$term}%")
-                    ->orWhere('document_number', 'ilike', "%{$term}%")
-                    ->orWhereRaw("first_name || ' ' || last_name ILIKE ?", ["%{$term}%"]);
+                $q->whereLike('first_name', "%{$term}%")
+                    ->orWhereLike('last_name', "%{$term}%")
+                    ->orWhereLike('document_number', "%{$term}%")
+                    // whereLike es el macro de AppServiceProvider: LOWER(...) LIKE, que
+                    // funciona igual en PostgreSQL y SQLite (ILIKE no existe en SQLite).
+                    ->orWhereLike("first_name || ' ' || last_name", "%{$term}%");
             });
         }
 
