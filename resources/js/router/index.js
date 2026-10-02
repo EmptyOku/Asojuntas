@@ -88,7 +88,13 @@ const routes = [
       },
       {
         path: 'roles', name: 'admin-roles', component: () => import('@/views/security-config/RolesPermissionsView.vue'),
-        meta: { anyPermission: ['users.view', 'roles.view'], nav: { label: 'Roles y Permisos', icon: 'ShieldAlert', section: 'Configuración', order: 900, position: 'bottom' } }
+        // Aquí se crean personas y cuentas, no solo roles: título propio en el header.
+        meta: {
+          anyPermission: ['users.view', 'roles.view'],
+          title: 'Administración de usuarios',
+          subtitle: 'Personas, cuentas de acceso, roles y permisos',
+          nav: { label: 'Usuarios y accesos', icon: 'UserCog', section: 'Configuración', order: 900, position: 'bottom' },
+        }
       }
     ]
   },

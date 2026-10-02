@@ -16,6 +16,10 @@
       </div>
     </div>
 
+    <div v-if="legendItems.length" class="px-5 sm:px-6 py-2.5 border-b border-gray-100 bg-gray-50/60">
+      <ActionLegend :items="legendItems" />
+    </div>
+
     <div class="table-wrap rounded-none">
       <table class="data-table">
         <thead>
@@ -51,7 +55,7 @@
             </td>
             <td>
               <div class="flex justify-end">
-                <button v-can="'users.update'" type="button" class="icon-btn-blue" title="Editar persona" aria-label="Editar persona" @click="$emit('edit-person', person)">
+                <button v-can="'users.update'" type="button" class="icon-btn-blue" data-tooltip="Editar persona" aria-label="Editar persona" @click="$emit('edit-person', person)">
                   <Pencil class="w-4 h-4" />
                 </button>
               </div>
@@ -110,6 +114,13 @@
 <script setup>
 import { computed, ref } from 'vue';
 import { ChevronLeft, ChevronRight, Pencil, Search } from 'lucide-vue-next';
+import ActionLegend from '@/components/ui/ActionLegend.vue';
+import { useAuthStore } from '@/stores/auth';
+
+const authStore = useAuthStore();
+const legendItems = computed(() => (authStore.can('users.update')
+  ? [{ icon: Pencil, label: 'Editar datos de la persona', tone: 'blue' }]
+  : []));
 
 const props = defineProps({
   persons: { type: Array, default: () => [] },

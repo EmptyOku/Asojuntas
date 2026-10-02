@@ -10,6 +10,7 @@ use App\Models\PollingTable;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\AuditTrailLogger;
+use App\Support\PersonData;
 use App\Services\ElectoralAccessGuard;
 use App\Services\LegacyRbacAuditTrail;
 use App\Services\RoleAdministrationGuard;
@@ -218,7 +219,8 @@ class UserManagementController extends Controller
             'username' => 'required|string|max:50|unique:users,username',
             'email' => 'required|email|max:150|unique:users,email',
             'password' => 'required|string|min:8|confirmed',
-            'roles' => 'required|array|min:1',
+            // Un solo rol por usuario: con dos se mezclaban permisos y pantallas de módulos distintos.
+            'roles' => 'required|array|size:1',
             'roles.*' => 'exists:roles,id',
             'neighborhood_id' => ['nullable', 'active_exists:neighborhoods,id'],
             'is_active' => 'sometimes|boolean',
@@ -303,6 +305,9 @@ class UserManagementController extends Controller
 
         $user->loadMissing('person');
         $person = $user->person;
+
+        // "1.070.622" y "1070622" son el mismo documento: se normaliza antes de validar unicidad.
+        PersonData::normalizeRequest($request);
 
         $validated = $request->validate([
             'document_type_id' => 'sometimes|exists:document_types,id',
@@ -416,7 +421,8 @@ class UserManagementController extends Controller
     public function syncRoles(Request $request, User $user): JsonResponse
     {
         $validated = $request->validate([
-            'roles' => 'required|array|min:1',
+            // Un solo rol por usuario: con dos se mezclaban permisos y pantallas de módulos distintos.
+            'roles' => 'required|array|size:1',
             'roles.*' => 'exists:roles,id',
         ]);
 

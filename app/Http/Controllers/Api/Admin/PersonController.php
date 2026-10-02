@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\DocumentType;
 use App\Models\Neighborhood;
 use App\Models\Person;
+use App\Support\PersonData;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -85,6 +86,9 @@ class PersonController extends Controller
      */
     public function store(Request $request): JsonResponse
     {
+        // "1.070.622" y "1070622" son el mismo documento: se normaliza antes de validar unicidad.
+        PersonData::normalizeRequest($request);
+
         $validated = $request->validate([
             'document_type_id' => 'required|exists:document_types,id',
             'document_number' => [
@@ -141,6 +145,9 @@ class PersonController extends Controller
      */
     public function update(Request $request, Person $person): JsonResponse
     {
+        // "1.070.622" y "1070622" son el mismo documento: se normaliza antes de validar unicidad.
+        PersonData::normalizeRequest($request);
+
         $validated = $request->validate([
             'document_type_id' => 'sometimes|exists:document_types,id',
             'document_number' => [

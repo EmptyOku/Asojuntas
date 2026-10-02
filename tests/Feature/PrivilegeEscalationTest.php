@@ -111,6 +111,26 @@ class PrivilegeEscalationTest extends TestCase
     }
 
     #[Test]
+    public function un_usuario_solo_puede_tener_un_rol(): void
+    {
+        $admin = $this->makeUser(self::ADMIN_PERMISSIONS);
+        $target = $this->makeUser();
+        $one = Role::create(['name' => 'rol_uno', 'display_name' => 'Uno', 'is_active' => true]);
+        $two = Role::create(['name' => 'rol_dos', 'display_name' => 'Dos', 'is_active' => true]);
+
+        $this->actingAs($admin)
+            ->putJson("/api/admin/users/{$target->id}/roles", ['roles' => [$one->id, $two->id]])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('roles');
+
+        $this->actingAs($admin)
+            ->putJson("/api/admin/users/{$target->id}/roles", ['roles' => [$two->id]])
+            ->assertOk();
+
+        $this->assertSame([$two->id], $target->fresh()->roles->pluck('id')->all());
+    }
+
+    #[Test]
     public function el_super_admin_sigue_pudiendo_administrar_todo(): void
     {
         $superRole = $this->superAdminRole();

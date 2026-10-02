@@ -26,7 +26,26 @@
       </button>
     </div>
 
-    <nav class="sidebar-scroll flex-1 px-3 py-5 overflow-y-auto overflow-x-hidden" aria-label="Menú principal">
+    <!-- Contraer / expandir (solo escritorio): arriba, siempre a la vista sin
+         tener que bajar hasta el final del menú. -->
+    <div class="hidden lg:block px-3 pt-3 shrink-0">
+      <button
+        type="button"
+        :class="[
+          'flex w-full items-center gap-3 px-3.5 py-2 rounded-xl text-sm font-semibold text-white/55 hover:text-white hover:bg-white/10 transition-colors',
+          collapsed ? 'justify-center px-0' : ''
+        ]"
+        :data-tooltip="collapsed ? 'Expandir menú' : undefined"
+        :aria-label="collapsed ? 'Expandir menú' : 'Contraer menú'"
+        :aria-expanded="!collapsed"
+        @click="$emit('toggle-collapse')"
+      >
+        <ChevronsLeft :class="['w-5 h-5 shrink-0 transition-transform duration-300', collapsed ? 'rotate-180' : '']" />
+        <span v-if="!collapsed" class="truncate">Contraer menú</span>
+      </button>
+    </div>
+
+    <nav class="sidebar-scroll flex-1 px-3 pt-3 pb-5 overflow-y-auto overflow-x-hidden" aria-label="Menú principal">
       <div v-for="(group, index) in mainGroups" :key="group.section" :class="index > 0 ? (collapsed ? 'mt-6 lg:mt-3' : 'mt-6') : ''">
         <template v-if="showSectionTitles">
           <p :class="['px-3 mb-2 text-[10.5px] font-bold uppercase tracking-[0.12em] text-white/40 truncate', collapsed ? 'lg:hidden' : '']">
@@ -52,7 +71,7 @@
       </div>
     </nav>
 
-    <div :class="['p-3 border-t border-white/10 shrink-0 space-y-1', bottomItems.length ? '' : 'hidden lg:block']">
+    <div v-if="bottomItems.length" class="p-3 border-t border-white/10 shrink-0 space-y-1">
       <router-link
         v-for="item in bottomItems"
         :key="item.name"
@@ -65,22 +84,6 @@
         <component :is="iconFor(item.icon)" class="w-5 h-5 shrink-0" />
         <span :class="['truncate', collapsed ? 'lg:hidden' : '']">{{ item.label }}</span>
       </router-link>
-
-      <!-- Contraer / expandir (solo escritorio): va en el pie del menú, no
-           flotando sobre el borde, para no tapar la barra de desplazamiento. -->
-      <button
-        type="button"
-        :class="[
-          'hidden lg:flex w-full items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-semibold text-white/55 hover:text-white hover:bg-white/10 transition-colors',
-          collapsed ? 'justify-center px-0' : ''
-        ]"
-        :title="collapsed ? 'Expandir menú' : undefined"
-        :aria-label="collapsed ? 'Expandir menú' : 'Contraer menú'"
-        @click="$emit('toggle-collapse')"
-      >
-        <ChevronsLeft :class="['w-5 h-5 shrink-0 transition-transform duration-300', collapsed ? 'rotate-180' : '']" />
-        <span v-if="!collapsed" class="truncate">Contraer menú</span>
-      </button>
     </div>
   </aside>
 </template>
@@ -89,7 +92,7 @@
 import { computed } from 'vue';
 import { useRoute } from 'vue-router';
 import {
-  Camera, ChevronsLeft, Circle, ClipboardList, FileCheck, Files, LayoutDashboard, Map as MapIcon, MapPin, MapPinned, ShieldAlert, Users, X
+  Camera, ChevronsLeft, Circle, ClipboardList, FileCheck, Files, LayoutDashboard, Map as MapIcon, MapPin, MapPinned, ShieldAlert, UserCog, Users, X
 } from 'lucide-vue-next';
 
 const props = defineProps({
@@ -106,7 +109,7 @@ const route = useRoute();
 
 // Íconos permitidos en meta.nav.icon. Se importan uno a uno para no cargar
 // toda la librería; si agregas uno en el router, agrégalo también aquí.
-const ICONS = { Camera, ClipboardList, FileCheck, Files, LayoutDashboard, Map: MapIcon, MapPin, MapPinned, ShieldAlert, Users };
+const ICONS = { Camera, ClipboardList, FileCheck, Files, LayoutDashboard, Map: MapIcon, MapPin, MapPinned, ShieldAlert, UserCog, Users };
 const iconFor = (name) => ICONS[name] ?? Circle;
 
 const mainItems = computed(() => props.items.filter((item) => item.position !== 'bottom'));

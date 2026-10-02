@@ -3,9 +3,9 @@
     <!-- Encabezado con el paso actual -->
     <section class="card p-5 sm:p-7 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
       <div class="min-w-0">
-        <h2 class="page-title">{{ step === 1 ? 'Crear persona' : 'Crear cuenta' }}</h2>
+        <h2 class="page-title">{{ step === 1 ? 'Datos de la persona' : 'Cuenta de acceso' }}</h2>
         <p class="page-subtitle max-w-xl">
-          <template v-if="step === 1">Primero se registra la persona y luego su cuenta, que queda vinculada automáticamente.</template>
+          <template v-if="step === 1">Quién usará la cuenta. Nada se guarda hasta el último paso: la persona y su cuenta se registran juntas.</template>
           <template v-else>
             Cuenta de acceso para <span class="font-semibold text-gray-700">{{ personFullName || 'la persona registrada' }}</span>.
           </template>
@@ -367,11 +367,9 @@
           v-if="step === 1"
           type="submit"
           class="btn-primary px-6"
-          :disabled="loading"
         >
-          <Loader2 v-if="loading" class="w-4 h-4 animate-spin" />
-          {{ loading ? 'Guardando...' : 'Continuar' }}
-          <ArrowRight v-if="!loading" class="w-4 h-4" />
+          Continuar
+          <ArrowRight class="w-4 h-4" />
         </button>
         <button
           v-else
@@ -427,10 +425,6 @@ const selectedRoleId = ref(null);
 
 const showPassword = ref(false);
 const showPasswordConfirm = ref(false);
-
-// Id de la persona ya creada (o actualizada) en el paso 1. Mientras sea null no se puede
-// avanzar al paso 2: la persona debe existir en la base de datos antes de crear la cuenta.
-const createdPersonId = ref(null);
 
 const emptyForm = () => ({
   document_type_id: '', document_number: '', first_name: '', middle_name: '',
@@ -491,7 +485,6 @@ const resetWizard = () => {
   selectedCommune.value = '';
   neighborhoodsList.value = [];
   selectedRoleId.value = null;
-  createdPersonId.value = null;
   showPassword.value = false;
   showPasswordConfirm.value = false;
 };
@@ -515,40 +508,41 @@ const personPayload = () => ({
   last_name: form.value.last_name,
   second_last_name: form.value.second_last_name || null,
   neighborhood_id: form.value.neighborhood_id || null,
-  is_active: true,
 });
 
-// Paso 1: crea (o actualiza, si ya se había creado y el usuario volvió atrás a corregir
-// algo) la persona en el backend antes de dejar avanzar al paso 2.
-const submitPersonStep = async () => {
+// Campos del paso 1: si el servidor rechaza alguno al final, se vuelve a ese paso.
+const PERSON_FIELDS = ['document_type_id', 'document_number', 'first_name', 'middle_name', 'last_name', 'second_last_name', 'neighborhood_id', 'commune_id'];
+
+// Paso 1: solo se revisa en el navegador y se avanza al instante. Antes se creaba
+// la persona aquí (una petición más) y, si se abandonaba el paso 2, quedaba una
+// persona registrada sin cuenta.
+const submitPersonStep = () => {
   errors.value = {};
   wizardError.value = '';
 
-  loading.value = true;
-  try {
-    const { data } = createdPersonId.value
-      ? await axios.put(`/admin/persons/${createdPersonId.value}`, personPayload())
-      : await axios.post('/admin/persons', personPayload());
-    createdPersonId.value = data?.data?.id ?? createdPersonId.value;
-    step.value = 2;
-  } catch (error) {
-    const fieldErrors = extractFieldErrors(error);
-    errors.value = fieldErrors;
-    const message = buildErrorMessage(error, 'No fue posible registrar la persona.');
-    wizardError.value = message;
-    emit('show-result', false, 'No se pudo registrar la persona', message);
-  } finally {
-    loading.value = false;
+  const missing = {};
+  if (!form.value.document_type_id) missing.document_type_id = ['Selecciona el tipo de documento.'];
+  if (!String(form.value.document_number).trim()) missing.document_number = ['Escribe el número de documento.'];
+  if (!form.value.first_name.trim()) missing.first_name = ['Escribe el primer nombre.'];
+  if (!form.value.last_name.trim()) missing.last_name = ['Escribe el primer apellido.'];
+
+  if (Object.keys(missing).length) {
+    errors.value = missing;
+    wizardError.value = 'Completa los campos obligatorios.';
+    return;
   }
+
+  step.value = 2;
 };
 
+// Paso 2: persona y cuenta en una sola petición (y una sola transacción en el servidor).
 const submitAccountStep = async () => {
   errors.value = {};
   wizardError.value = '';
   loading.value = true;
   try {
-    await axios.post('/admin/users', {
-      person_id: createdPersonId.value,
+    await axios.post('/admin/users-complete', {
+      ...personPayload(),
       username: form.value.username,
       email: form.value.email,
       password: form.value.password,
@@ -564,9 +558,9 @@ const submitAccountStep = async () => {
     errors.value = fieldErrors;
     const message = buildErrorMessage(error, 'No fue posible crear la cuenta.');
     wizardError.value = message;
-    // El barrio vive en el paso 1: si el backend lo rechaza (p. ej. falta para rol Jurado),
-    // hay que volver ahí para que el usuario vea el campo resaltado.
-    if (fieldErrors.neighborhood_id) {
+    // Documento repetido, barrio que falta para el rol, etc. viven en el paso 1:
+    // se vuelve ahí para que el campo se vea resaltado.
+    if (PERSON_FIELDS.some((field) => fieldErrors[field])) {
       step.value = 1;
     }
     emit('show-result', false, 'No se pudo crear la cuenta', message);

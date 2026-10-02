@@ -16,6 +16,10 @@
       </div>
     </div>
 
+    <div v-if="legendItems.length" class="px-5 sm:px-6 py-2.5 border-b border-gray-100 bg-gray-50/60">
+      <ActionLegend :items="legendItems" />
+    </div>
+
     <div class="table-wrap rounded-none">
       <table class="data-table">
         <thead>
@@ -64,20 +68,20 @@
             </td>
             <td>
               <div class="flex justify-end gap-2">
-                <button v-can="'users.update'" type="button" class="icon-btn-blue" title="Editar usuario" aria-label="Editar usuario" @click="$emit('edit-user', user)">
+                <button v-can="'users.update'" type="button" class="icon-btn-blue" data-tooltip="Editar usuario" aria-label="Editar usuario" @click="$emit('edit-user', user)">
                   <Pencil class="w-4 h-4" />
                 </button>
-                <button v-can="'roles.assign'" type="button" class="icon-btn-amber" title="Editar roles" aria-label="Editar roles" @click="$emit('edit-roles', user)">
+                <button v-can="'roles.assign'" type="button" class="icon-btn-amber" data-tooltip="Cambiar rol" aria-label="Cambiar rol" @click="$emit('edit-roles', user)">
                   <ShieldCheck class="w-4 h-4" />
                 </button>
-                <button v-can="'users.update'" type="button" class="icon-btn-gray" title="Restablecer contraseña" aria-label="Restablecer contraseña" @click="$emit('reset-password', user)">
+                <button v-can="'users.update'" type="button" class="icon-btn-gray" data-tooltip="Restablecer contraseña" aria-label="Restablecer contraseña" @click="$emit('reset-password', user)">
                   <KeyRound class="w-4 h-4" />
                 </button>
                 <button
                   v-can="'users.update'"
                   type="button"
                   :class="user.is_active ? 'icon-btn-red' : 'icon-btn-green'"
-                  :title="user.is_active ? 'Deshabilitar' : 'Habilitar'"
+                  :data-tooltip="user.is_active ? 'Deshabilitar' : 'Habilitar'"
                   :aria-label="user.is_active ? 'Deshabilitar usuario' : 'Habilitar usuario'"
                   @click="askToggleUser(user)"
                 >
@@ -152,6 +156,8 @@ import { computed, ref } from 'vue';
 import { ChevronLeft, ChevronRight, KeyRound, Pencil, Power, Search, ShieldCheck } from 'lucide-vue-next';
 import axios from '@/services/axios';
 import ConfirmModal from '@/components/ConfirmModal.vue';
+import ActionLegend from '@/components/ui/ActionLegend.vue';
+import { useAuthStore } from '@/stores/auth';
 
 // Iniciales para el avatar: nombre de la persona si existe, si no el usuario.
 const initialsOf = (user) => {
@@ -164,6 +170,17 @@ const initialsOf = (user) => {
     .map((part) => part.charAt(0).toUpperCase())
     .join('');
 };
+
+const authStore = useAuthStore();
+
+// Leyenda de la columna Acciones: solo lo que este usuario puede hacer.
+const legendItems = computed(() => [
+  { icon: Pencil, label: 'Editar datos', tone: 'blue', permission: 'users.update' },
+  { icon: ShieldCheck, label: 'Cambiar rol', tone: 'amber', permission: 'roles.assign' },
+  { icon: KeyRound, label: 'Restablecer contraseña', tone: 'gray', permission: 'users.update' },
+  { icon: Power, label: 'Deshabilitar', tone: 'red', permission: 'users.update' },
+  { icon: Power, label: 'Habilitar', tone: 'green', permission: 'users.update' },
+].filter((item) => authStore.can(item.permission)));
 
 const props = defineProps({
   users: { type: Array, default: () => [] },

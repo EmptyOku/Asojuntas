@@ -1,6 +1,6 @@
 <template>
   <div class="space-y-6">
-    <nav class="flex items-center gap-1 p-1 rounded-2xl bg-white border border-gray-200/70 overflow-x-auto w-fit max-w-full shadow-sm" aria-label="Administración">
+    <nav class="flex items-center gap-1 p-1 rounded-2xl bg-white border border-gray-200/70 overflow-x-auto w-fit max-w-full shadow-sm" aria-label="Administración de usuarios">
       <button
         v-for="tab in visibleTabs"
         :key="tab.key"
@@ -162,11 +162,12 @@ import ResultModal from '@/components/ResultModal.vue';
 const authStore = useAuthStore();
 
 // Cada pestaña se muestra solo con el permiso que exige su API.
+// Orden: primero crear y consultar cuentas (lo más usado), al final la configuración de roles.
 const TABS = [
-  { key: 'create', label: 'Creación de usuarios', permission: 'users.create', icon: UserPlus },
-  { key: 'roles', label: 'Roles y permisos', permission: 'roles.view', icon: ShieldCheck },
-  { key: 'persons', label: 'Personas', permission: 'users.view', icon: IdCard },
+  { key: 'create', label: 'Nueva cuenta', permission: 'users.create', icon: UserPlus },
   { key: 'users', label: 'Usuarios', permission: 'users.view', icon: Users },
+  { key: 'persons', label: 'Personas', permission: 'users.view', icon: IdCard },
+  { key: 'roles', label: 'Roles y permisos', permission: 'roles.view', icon: ShieldCheck },
 ];
 
 // Registros por página de los listados de personas y usuarios.

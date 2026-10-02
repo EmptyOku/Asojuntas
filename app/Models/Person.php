@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 class Person extends Model
 {
     use HasFactory;
+    use Concerns\NormalizesPersonData;
 
     /**
      * Por defecto Laravel busca la tabla "people".
