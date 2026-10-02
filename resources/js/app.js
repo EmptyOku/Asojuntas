@@ -6,6 +6,7 @@ import axios from 'axios';
 import App from './App.vue';
 import router from './router';
 import { can } from './directives/can';
+import { installTooltips } from './services/tooltips';
 
 // Configuración de Axios para Monolito
 axios.defaults.withCredentials = true;
@@ -18,5 +19,7 @@ const pinia = createPinia();
 app.use(pinia);
 app.use(router);
 app.directive('can', can);
+
+installTooltips();
 
 app.mount('#app');

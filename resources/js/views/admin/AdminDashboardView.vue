@@ -138,7 +138,7 @@
                   </span>
                 </td>
                 <td class="text-right">
-                  <router-link :to="`/admin/audit/${row.id}`" class="icon-btn-blue" :aria-label="`Revisar acta ${row.id}`" title="Revisar">
+                  <router-link :to="`/admin/audit/${row.id}`" class="icon-btn-blue" :aria-label="`Revisar acta ${row.id}`" data-tooltip="Revisar acta">
                     <Eye class="w-4 h-4" />
                   </router-link>
                 </td>

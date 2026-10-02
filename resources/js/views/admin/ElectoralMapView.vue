@@ -12,7 +12,7 @@
             @click="refreshNow"
             :disabled="refreshing"
             class="flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-aso-primary disabled:opacity-50"
-            title="Actualizar ahora"
+            data-tooltip="Actualizar ahora"
           >
             <svg class="h-3.5 w-3.5" :class="{ 'animate-spin': refreshing }" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -30,6 +30,40 @@
       </div>
     </div>
 
+    <!-- Avance general: actas cargadas en todo Girardot (suma de todas las comunas). -->
+    <section v-if="general.total > 0" class="card p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center gap-4" aria-label="Avance general de actas">
+      <div class="flex items-center gap-4 shrink-0">
+        <p class="font-display text-4xl sm:text-5xl font-bold tabular-nums leading-none" :style="{ color: semaforoColor(general.semaforo) }">
+          {{ general.pct }}%
+        </p>
+        <div>
+          <p class="text-sm font-bold text-gray-900">Actas cargadas en Girardot</p>
+          <p class="text-xs text-gray-500 tabular-nums">
+            {{ general.recibidas.toLocaleString('es-CO') }} de {{ general.total.toLocaleString('es-CO') }} mesas ·
+            faltan {{ (general.total - general.recibidas).toLocaleString('es-CO') }}
+          </p>
+        </div>
+      </div>
+      <div class="flex-1 min-w-0">
+        <div
+          class="h-3 w-full rounded-full bg-gray-100 overflow-hidden"
+          role="progressbar"
+          :aria-valuenow="general.pct"
+          aria-valuemin="0"
+          aria-valuemax="100"
+          aria-label="Porcentaje general de actas cargadas"
+        >
+          <div
+            class="h-full rounded-full transition-[width] duration-700 ease-out"
+            :style="{ width: `${general.pct}%`, backgroundColor: semaforoColor(general.semaforo) }"
+          ></div>
+        </div>
+        <p class="mt-1.5 text-xs text-gray-500">
+          {{ general.comunasCompletas }} de {{ communes.length }} comunas con todas sus actas
+        </p>
+      </div>
+    </section>
+
     <div class="flex flex-col lg:flex-row gap-4">
       <!-- Mapa interactivo (izquierda) -->
       <div ref="mapWrapEl" class="relative flex-1 min-h-[560px] rounded-2xl overflow-hidden border border-gray-200 shadow-sm bg-white [&:fullscreen]:rounded-none [&:fullscreen]:border-0">
@@ -40,7 +74,7 @@
           <button
             type="button"
             class="map-ctrl"
-            title="Ver todo Girardot"
+            data-tooltip="Ver todo Girardot"
             aria-label="Ver todo Girardot"
             @click="clearSelection"
           >
@@ -49,7 +83,7 @@
           <button
             type="button"
             class="map-ctrl"
-            :title="isFullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'"
+            :data-tooltip="isFullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'"
             :aria-label="isFullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'"
             @click="toggleFullscreen"
           >
@@ -144,7 +178,7 @@
               type="button"
               @click="clearSelection"
               class="flex shrink-0 items-center gap-1.5 rounded-full bg-aso-primary px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-aso-primary/90"
-              title="Volver a ver todas las comunas"
+              data-tooltip="Volver a ver todas las comunas"
             >
               <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 15l-6-6m0 0l6-6m-6 6h16" />
@@ -184,7 +218,7 @@
                 <button
                   @click="goToBarrio(b)"
                   class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-gray-700 transition-colors hover:bg-aso-primary/10 hover:text-aso-primary"
-                  :title="barrioStatusLabel(b)"
+                  :data-tooltip="barrioStatusLabel(b)"
                 >
                   <span
                     class="h-1.5 w-1.5 shrink-0 rounded-full"
@@ -219,7 +253,7 @@
                     :style="{ backgroundColor: communeColor(c.code), '--tw-ring-color': communeColor(c.code) + '33' }"
                   ></span>
                   {{ c.name }}
-                  <span class="h-1.5 w-1.5 shrink-0 rounded-full" :style="{ backgroundColor: semaforoColor(c.semaforo) }" :title="`${c.actas_pct}% de actas`"></span>
+                  <span class="h-1.5 w-1.5 shrink-0 rounded-full" :style="{ backgroundColor: semaforoColor(c.semaforo) }" :data-tooltip="`${c.actas_pct}% de actas`"></span>
                 </span>
                 <span class="flex items-center gap-1.5 text-xs" :class="selected && selected.id === c.id ? 'text-white/80' : 'text-gray-400'">
                   <span v-if="c.mesas_atrasadas > 0" class="rounded-full bg-red-100 px-1.5 py-0.5 font-medium text-red-700">⚠{{ c.mesas_atrasadas }}</span>
@@ -266,7 +300,7 @@
                 type="button"
                 @click="startCreatingBarrio"
                 :disabled="!locateCommuneId"
-                title="Agregar un barrio nuevo"
+                data-tooltip="Agregar un barrio nuevo"
                 class="shrink-0 rounded-lg border border-gray-300 px-2 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
               >
                 + Nuevo
@@ -308,19 +342,21 @@
                 type="button"
                 @click="renameBarrio"
                 :disabled="!canRename || locateSaving"
-                title="Guardar el nuevo nombre"
-                class="shrink-0 rounded-lg border border-gray-300 px-2 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                data-tooltip="Guardar el nuevo nombre"
+                aria-label="Guardar el nuevo nombre"
+                class="icon-btn-blue !h-8 !w-8"
               >
-                ✏️
+                <Pencil class="w-4 h-4" />
               </button>
               <button
                 type="button"
                 @click="askDeleteBarrio"
                 :disabled="locateSaving"
-                title="Eliminar este barrio"
-                class="shrink-0 rounded-lg border border-red-200 px-2 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+                data-tooltip="Eliminar este barrio"
+                aria-label="Eliminar este barrio"
+                class="icon-btn-red !h-8 !w-8"
               >
-                🗑️
+                <Trash2 class="w-4 h-4" />
               </button>
             </div>
 
@@ -595,7 +631,7 @@ import { ref, shallowRef, computed, watch, onMounted, onBeforeUnmount, nextTick 
 import { useRouter } from 'vue-router';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { ChevronDown, Maximize, Maximize2, Minimize2 } from 'lucide-vue-next';
+import { ChevronDown, Maximize, Maximize2, Minimize2, Pencil, Trash2 } from 'lucide-vue-next';
 import axios from '@/services/axios';
 import { useAuthStore } from '@/stores/auth';
 import ResultModal from '@/components/ResultModal.vue';
@@ -721,6 +757,22 @@ const selectedBarrios = computed(() => {
 });
 
 const totalAtrasadas = computed(() => communes.value.reduce((sum, c) => sum + (c.mesas_atrasadas || 0), 0));
+
+// Porcentaje GENERAL: mesas con acta sobre el total de mesas de todas las
+// comunas (no el promedio de porcentajes, que daría el mismo peso a una
+// comuna de 2 mesas que a una de 40). Mismos umbrales del semáforo del mapa.
+const general = computed(() => {
+  const total = communes.value.reduce((sum, c) => sum + (c.mesas_total || 0), 0);
+  const recibidas = communes.value.reduce((sum, c) => sum + (c.mesas_recibidas || 0), 0);
+  const pct = total ? Math.round((recibidas / total) * 100) : 0;
+  return {
+    total,
+    recibidas,
+    pct,
+    semaforo: pct >= 80 ? 'verde' : pct >= 30 ? 'amarillo' : 'rojo',
+    comunasCompletas: communes.value.filter((c) => c.mesas_total > 0 && c.mesas_recibidas >= c.mesas_total).length,
+  };
+});
 
 function barrioStatusColor(b) {
   if (b.atrasada) return SEMAFORO_COLORS.rojo;

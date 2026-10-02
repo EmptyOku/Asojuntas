@@ -8,7 +8,7 @@
             <XCircle v-else class="w-7 h-7 text-red-600" />
           </div>
           <h3 class="mt-4 text-lg font-bold text-gray-900">{{ title }}</h3>
-          <p class="mt-2 text-sm text-gray-600">{{ message }}</p>
+          <p class="mt-2 text-sm text-gray-600 whitespace-pre-line">{{ message }}</p>
         </div>
         <div class="px-6 py-4 bg-gray-50">
           <button

@@ -20,8 +20,8 @@
           <button @click="nextPage" :disabled="currentPage === totalPages - 1" class="text-white disabled:opacity-30"><ChevronRight class="w-4 h-4" /></button>
         </div>
       </div>
-      <div class="flex-1 overflow-hidden flex items-center justify-center p-4 pt-12">
-        <img v-if="currentImage" :src="currentImage.url" class="max-w-full max-h-full object-contain rounded-lg shadow-2xl transition-all duration-300">
+      <div class="flex-1 min-h-0 pt-12">
+        <ImageViewer v-if="currentImage" :src="currentImage.url" :alt="`Página ${currentPage + 1}`" />
       </div>
     </div>
 
@@ -153,6 +153,7 @@ import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { ChevronLeft, ChevronRight, Image as ImageIcon, CheckCircle } from 'lucide-vue-next';
 import { useDocumentStore } from '@/stores/document';
+import ImageViewer from '@/components/ui/ImageViewer.vue';
 import axios from '@/services/axios';
 
 const router = useRouter();

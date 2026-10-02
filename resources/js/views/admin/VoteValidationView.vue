@@ -8,8 +8,8 @@
         <div>
           <div class="flex flex-wrap items-center gap-2 sm:gap-3">
             <h1 class="page-title">Auditoría Acta #{{ route.params.id }}</h1>
-            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] lg:text-xs font-semibold bg-orange-50 text-orange-700 border border-orange-100">
-              <span class="w-1.5 h-1.5 rounded-full bg-orange-500" :class="{ 'animate-pulse': detail.status !== 'approved' }"></span>
+            <span :class="statusBadgeClass">
+              <span class="badge-dot" :class="{ 'animate-pulse': !isFinalStatus }"></span>
               {{ statusLabel }}
             </span>
           </div>
@@ -45,7 +45,7 @@
           </button>
         </div>
 
-        <div class="flex-1 bg-gray-900 p-4 lg:p-8 flex items-center justify-center overflow-auto mt-12 relative">
+        <div class="flex-1 min-h-0 bg-gray-900 flex items-center justify-center overflow-hidden mt-12 relative">
           <div
             v-if="fileLoading && currentFileKind === 'image' && !fileLoadFailed"
             class="absolute inset-0 flex flex-col items-center justify-center gap-3 text-gray-400"
@@ -53,14 +53,13 @@
             <div class="h-8 w-8 rounded-full border-2 border-gray-600 border-t-white animate-spin"></div>
             <p class="text-xs">Cargando imagen del acta…</p>
           </div>
-          <img
+          <ImageViewer
             v-if="currentFileKind === 'image' && currentImageUrl && !fileLoadFailed"
             :src="currentImageUrl"
-            class="max-h-full max-w-full object-contain rounded-lg shadow-2xl bg-white"
             alt="Acta de escrutinio"
             @load="fileLoading = false"
             @error="fileLoading = false; fileLoadFailed = true"
-          >
+          />
           <iframe
             v-else-if="currentFileKind === 'pdf' && currentImageUrl && !fileLoadFailed"
             :src="currentImageUrl"
@@ -112,12 +111,50 @@
           </section>
         </div>
 
-        <div class="p-4 lg:p-5 border-t border-gray-100 bg-gray-50/50 flex items-center justify-between gap-3 shrink-0">
-          <button @click="decide('rejected')" :disabled="isSubmitting" class="px-3 lg:px-4 py-2 text-xs lg:text-sm font-semibold text-red-600 bg-white border border-red-200 hover:bg-red-50 rounded-xl transition-colors disabled:opacity-60">
-            Rechazar
-          </button>
-          <button @click="decide('approved')" :disabled="isSubmitting" class="flex-1 lg:flex-none px-4 lg:px-6 py-2 text-xs lg:text-sm font-semibold text-white bg-aso-primary hover:bg-aso-primary-dark shadow-md rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-60">
-            <Save class="w-4 h-4" /> Confirmar Datos
+        <div class="p-4 lg:p-5 border-t border-gray-100 bg-gray-50/50 shrink-0 space-y-3">
+          <p v-if="decisionError" class="field-error" role="alert">{{ decisionError }}</p>
+          <p v-if="detail.status === 'rejected'" class="text-xs text-red-700">
+            Esta acta está rechazada: sus votos no cuentan. Puedes corregirla y aprobarla.
+          </p>
+          <p v-else-if="detail.status === 'approved'" class="text-xs text-emerald-700">
+            Esta acta ya está aprobada y sus votos cuentan en los resultados.
+          </p>
+          <div class="flex items-center justify-between gap-3">
+            <button @click="openDecision('rejected')" :disabled="isSubmitting" class="px-3 lg:px-4 py-2 text-xs lg:text-sm font-semibold text-red-600 bg-white border border-red-200 hover:bg-red-50 rounded-xl transition-colors disabled:opacity-60">
+              Rechazar
+            </button>
+            <button @click="openDecision('approved')" :disabled="isSubmitting" class="flex-1 lg:flex-none px-4 lg:px-6 py-2 text-xs lg:text-sm font-semibold text-white bg-aso-primary hover:bg-aso-primary-dark shadow-md rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-60">
+              <Save class="w-4 h-4" /> Confirmar Datos
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- Confirmación de la decisión: rechazar exige motivo. -->
+    <div v-if="pendingDecision" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" @click.self="closeDecision">
+      <div class="w-full max-w-md bg-white rounded-2xl shadow-xl p-5 space-y-4" role="dialog" aria-modal="true" :aria-label="pendingDecision === 'rejected' ? 'Rechazar acta' : 'Aprobar acta'">
+        <h2 class="font-display text-lg font-bold text-gray-900">
+          {{ pendingDecision === 'rejected' ? 'Rechazar acta' : 'Aprobar acta' }} #{{ route.params.id }}
+        </h2>
+        <p class="text-sm text-gray-600">
+          <template v-if="pendingDecision === 'rejected'">
+            Los votos de esta acta dejarán de contarse en los resultados del barrio. Las cifras editadas no se guardan.
+          </template>
+          <template v-else>
+            Se guardarán las cifras de la derecha y los votos pasarán a contar en los resultados del barrio.
+          </template>
+        </p>
+        <label class="block">
+          <span class="text-xs font-semibold text-gray-600">
+            {{ pendingDecision === 'rejected' ? 'Motivo del rechazo' : 'Observación (opcional)' }}
+          </span>
+          <textarea v-model="decisionComment" rows="3" maxlength="1000" class="field mt-1" :placeholder="pendingDecision === 'rejected' ? 'Ej.: el acta está ilegible o las sumas no cuadran' : ''"></textarea>
+        </label>
+        <p v-if="decisionError" class="field-error" role="alert">{{ decisionError }}</p>
+        <div class="flex justify-end gap-2">
+          <button type="button" class="btn-secondary" :disabled="isSubmitting" @click="closeDecision">Cancelar</button>
+          <button type="button" :class="pendingDecision === 'rejected' ? 'btn-danger' : 'btn-primary'" :disabled="isSubmitting || !canSubmitDecision" @click="decide(pendingDecision)">
+            {{ isSubmitting ? 'Guardando…' : (pendingDecision === 'rejected' ? 'Rechazar acta' : 'Aprobar acta') }}
           </button>
         </div>
       </div>
@@ -130,6 +167,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ArrowLeft, ChevronLeft, ChevronRight, FileText, Users, Save } from 'lucide-vue-next';
 import axios from '@/services/axios';
+import ImageViewer from '@/components/ui/ImageViewer.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -214,6 +252,13 @@ const subtitle = computed(() => {
   return location ? `${election} • ${commune} • ${location}` : `${election} • ${commune}`;
 });
 
+const statusBadgeClass = computed(() => ({
+  approved: 'badge-green',
+  reviewed: 'badge-green',
+  consolidated: 'badge-green',
+  rejected: 'badge-red',
+}[detail.value.status] || 'badge-amber'));
+
 const isFinalStatus = computed(() => ['approved', 'rejected', 'reviewed', 'consolidated'].includes(String(detail.value.status || '')));
 
 const calculateValidVotes = (block) => {
@@ -288,21 +333,46 @@ const nextImage = () => {
   }
 };
 
+const pendingDecision = ref(null);
+const decisionComment = ref('');
+const decisionError = ref('');
+
+const canSubmitDecision = computed(() => pendingDecision.value !== 'rejected' || decisionComment.value.trim().length >= 5);
+
+const openDecision = (decision) => {
+  decisionError.value = '';
+  decisionComment.value = '';
+  pendingDecision.value = decision;
+};
+
+const closeDecision = () => {
+  if (!isSubmitting.value) {
+    pendingDecision.value = null;
+  }
+};
+
 const decide = async (decision) => {
   isSubmitting.value = true;
+  decisionError.value = '';
 
   try {
     await axios.post(`/admin/audit-records/${route.params.id}/decision`, {
       decision,
-      comments: decision === 'rejected' ? 'Rechazo manual en auditoria de demo.' : 'Aprobacion manual en auditoria de demo.',
-      changes_payload: {
-        blocks: JSON.parse(JSON.stringify(editableBlocks.value || [])),
-      },
+      comments: decisionComment.value.trim() || null,
+      // Al rechazar no se envían cifras: el acta completa queda fuera del conteo.
+      changes_payload: decision === 'rejected'
+        ? null
+        : { blocks: JSON.parse(JSON.stringify(editableBlocks.value || [])) },
     });
 
+    pendingDecision.value = null;
     router.push('/admin/audit');
   } catch (error) {
-    loadError.value = error?.response?.data?.message || 'No se pudo actualizar el estado del acta.';
+    // Antes el error reemplazaba toda la pantalla y se perdían las cifras editadas.
+    const errors = error?.response?.data?.errors;
+    decisionError.value = (errors && Object.values(errors).flat()[0])
+      || error?.response?.data?.message
+      || 'No se pudo actualizar el estado del acta.';
   } finally {
     isSubmitting.value = false;
   }

@@ -54,10 +54,20 @@
               Pág {{ index + 1 }}
             </div>
 
-            <button @click="removeImage(img.id)" 
+            <button @click="removeImage(img.id)" :aria-label="`Quitar la página ${index + 1}`"
                     class="absolute top-2 right-2 p-2 bg-red-600/90 text-white rounded-xl shadow-md transition-all hover:bg-red-700 active:scale-95 sm:opacity-0 sm:group-hover:opacity-100">
               <X class="w-4 h-4" />
             </button>
+            <!-- Cambiar el orden de las páginas sin tener que volver a tomarlas. -->
+            <div v-if="capturedImages.length > 1" class="absolute bottom-0 inset-x-0 flex items-center justify-between bg-black/65 px-1.5 py-1">
+              <button type="button" class="rounded-md p-1.5 text-white hover:bg-white/20 disabled:opacity-30" :disabled="index === 0" :aria-label="`Mover la página ${index + 1} antes`" @click="moveImage(index, -1)">
+                <ChevronLeft class="w-4 h-4" />
+              </button>
+              <span class="text-[10px] font-semibold uppercase tracking-wide text-white/80">Mover</span>
+              <button type="button" class="rounded-md p-1.5 text-white hover:bg-white/20 disabled:opacity-30" :disabled="index === capturedImages.length - 1" :aria-label="`Mover la página ${index + 1} después`" @click="moveImage(index, 1)">
+                <ChevronRight class="w-4 h-4" />
+              </button>
+            </div>
           </div>
 
           <button v-if="(isPlancha && capturedImages.length < MAX_PLANCHA_PAGES) || (!isPlancha && capturedImages.length < REQUIRED_SCRUTINY_PAGES)"
@@ -133,7 +143,7 @@
 <script setup>
 import { ref, computed, nextTick } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
-import { ArrowLeft, ScanLine, Camera, Send, Loader2, Plus, X } from 'lucide-vue-next';
+import { ArrowLeft, ScanLine, Camera, ChevronLeft, ChevronRight, Send, Loader2, Plus, X } from 'lucide-vue-next';
 import { useDocumentStore } from '@/stores/document';
 import axios, { extractorInstance } from '@/services/axios';
 
@@ -517,6 +527,15 @@ const handleImageUpload = (event) => {
   // Limpiamos el valor del input para que el evento @change vuelva a dispararse
   // incluso si el usuario selecciona la misma foto dos veces seguidas
   event.target.value = '';
+};
+
+// Intercambia una página con su vecina (el orden es el número de página que se guarda).
+const moveImage = (index, direction) => {
+  const target = index + direction;
+  if (target < 0 || target >= capturedImages.value.length) return;
+  const images = [...capturedImages.value];
+  [images[index], images[target]] = [images[target], images[index]];
+  capturedImages.value = images;
 };
 
 const removeImage = (idToRemove) => {

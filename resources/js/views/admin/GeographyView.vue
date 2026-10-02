@@ -99,6 +99,10 @@
 
       <div v-if="error" class="mx-5 sm:mx-6 mt-4 rounded-xl bg-red-50 border border-red-200 text-red-700 px-4 py-3 text-sm">{{ error }}</div>
 
+      <div class="px-5 sm:px-6 py-2.5 border-b border-gray-100 bg-gray-50/60">
+        <ActionLegend :items="LEGEND_ITEMS" />
+      </div>
+
       <div class="table-wrap rounded-none" :class="{ 'opacity-60 transition-opacity': loading && neighborhoods.length }">
         <table class="data-table">
           <thead>
@@ -153,7 +157,7 @@
                     v-if="!neighborhood.has_active_election"
                     type="button"
                     class="icon-btn-green"
-                    title="Crear elección"
+                    data-tooltip="Crear elección"
                     aria-label="Crear elección"
                     :disabled="isRowBusy(neighborhood.id)"
                     @click="createElection(neighborhood)"
@@ -165,7 +169,7 @@
                     v-else
                     type="button"
                     class="icon-btn-amber"
-                    title="Cerrar elección"
+                    data-tooltip="Cerrar elección"
                     aria-label="Cerrar elección"
                     :disabled="isRowBusy(neighborhood.id)"
                     @click="closeElection(neighborhood)"
@@ -176,7 +180,7 @@
                   <RouterLink
                     :to="`/admin/neighborhood/${neighborhood.id}/results`"
                     class="icon-btn-blue"
-                    title="Ver resultados"
+                    data-tooltip="Ver resultados"
                     aria-label="Ver resultados"
                   >
                     <BarChart3 class="w-4 h-4" />
@@ -262,6 +266,14 @@ import {
 } from 'lucide-vue-next';
 import axios from '@/services/axios';
 import PaginationBar from '@/components/ui/PaginationBar.vue';
+import ActionLegend from '@/components/ui/ActionLegend.vue';
+
+// Qué hace cada botón de la columna Acciones.
+const LEGEND_ITEMS = [
+  { icon: CalendarPlus, label: 'Crear elección', tone: 'green' },
+  { icon: CalendarX, label: 'Cerrar elección', tone: 'amber' },
+  { icon: BarChart3, label: 'Ver resultados', tone: 'blue' },
+];
 
 const neighborhoods = ref([]);
 const communes = ref([]);
