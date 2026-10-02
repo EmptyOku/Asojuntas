@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Election;
 use App\Models\Neighborhood;
+use App\Models\ScrutinyRecord;
 use App\Models\Slate;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -47,7 +48,15 @@ class NeighborhoodController extends Controller
             ->groupBy('election_id')
             ->pluck('aggregate', 'election_id');
 
-        $data = $neighborhoods->map(function ($neighborhood) use ($activeElectionByNeighborhood, $slatesCountByElection) {
+        // Elecciones que ya tienen un acta aprobada: no admiten planchas nuevas.
+        $electionsWithApprovedActa = ScrutinyRecord::query()
+            ->whereIn('election_id', $activeElectionByNeighborhood->pluck('id'))
+            ->whereIn('status', ScrutinyRecord::APPROVED_STATUSES)
+            ->distinct()
+            ->pluck('election_id')
+            ->flip();
+
+        $data = $neighborhoods->map(function ($neighborhood) use ($activeElectionByNeighborhood, $slatesCountByElection, $electionsWithApprovedActa) {
             $activeElection = $activeElectionByNeighborhood->get($neighborhood->id);
 
             return [
@@ -60,6 +69,7 @@ class NeighborhoodController extends Controller
                     'id' => $activeElection->id,
                     'name' => $activeElection->name,
                     'slates_count' => (int) ($slatesCountByElection[$activeElection->id] ?? 0),
+                    'has_approved_acta' => $electionsWithApprovedActa->has($activeElection->id),
                 ] : null,
             ];
         });

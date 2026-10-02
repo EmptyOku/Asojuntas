@@ -1,162 +1,158 @@
 <template>
-  <div class="bg-white rounded-xl shadow-sm border overflow-hidden transition-colors" :class="isOpen ? 'border-amber-400' : 'border-gray-200'">
-    
-    <div 
-      @click="toggleOpen"
-      class="p-4 cursor-pointer hover:bg-gray-50 flex flex-col lg:flex-row lg:items-center justify-between gap-4 transition-colors"
-      :class="isOpen ? 'bg-amber-50/50 hover:bg-amber-50' : ''"
-    >
-      <div class="flex items-center gap-4">
-        <div class="w-1.5 h-12 rounded-full" :class="neighborhood.total_pending > 0 ? 'bg-amber-400' : 'bg-emerald-500'"></div>
-        <div>
-          <h3 class="text-lg font-black text-gray-900 leading-tight">{{ neighborhood.neighborhood_name }}</h3>
-          <p class="text-xs text-gray-500 font-semibold uppercase tracking-wide">{{ neighborhood.commune_name }}</p>
-        </div>
-      </div>
-
-      <div class="flex items-center gap-6 overflow-x-auto pb-1 lg:pb-0">
-        
-        <div class="flex items-center gap-6 px-4 border-l border-gray-200">
-          <div class="text-center">
-            <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Total</p>
-            <p class="text-lg font-black text-gray-900">{{ neighborhood.total_drafts }}</p>
-          </div>
-          <div class="text-center">
-            <p class="text-[10px] font-bold text-amber-500 uppercase tracking-widest">Pendientes</p>
-            <p class="text-lg font-black text-amber-600">{{ neighborhood.total_pending }}</p>
-          </div>
-          <div class="text-center">
-            <p class="text-[10px] font-bold text-emerald-500 uppercase tracking-widest">Aprobados</p>
-            <p class="text-lg font-black text-emerald-600">{{ neighborhood.total_approved }}</p>
-          </div>
-        </div>
-
-        <button 
-          @click.stop="confirmPromote = true"
-          :disabled="isPromoting || !hasPromotableData"
-          class="shrink-0 px-4 py-2 rounded-lg text-sm font-bold shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-          :class="hasPromotableData ? 'bg-emerald-600 text-white hover:bg-emerald-700' : 'bg-gray-100 text-gray-400'"
+  <article class="card overflow-hidden transition-shadow" :class="{ 'ring-2 ring-aso-primary/30 shadow-md': isOpen }">
+    <div class="flex flex-col lg:flex-row lg:items-center gap-4 p-4 sm:p-5">
+      <button
+        type="button"
+        class="flex items-center gap-3 min-w-0 flex-1 text-left"
+        :aria-expanded="isOpen"
+        @click="isOpen = !isOpen"
+      >
+        <span
+          class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl"
+          :class="neighborhood.total_pending > 0 ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-aso-primary'"
         >
-          <span v-if="isPromoting" class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-          Promover Oficial
+          <MapPin class="w-5 h-5" />
+        </span>
+        <span class="min-w-0">
+          <span class="block font-display text-lg font-bold text-gray-900 truncate">{{ neighborhood.neighborhood_name }}</span>
+          <span class="block text-xs text-gray-500 truncate">
+            {{ neighborhood.commune_name }} · {{ neighborhood.batches.length }} {{ neighborhood.batches.length === 1 ? 'plancha' : 'planchas' }}
+          </span>
+        </span>
+      </button>
+
+      <!-- Avance: aprobados sobre el total -->
+      <div class="flex flex-wrap items-center gap-2 lg:gap-3">
+        <div class="hidden md:block w-32" :aria-label="`${progress}% aprobado`">
+          <div class="flex justify-between text-[11px] font-semibold text-gray-500 mb-1">
+            <span>Aprobado</span><span class="tabular-nums">{{ progress }}%</span>
+          </div>
+          <div class="h-1.5 rounded-full bg-gray-100 overflow-hidden">
+            <div class="h-full rounded-full bg-aso-primary transition-[width] duration-500" :style="{ width: `${progress}%` }"></div>
+          </div>
+        </div>
+        <span v-if="neighborhood.total_pending" class="badge-amber"><span class="badge-dot animate-pulse"></span> {{ neighborhood.total_pending }} pendientes</span>
+        <span class="badge-green"><span class="badge-dot"></span> {{ neighborhood.total_approved }} aprobados</span>
+
+        <button
+          v-can="'slates.promote'"
+          type="button"
+          class="btn-primary"
+          :disabled="isPromoting || promotableTotal === 0"
+          :data-tooltip="promotableTotal ? `Publicar ${promotableTotal} candidato(s) aprobados` : 'No hay candidatos aprobados sin oficializar'"
+          @click="confirmPromote = true"
+        >
+          <Loader2 v-if="isPromoting" class="w-4 h-4 animate-spin" />
+          <BadgeCheck v-else class="w-4 h-4" />
+          Oficializar
         </button>
 
-        <div class="shrink-0 p-2 bg-gray-100 rounded-full text-gray-500">
-          <ChevronDown class="w-5 h-5 transition-transform duration-300" :class="isOpen ? 'rotate-180' : ''" />
-        </div>
+        <button
+          type="button"
+          class="h-9 w-9 flex items-center justify-center rounded-xl text-gray-400 hover:bg-gray-100"
+          :aria-label="isOpen ? 'Contraer barrio' : 'Ver planchas del barrio'"
+          @click="isOpen = !isOpen"
+        >
+          <ChevronDown class="w-5 h-5 transition-transform duration-300" :class="{ 'rotate-180 text-aso-primary': isOpen }" />
+        </button>
       </div>
     </div>
 
-    <div v-if="isOpen" class="border-t border-gray-100 bg-gray-50 p-4">
-      
-      <PlanchaTabs 
-        :batches="neighborhood.batches" 
+    <div v-if="isOpen" class="border-t border-gray-100 bg-gray-50/60 p-4 sm:p-5 animate-rise">
+      <PlanchaTabs
+        :batches="neighborhood.batches"
         :neighborhood-name="neighborhood.neighborhood_name"
         :election-id="neighborhood.election_id"
+        :locked="Boolean(neighborhood.has_approved_acta)"
         @draft-updated="$emit('reload-requested')"
       />
-
     </div>
 
     <ConfirmModal
       :open="confirmPromote"
-      title="¿Oficializar los datos aprobados?"
-      :message="`Se promoverán todos los candidatos aprobados del barrio ${neighborhood.neighborhood_name} a planchas oficiales.`"
+      title="¿Oficializar las planchas aprobadas?"
+      :message="`Se publicarán ${promotableTotal} candidato(s) aprobados de ${neighborhood.neighborhood_name} en las planchas oficiales. Después ya no se pueden editar desde la bandeja.`"
       confirm-text="Oficializar"
-      @confirm="confirmPromote = false; promoteOfficial()"
+      :loading="isPromoting"
+      @confirm="promoteOfficial"
       @cancel="confirmPromote = false"
     />
-  </div>
+
+    <ResultModal
+      :open="result.open"
+      :success="result.success"
+      :title="result.title"
+      :message="result.message"
+      @close="result.open = false"
+    />
+  </article>
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
-import { ChevronDown } from 'lucide-vue-next';
+import { computed, reactive, ref } from 'vue';
+import { BadgeCheck, ChevronDown, Loader2, MapPin } from 'lucide-vue-next';
 import axios from '@/services/axios';
 import ConfirmModal from '@/components/ConfirmModal.vue';
-
-// Importamos el componente de las Pestañas que crearemos en el próximo paso
+import ResultModal from '@/components/ResultModal.vue';
 import PlanchaTabs from '@/components/secretary/PlanchaTabs.vue';
 
 const props = defineProps({
-  neighborhood: {
-    type: Object,
-    required: true
-  }
+  neighborhood: { type: Object, required: true },
 });
 
 const emit = defineEmits(['reload-requested']);
 
 const isOpen = ref(false);
 const isPromoting = ref(false);
+const confirmPromote = ref(false);
+const result = reactive({ open: false, success: true, title: '', message: '' });
 
-const toggleOpen = () => {
-  isOpen.value = !isOpen.value;
-};
-
-// Verifica si hay al menos una plancha con candidatos aprobados listos para promover
-const hasPromotableData = computed(() => {
-  return props.neighborhood.batches.some(batch => batch.promotable > 0);
+const promotableTotal = computed(() => props.neighborhood.batches.reduce((sum, batch) => sum + (batch.promotable || 0), 0));
+const progress = computed(() => {
+  const total = props.neighborhood.total_drafts || 0;
+  return total ? Math.round((props.neighborhood.total_approved / total) * 100) : 0;
 });
 
-// El botón abre el modal; promoteOfficial() corre al confirmar.
-const confirmPromote = ref(false);
+const showResult = (success, title, message) => Object.assign(result, { open: true, success, title, message });
 
 const promoteOfficial = async () => {
   isPromoting.value = true;
-  let processedTotal = 0;
-  let skippedTotal = 0;
-  const promotionIssues = [];
-  let errors = [];
+  let processed = 0;
+  let skipped = 0;
+  const issues = [];
+  const errors = [];
 
-  // Iteramos sobre las planchas del barrio que tienen algo para promover
-  const batchesToPromote = props.neighborhood.batches.filter(b => b.promotable > 0);
-
-  for (const batch of batchesToPromote) {
+  for (const batch of props.neighborhood.batches) {
+    const number = batch.number ?? '';
+    if (!batch.promotable) continue;
     try {
-      const { data } = await axios.post('/secretary/planchas/drafts/promote', { 
-        capture_batch_uuid: batch.capture_batch_uuid 
-      }, {
-        timeout: 240000,
-        skipGlobalLoading: true,
-      });
+      const { data } = await axios.post('/secretary/planchas/drafts/promote', {
+        capture_batch_uuid: batch.capture_batch_uuid,
+      }, { timeout: 240000, skipGlobalLoading: true });
 
-      const summary = data?.data || {};
-      processedTotal += Number(summary.processed || 0);
-      skippedTotal += Number(summary.skipped || 0);
-
-      if (Array.isArray(summary.issues) && summary.issues.length > 0) {
-        summary.issues.forEach((issue) => {
-          const detail = issue?.reason || 'Sin detalle';
-          promotionIssues.push(`Lote ${batch.capture_batch_uuid}: ${detail}`);
-        });
-      }
+      const summary = data?.data ?? {};
+      processed += Number(summary.processed || 0);
+      skipped += Number(summary.skipped || 0);
+      (summary.issues ?? []).forEach((issue) => issues.push(`Plancha ${number}: ${issue?.reason || 'sin detalle'}`));
     } catch (error) {
-      errors.push(`Error en lote ${batch.capture_batch_uuid}: ${error?.response?.data?.message || error.message}`);
+      errors.push(`Plancha ${number}: ${error?.response?.data?.message || error.message}`);
     }
   }
 
   isPromoting.value = false;
+  confirmPromote.value = false;
 
-  if (errors.length > 0) {
-    window.alert(`Promoción finalizada con errores:\n\n${errors.join('\n')}`);
-  } else if (processedTotal > 0 && skippedTotal === 0) {
-    window.alert('¡Promoción oficial completada con éxito para todo el barrio!');
-  } else if (processedTotal > 0 && skippedTotal > 0) {
-    window.alert(
-      `Promoción parcial completada.\n\nPromovidos: ${processedTotal}\nOmitidos: ${skippedTotal}`
-      + (promotionIssues.length ? `\n\nDetalle:\n${promotionIssues.slice(0, 12).join('\n')}` : '')
-    );
-  } else if (skippedTotal > 0) {
-    window.alert(
-      `No se promovieron candidatos para este barrio.\n\nOmitidos: ${skippedTotal}`
-      + (promotionIssues.length ? `\n\nDetalle:\n${promotionIssues.slice(0, 12).join('\n')}` : '')
-    );
+  const detail = issues.length ? `\n\n${issues.slice(0, 8).join('\n')}` : '';
+  if (errors.length) {
+    showResult(false, 'La oficialización tuvo errores', `${errors.join('\n')}${detail}`);
+  } else if (processed && !skipped) {
+    showResult(true, 'Planchas oficializadas', `Se publicaron ${processed} candidato(s) de ${props.neighborhood.neighborhood_name}.\n\nYa salieron de esta bandeja: ahora están en "Planchas por Barrio".`);
+  } else if (processed) {
+    showResult(true, 'Oficialización parcial', `Publicados: ${processed}. Omitidos: ${skipped}.${detail}`);
   } else {
-    window.alert('No hubo cambios para promover en este barrio.');
+    showResult(false, 'No se oficializó ningún candidato', `Omitidos: ${skipped}.${detail}`);
   }
 
-  // Le decimos al padre que recargue los datos para actualizar los contadores
   emit('reload-requested');
 };
 </script>

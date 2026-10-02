@@ -14,9 +14,11 @@ use App\Models\Election;
 use App\Models\Neighborhood;
 use App\Models\Person;
 use App\Models\Position;
+use App\Models\ScrutinyRecord;
 use App\Models\Slate;
 use App\Models\SlateBlock;
 use App\Support\CandidateDraftWorkflow;
+use App\Support\UnknownCandidate;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -25,6 +27,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use RuntimeException;
+use App\Services\AdminNotifications;
 use App\Services\ElectoralAccessGuard;
 use Symfony\Component\Process\Process;
 use Throwable;
@@ -40,7 +43,13 @@ class PlanchaDraftController extends Controller
         $validated = $request->validate([
             'document_file' => 'required|file|mimes:jpeg,png,jpg,webp|max:'.$maxFileSizeKb,
             'page_number' => 'nullable|integer|min:1',
+            'election_id' => 'nullable|integer',
         ]);
+
+        // No se gasta OCR en una plancha que no se va a poder registrar.
+        if (! empty($validated['election_id']) && ScrutinyRecord::electionHasApprovedActa((int) $validated['election_id'])) {
+            return $this->approvedActaLockResponse();
+        }
 
         $file = $request->file('document_file');
         $tempDir = storage_path('app/private/tmp');
@@ -159,6 +168,12 @@ class PlanchaDraftController extends Controller
             ], 422);
         }
 
+        // Con un acta aprobada ya no entran planchas nuevas. Corregir un lote
+        // que ya existía sí se permite (p. ej. arreglar un nombre mal leído).
+        if (! $batchElectionId && ScrutinyRecord::electionHasApprovedActa((int) $electionId)) {
+            return $this->approvedActaLockResponse();
+        }
+
         $replacePending = (bool) ($validated['replace_pending'] ?? false);
         $captureBatchUuid = (string) ($validated['capture_batch_uuid'] ?? Str::uuid());
         $slateCode = $this->normalizeSlateCode((string) ($validated['slate_code'] ?? ''));
@@ -176,6 +191,7 @@ class PlanchaDraftController extends Controller
         $created = 0;
         $updated = 0;
         $skipped = 0;
+        $lockedOfficial = [];
         $rows = [];
 
         foreach ((array) ($validated['review_page_data']['bloques'] ?? []) as $block) {
@@ -190,7 +206,8 @@ class PlanchaDraftController extends Controller
                     continue;
                 }
 
-                $fullName = trim((string) ($cargo['nombre'] ?? ''));
+                // "<Unknown>" del OCR se guarda como "<DESCONOCIDO>".
+                $fullName = UnknownCandidate::normalizeName((string) ($cargo['nombre'] ?? ''));
                 if ($fullName === '') {
                     $skipped++;
                     continue;
@@ -253,13 +270,21 @@ class PlanchaDraftController extends Controller
                     ->orderBy('id')
                     ->get();
 
-                // Ya oficializado como candidato: no se toca ni se duplica.
+                // Ya oficializado como candidato: no se toca ni se duplica. Se informa
+                // a la pantalla para que no parezca que el cambio se guardó.
                 if ($slotDrafts->contains(fn ($d) => $d->is_processed && $d->review_status !== CandidateDraftWorkflow::STATUS_REJECTED)) {
                     $skipped++;
+                    $lockedOfficial[] = trim((string) ($cargo['puesto'] ?? ''));
                     continue;
                 }
 
                 $existing = $slotDrafts->first(fn ($d) => ! $d->is_processed);
+
+                // Sin documento: número provisional único (el que ya tenía el
+                // borrador si se está corrigiendo), para poder guardarlo y oficializarlo.
+                if ($baseData['document_number'] === null) {
+                    $baseData['document_number'] = $existing?->document_number ?: UnknownCandidate::nextPlaceholderDocument();
+                }
 
                 if ($existing) {
                     // Se corrigen los datos pero se conserva la decisión de revisión
@@ -282,6 +307,18 @@ class PlanchaDraftController extends Controller
             }
         }
 
+        // Aviso para el administrador solo con una plancha nueva (no al corregir un lote existente).
+        if (! $batchElectionId && $created > 0) {
+            $neighborhood = Election::with('neighborhood:id,name')->find($electionId)?->neighborhood;
+            app(AdminNotifications::class)->record(AdminNotifications::PLANCHA_CAPTURED, [
+                'neighborhood_id' => $neighborhood?->id,
+                'neighborhood' => $neighborhood?->name,
+                'election_id' => $electionId,
+                'batch' => $captureBatchUuid,
+                'candidates' => $created,
+            ], CandidateDraft::class, $rows[0]->id ?? null);
+        }
+
         return response()->json([
             'success' => true,
             'message' => 'Borradores de plancha guardados correctamente.',
@@ -289,10 +326,95 @@ class PlanchaDraftController extends Controller
                 'created' => $created,
                 'updated' => $updated,
                 'skipped' => $skipped,
+                // Cargos ya oficiales: no se modifican desde la plancha.
+                'locked_official' => $lockedOfficial,
                 'capture_batch_uuid' => $captureBatchUuid,
                 'drafts' => $rows,
             ],
         ], 201);
+    }
+
+    private function approvedActaLockResponse(): JsonResponse
+    {
+        $message = 'Este barrio ya tiene un acta de escrutinio aprobada: no se pueden registrar planchas nuevas.';
+
+        return response()->json([
+            'success' => false,
+            'message' => $message,
+            'errors' => ['election_id' => [$message]],
+        ], 422);
+    }
+
+    /**
+     * Avisos de candidatos repetidos, por id de borrador.
+     *
+     * Una persona (mismo documento) solo puede ocupar un cargo en la elección.
+     * Se avisa si ya es candidata oficial, si está en otra plancha en revisión
+     * o si aparece dos veces en la misma plancha. Son avisos: no bloquean, el
+     * revisor decide. Los documentos provisionales no cuentan.
+     *
+     * @param  \Illuminate\Support\Collection<int, Election>  $elections  con candidateDrafts cargados
+     * @return array<int, array<int, string>>
+     */
+    private function duplicateWarnings($elections): array
+    {
+        $warnings = [];
+        $hasRealDocument = fn (CandidateDraft $d) => $d->document_number && ! UnknownCandidate::isPlaceholderDocument($d->document_number);
+
+        $official = Candidate::query()
+            ->whereIn('election_id', $elections->pluck('id'))
+            ->where('is_active', true)
+            ->with([
+                'person:id,document_number',
+                'slateBlock:id,slate_id',
+                'slateBlock.slate:id,code',
+                'electionBlockPosition:id,position_id',
+                'electionBlockPosition.position:id,name',
+            ])
+            ->get(['id', 'election_id', 'person_id', 'slate_block_id', 'election_block_position_id', 'is_substitute'])
+            ->groupBy(fn (Candidate $c) => $c->election_id.'|'.$c->person?->document_number);
+
+        foreach ($elections as $election) {
+            $batchNumber = $election->candidateDrafts->sortBy('id')->pluck('capture_batch_uuid')->unique()->values()->flip();
+
+            // Borradores vigentes (ni rechazados) con documento real, por documento.
+            $byDocument = $election->candidateDrafts
+                ->filter(fn (CandidateDraft $d) => $hasRealDocument($d) && $d->review_status !== CandidateDraftWorkflow::STATUS_REJECTED)
+                ->groupBy('document_number');
+
+            foreach ($election->candidateDrafts as $draft) {
+                if (! $hasRealDocument($draft) || $draft->review_status === CandidateDraftWorkflow::STATUS_REJECTED) {
+                    continue;
+                }
+
+                // Ya es candidato oficial (y este borrador no es el que lo oficializó).
+                if (! $draft->is_processed) {
+                    foreach ($official->get($election->id.'|'.$draft->document_number, []) as $candidate) {
+                        $slate = preg_replace('/^P(?=\d)/i', '', (string) $candidate->slateBlock?->slate?->code);
+                        $position = $candidate->electionBlockPosition?->position?->name ?? 'un cargo';
+                        $warnings[$draft->id][] = 'Ya es candidato oficial en la Plancha '.$slate.' ('.($candidate->is_substitute ? 'suplente de ' : '').$position.').';
+                    }
+                }
+
+                foreach ($byDocument->get($draft->document_number, []) as $other) {
+                    if ($other->id === $draft->id) {
+                        continue;
+                    }
+
+                    if ($other->capture_batch_uuid === $draft->capture_batch_uuid) {
+                        $warnings[$draft->id][] = 'El mismo documento aparece dos veces en esta plancha.';
+                    } elseif (! $draft->is_processed && ! $other->is_processed) {
+                        $warnings[$draft->id][] = 'También está en la Plancha '.(($batchNumber[$other->capture_batch_uuid] ?? 0) + 1).' en revisión.';
+                    }
+                }
+
+                if (isset($warnings[$draft->id])) {
+                    $warnings[$draft->id] = array_values(array_unique($warnings[$draft->id]));
+                }
+            }
+        }
+
+        return $warnings;
     }
 
     public function uploadDraftFiles(Request $request): JsonResponse
@@ -562,6 +684,7 @@ class PlanchaDraftController extends Controller
                     'election_block_position_id',
                     'ballot_number',
                     'is_active',
+                    'is_substitute',
                 ])
                 ->with([
                     'election:id,neighborhood_id,is_active',
@@ -569,7 +692,8 @@ class PlanchaDraftController extends Controller
                     'slateBlock:id,election_id,slate_id,election_block_id',
                     'slateBlock.slate:id,name,code',
                     'electionBlockPosition:id,position_id',
-                    'electionBlockPosition.position:id,name,code',
+                    'electionBlockPosition.position:id,block_id,name,code,order_number',
+                    'electionBlockPosition.position.block:id,name,code',
                 ])
                 ->where('is_active', true)
                 ->whereNotNull('slate_block_id')
@@ -605,19 +729,32 @@ class PlanchaDraftController extends Controller
                             $person?->second_last_name,
                         ])));
 
+                        $position = $candidate->electionBlockPosition?->position;
+
                         return [
                             'id' => $candidate->id,
                             'name' => $fullName !== '' ? $fullName : 'Sin nombre',
-                            'position' => $candidate->electionBlockPosition?->position?->name ?? 'Sin cargo',
+                            'position' => $position?->name ?? 'Sin cargo',
                             'ballot_number' => $candidate->ballot_number,
+                            // Para ordenar y agrupar en pantalla: bloque, orden del cargo y suplente.
+                            'block' => $position?->block?->name,
+                            'block_code' => $position?->block?->code,
+                            'order' => (int) ($position?->order_number ?? 99),
+                            'is_substitute' => (bool) $candidate->is_substitute,
+                            'document_number' => $person?->document_number,
+                            'document_is_placeholder' => UnknownCandidate::isPlaceholderDocument($person?->document_number),
                         ];
-                    })->values();
+                    })
+                        // Cargo por cargo: el principal y enseguida su suplente.
+                        ->sortBy([['order', 'asc'], ['is_substitute', 'asc'], ['id', 'asc']])
+                        ->values();
 
                     return [
                         'id' => $slate?->id,
                         'code' => $slate?->code,
                         'name' => $slate?->name,
-                        'label' => $slate?->code ? 'Plancha '.$slate->code : 'Plancha sin código',
+                        // "P1" -> "Plancha 1" (antes se mostraba "Plancha P1").
+                        'label' => $slate?->code ? 'Plancha '.preg_replace('/^P(?=\d)/i', '', $slate->code) : 'Plancha sin código',
                         'representatives' => $representatives,
                     ];
                 })
@@ -661,9 +798,25 @@ class PlanchaDraftController extends Controller
             'q' => 'nullable|string|max:100',
         ]);
 
+        // La bandeja es una lista de trabajo: una plancha sale de aquí cuando ya
+        // no le queda nada por hacer (todo oficializado). Un borrador "abierto" es
+        // uno sin oficializar; los rechazados solo cuentan si la plancha aún no
+        // tiene nada oficial (una plancha rechazada entera sigue visible).
         $query = Election::query()
             ->where('is_active', true)
-            ->whereHas('candidateDrafts')
+            ->whereHas('candidateDrafts', function ($draftQuery): void {
+                $draftQuery->where('is_processed', false)
+                    ->where(function ($open): void {
+                        $open->where('review_status', '<>', CandidateDraftWorkflow::STATUS_REJECTED)
+                            ->orWhereNotExists(function ($processed): void {
+                                $processed->selectRaw('1')
+                                    ->from('candidate_drafts as done')
+                                    ->whereColumn('done.capture_batch_uuid', 'candidate_drafts.capture_batch_uuid')
+                                    ->where('done.is_processed', true)
+                                    ->whereNull('done.deleted_at');
+                            });
+                    });
+            })
             ->with([
                 'neighborhood.commune',
                 'candidateDrafts' => function ($q): void {
@@ -685,21 +838,38 @@ class PlanchaDraftController extends Controller
         }
 
         $elections = $query->paginate(10);
+        $warnings = $this->duplicateWarnings($elections->getCollection());
+        $closedElections = ScrutinyRecord::query()
+            ->whereIn('election_id', $elections->getCollection()->pluck('id'))
+            ->whereIn('status', ScrutinyRecord::APPROVED_STATUSES)
+            ->distinct()
+            ->pluck('election_id')
+            ->flip();
 
-        $data = $elections->through(function (Election $election): array {
+        $data = $elections->through(function (Election $election) use ($warnings, $closedElections): array {
             $drafts = $election->candidateDrafts;
 
-            $batches = $drafts->groupBy('capture_batch_uuid')->map(function ($batchDrafts, $uuid): array {
+            // Número estable de cada plancha dentro del barrio: no cambia cuando
+            // otra plancha sale de la bandeja al oficializarse.
+            // Va por orden de captura: la primera plancha registrada es la Plancha 1.
+            $batchNumbers = $drafts->sortBy('id')->pluck('capture_batch_uuid')->unique()->values()->flip();
+
+            $batches = $drafts->groupBy('capture_batch_uuid')->filter(function ($batchDrafts): bool {
+                $hasOfficial = $batchDrafts->contains(fn (CandidateDraft $d) => (bool) $d->is_processed);
+
+                return $batchDrafts->contains(fn (CandidateDraft $d) => ! $d->is_processed
+                    && ($d->review_status !== CandidateDraftWorkflow::STATUS_REJECTED || ! $hasOfficial));
+            })->map(function ($batchDrafts, $uuid) use ($warnings, $batchNumbers): array {
                 $blocks = $batchDrafts->groupBy(function (CandidateDraft $draft): string {
                     if (preg_match('/Bloque\s*-\s*([^|]+)/i', (string) $draft->notes, $matches) === 1) {
                         return trim((string) ($matches[1] ?? 'Otros Cargos'));
                     }
 
                     return 'Otros Cargos';
-                })->map(function ($blockDrafts, $blockName): array {
+                })->map(function ($blockDrafts, $blockName) use ($warnings): array {
                     return [
                         'block_name' => (string) $blockName,
-                        'candidates' => collect($blockDrafts)->map(function (CandidateDraft $c): array {
+                        'candidates' => collect($blockDrafts)->map(function (CandidateDraft $c) use ($warnings): array {
                             $fullName = trim(implode(' ', array_filter([
                                 $c->first_name,
                                 $c->middle_name,
@@ -718,7 +888,10 @@ class PlanchaDraftController extends Controller
                                 'document_number' => $c->document_number,
                                 'review_status' => $c->review_status,
                                 'is_processed' => $c->is_processed,
+                                'is_substitute' => (bool) $c->is_substitute,
                                 'cargo' => $cargo,
+                                // Candidato ya registrado en otro lado (ver duplicateWarnings()).
+                                'warnings' => $warnings[$c->id] ?? [],
                             ];
                         })->values(),
                     ];
@@ -726,22 +899,26 @@ class PlanchaDraftController extends Controller
 
                 return [
                     'capture_batch_uuid' => $uuid,
+                    'number' => ((int) ($batchNumbers[$uuid] ?? 0)) + 1,
                     'total' => $batchDrafts->count(),
                     'pending' => $batchDrafts->where('review_status', 'pending')->where('is_processed', false)->count(),
                     'approved' => $batchDrafts->where('review_status', 'approved')->count(),
                     'rejected' => $batchDrafts->where('review_status', 'rejected')->count(),
                     'promotable' => $batchDrafts->where('review_status', 'approved')->where('is_processed', false)->count(),
+                    'official' => $batchDrafts->where('is_processed', true)->where('review_status', '<>', 'rejected')->count(),
                     'blocks' => $blocks,
                 ];
-            })->values();
+            })->sortBy('number')->values();
 
             return [
                 'election_id' => $election->id,
+                'has_approved_acta' => $closedElections->has($election->id),
                 'neighborhood_name' => $election->neighborhood->name ?? 'Desconocido',
                 'commune_name' => $election->neighborhood?->commune?->name ?? 'Sin Comuna',
-                'total_drafts' => $drafts->count(),
-                'total_pending' => $drafts->where('review_status', 'pending')->where('is_processed', false)->count(),
-                'total_approved' => $drafts->where('review_status', 'approved')->count(),
+                // Totales solo de las planchas que siguen en la bandeja.
+                'total_drafts' => $batches->sum('total'),
+                'total_pending' => $batches->sum('pending'),
+                'total_approved' => $batches->sum('approved'),
                 'batches' => $batches,
             ];
         });
@@ -915,6 +1092,18 @@ class PlanchaDraftController extends Controller
             'draft_ids.*' => 'integer|active_exists:candidate_drafts,id',
         ]);
 
+        // Sin ningún filtro la consulta abarcaba TODOS los borradores aprobados
+        // de todos los barrios: se exige indicar plancha, elección o borradores.
+        if (empty($validated['election_id']) && empty($validated['capture_batch_uuid']) && empty($validated['draft_ids'])) {
+            $message = 'Indica qué plancha se va a oficializar.';
+
+            return response()->json([
+                'success' => false,
+                'message' => $message,
+                'errors' => ['capture_batch_uuid' => [$message]],
+            ], 422);
+        }
+
         $query = CandidateDraft::query()
             ->where('review_status', CandidateDraftWorkflow::STATUS_APPROVED)
             ->where('is_processed', false);
@@ -965,13 +1154,11 @@ class PlanchaDraftController extends Controller
             &$issues
         ): void {
             foreach ($drafts as $draft) {
+                // Borradores viejos sin documento (antes se omitían con "Sin documento
+                // para deduplicar persona"): reciben un número provisional único.
                 if (! $draft->document_number) {
-                    $skipped++;
-                    $issues[] = [
-                        'draft_id' => $draft->id,
-                        'reason' => 'Sin documento para deduplicar persona.',
-                    ];
-                    continue;
+                    $draft->document_number = UnknownCandidate::nextPlaceholderDocument();
+                    $draft->save();
                 }
 
                 $documentTypeId = $draft->document_type_id ?? $this->resolveDefaultDocumentTypeId();
@@ -1034,7 +1221,7 @@ class PlanchaDraftController extends Controller
                     $skipped++;
                     $issues[] = [
                         'draft_id' => $draft->id,
-                        'reason' => 'Sin mapeo de cargo OCR hacia una posicion oficial.'.($cargoLabel ? " Cargo detectado: {$cargoLabel}." : ''),
+                        'reason' => 'El cargo extraído no corresponde a un cargo oficial.'.($cargoLabel ? " Cargo detectado: {$cargoLabel}." : ''),
                     ];
                     continue;
                 }
@@ -1059,15 +1246,15 @@ class PlanchaDraftController extends Controller
                             ->count();
                     }
 
-                    $reason = 'Sin mapeo de plancha para el cargo.';
+                    $reason = 'No se pudo determinar a qué plancha pertenece el cargo.';
                     if ($totalSlates === 0) {
-                        $reason .= ' La eleccion no tiene planchas registradas (tabla slates vacia).';
+                        $reason .= ' La elección todavía no tiene planchas creadas.';
                     } elseif ($activeSlates === 0) {
-                        $reason .= ' La eleccion tiene planchas, pero ninguna esta activa.';
+                        $reason .= ' La elección tiene planchas, pero ninguna está activa.';
                     } elseif ($availableSlateBlocks === 0) {
-                        $reason .= ' No existe relacion slate_blocks para este bloque electoral.';
+                        $reason .= ' La plancha no tiene configurado este bloque.';
                     } else {
-                        $reason .= ' Verifica el codigo de plancha (slate_code) y el mapeo del lote.';
+                        $reason .= ' Revisa el número de la plancha y vuelve a guardarla.';
                     }
 
                     $skipped++;
@@ -1135,6 +1322,32 @@ class PlanchaDraftController extends Controller
                 $isSubstitute = (bool) $draft->is_substitute
                     || $this->isSubstituteCargo((string) $this->extractCargoLabelFromNotes((string) ($draft->notes ?? '')));
 
+                // La persona ya es candidata oficial en OTRO cargo o plancha de esta
+                // elección: antes updateOrCreate la movía en silencio y dejaba vacío
+                // su cargo anterior. Ahora no se toca y se avisa.
+                $already = Candidate::query()
+                    ->where('election_id', $draft->election_id)
+                    ->where('person_id', $person->id)
+                    ->where('is_active', true)
+                    ->with(['slateBlock.slate:id,code', 'electionBlockPosition.position:id,name'])
+                    ->first();
+
+                if ($already && (
+                    (int) $already->slate_block_id !== (int) $slateBlockId
+                    || (int) $already->election_block_position_id !== (int) $electionBlockPositionId
+                    || (bool) $already->is_substitute !== $isSubstitute
+                )) {
+                    $slate = preg_replace('/^P(?=[0-9])/i', '', (string) $already->slateBlock?->slate?->code);
+                    $position = ($already->is_substitute ? 'suplente de ' : '').($already->electionBlockPosition?->position?->name ?? 'otro cargo');
+                    $skipped++;
+                    $issues[] = [
+                        'draft_id' => $draft->id,
+                        'reason' => trim($draft->first_name.' '.$draft->last_name).' (CC '.$draft->document_number.') ya es candidato oficial en la Plancha '.$slate.' ('.$position.'): no se registró de nuevo. Corrige el documento o rechaza este candidato.',
+                    ];
+
+                    continue;
+                }
+
                 $candidate = Candidate::query()->updateOrCreate(
                     [
                         'election_id' => $draft->election_id,
@@ -1171,7 +1384,7 @@ class PlanchaDraftController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Promocion oficial completada.',
+            'message' => 'Oficialización completada.',
             'data' => [
                 'processed' => $processed,
                 'persons_created' => $personsCreated,
@@ -1482,7 +1695,7 @@ class PlanchaDraftController extends Controller
             ['code' => $blockCode],
             [
                 'name' => $blockNames[$blockCode] ?? $blockCode,
-                'description' => 'Creado automaticamente por mapeo de planchas OCR.',
+                'description' => 'Creado automáticamente al registrar planchas.',
                 'is_active' => true,
             ]
         );
@@ -1519,7 +1732,7 @@ class PlanchaDraftController extends Controller
                 'name' => $positionNames[$positionCode] ?? $positionCode,
                 'code' => $positionCode,
                 'order_number' => $positionOrder[$positionCode] ?? null,
-                'description' => 'Creado automaticamente por mapeo de planchas OCR.',
+                'description' => 'Creado automáticamente al registrar planchas.',
                 'is_active' => true,
             ]);
         } elseif (! $position->is_active) {
@@ -1777,7 +1990,7 @@ class PlanchaDraftController extends Controller
             'election_id' => $electionId,
             'code' => 'P'.$nextNumber,
             'name' => 'Plancha '.$nextNumber,
-            'description' => 'Generada automaticamente desde aprobacion OCR.',
+            'description' => 'Generada automáticamente al aprobar la plancha.',
             'is_active' => true,
         ]);
 
@@ -1880,7 +2093,7 @@ class PlanchaDraftController extends Controller
         }
 
         throw new RuntimeException(
-            'No se encontro un ejecutable de Python valido para OCR. '
+            'No se encontro un ejecutable de Python válido para la extracción. '
             .'Crea .venv en la raiz del proyecto o configura EXTRACTOR_PYTHON_BIN con la ruta local de tu equipo.'
         );
     }

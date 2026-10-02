@@ -22,9 +22,12 @@
       </div>
       
       <div class="flex flex-wrap items-center gap-3">
-        <button 
-          v-if="!isEditing" 
-          @click="isEditing = true"
+        <span v-if="isFullyOfficial" class="badge-green" data-tooltip="Todos los candidatos de esta plancha ya son oficiales.">
+          <span class="badge-dot"></span> Plancha oficial · solo lectura
+        </span>
+        <button
+          v-else-if="!isEditing"
+          @click="requestEditing"
           class="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 hover:border-aso-primary hover:text-aso-primary text-gray-700 text-sm font-bold rounded-xl shadow-sm transition-colors"
         >
           <Edit2 class="w-4 h-4" /> Habilitar Edición
@@ -35,13 +38,13 @@
             Cancelar
           </button>
           <button @click="saveChanges" :disabled="isSaving" class="flex items-center gap-2 px-4 py-2.5 bg-aso-primary hover:bg-green-700 text-white text-sm font-bold rounded-xl shadow-sm transition-colors">
-            <Save class="w-4 h-4" /> {{ isSaving ? 'Guardando...' : 'Guardar Plancha' }}
+            <Save class="w-4 h-4" /> {{ isSaving ? 'Guardando...' : (isNewPlancha ? 'Registrar plancha' : 'Guardar cambios') }}
           </button>
         </template>
 
         <button
           v-if="currentBatchUuid"
-          @click="promoteApprovedBatch"
+          @click="confirmPromote = true"
           :disabled="isPromoting || promotableDraftCount === 0"
           class="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-xl shadow-sm transition-colors"
         >
@@ -58,8 +61,8 @@
           </svg>
         </div>
         <div class="ml-3 w-full">
-          <h3 class="text-sm font-bold text-blue-800">Procesando OCR del lote</h3>
-          <p class="text-sm text-blue-700 mt-1">{{ ocrPollMessage || 'Esperando respuesta del OCR...' }}</p>
+          <h3 class="text-sm font-bold text-blue-800">Extrayendo los datos de la plancha</h3>
+          <p class="text-sm text-blue-700 mt-1">{{ ocrPollMessage || 'Esperando el resultado de la extracción...' }}</p>
           <p class="text-xs text-blue-600 mt-2 font-medium">Puedes seguir navegando mientras termina el procesamiento.</p>
         </div>
       </div>
@@ -73,7 +76,7 @@
           </svg>
         </div>
         <div class="ml-3 w-full">
-          <h3 class="text-sm font-bold text-orange-800">Modo Plan B Activado</h3>
+          <h3 class="text-sm font-bold text-orange-800">Registro manual</h3>
           <p class="text-sm text-orange-700 mt-1">{{ dataLoadError }}</p>
           <p class="text-xs text-orange-600 mt-2 font-medium">Completa el formulario manualmente y/o sube las imagenes para continuar.</p>
           <div class="mt-3">
@@ -83,26 +86,38 @@
               :disabled="isPollingOcr"
               class="px-3 py-1.5 text-xs font-bold rounded-lg border border-orange-300 text-orange-700 hover:bg-orange-100 disabled:opacity-50"
             >
-              Reintentar OCR
+              Reintentar extracción
             </button>
           </div>
         </div>
       </div>
     </div>
 
-    <div v-if="validationErrors.length > 0" class="bg-red-50 border-l-4 border-red-500 p-4 rounded-r-xl shadow-sm animate-in fade-in slide-in-from-top-4">
-      <div class="flex items-start">
-        <div class="flex-shrink-0 mt-0.5">
-          <svg class="h-5 w-5 text-red-500" viewBox="0 0 20 20" fill="currentColor">
-            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
-          </svg>
-        </div>
-        <div class="ml-3 w-full">
-          <h3 class="text-sm font-bold text-red-800">Validación Fallida</h3>
-          <p class="text-sm text-red-700 mt-1 mb-3">Por favor, completa los siguientes campos obligatorios antes de guardar:</p>
-          <ul class="list-disc pl-5 text-sm text-red-600 space-y-1 marker:text-red-400">
+    <div v-if="officialCount" class="rounded-2xl bg-emerald-50 border border-emerald-200 px-4 py-3 text-sm text-emerald-900 flex items-start gap-2">
+      <Lock class="w-4 h-4 mt-0.5 shrink-0 text-aso-primary" />
+      <p>
+        <strong>{{ isFullyOfficial ? 'Esta plancha ya es oficial.' : `${officialCount} cargo(s) de esta plancha ya son oficiales.` }}</strong>
+        Los datos oficiales no se modifican desde aquí: aparecen bloqueados. Para corregir el nombre o el documento de un candidato oficial, pídele al administrador que lo edite en Personas.
+      </p>
+    </div>
+
+    <div v-if="blockingError" class="rounded-2xl bg-red-50 border border-red-200 text-red-700 px-4 py-3 text-sm flex items-start gap-2" role="alert">
+      <AlertTriangle class="w-4 h-4 mt-0.5 shrink-0" />
+      {{ blockingError }}
+    </div>
+
+    <!-- Aparece al elegir "Corregir datos" en la confirmación: guía de lo que falta. -->
+    <div v-if="validationErrors.length > 0" class="rounded-2xl bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-900">
+      <div class="flex items-start gap-2">
+        <AlertTriangle class="w-4 h-4 mt-0.5 shrink-0 text-amber-600" />
+        <div class="min-w-0 flex-1">
+          <p class="font-bold">Datos por completar</p>
+          <p class="mt-0.5 text-amber-800">Los cargos resaltados tienen datos incompletos o están vacíos. Complétalos, o vuelve a guardar para registrar la plancha así.</p>
+          <ul v-if="validationDetails.length" class="mt-2 list-disc pl-5 space-y-0.5 text-amber-800">
             <li v-for="(detalle, idx) in validationDetails" :key="idx">
-              <strong>Pág {{ detalle.pagina }} - {{ detalle.nombre }}:</strong> Falta {{ detalle.faltantes }}
+              <button type="button" class="font-semibold underline decoration-amber-400 underline-offset-2 hover:text-amber-950" @click="currentPage = detalle.pagina - 1">
+                Pág. {{ detalle.pagina }} · {{ detalle.nombre }}
+              </button>: falta {{ detalle.faltantes }}
             </li>
           </ul>
         </div>
@@ -121,45 +136,94 @@
           <h3 class="text-white font-bold text-xs flex items-center gap-2 uppercase tracking-widest">
             <ImageIcon class="w-4 h-4" /> Evidencia Física
           </h3>
+          <!-- Las fotos se pasan aparte del formulario: cambiar de foto no cambia de página de datos. -->
           <div class="flex items-center gap-3 bg-white/10 rounded-full px-3 py-1">
-            <button @click="prevPage" :disabled="currentPage === 0" class="text-white hover:text-aso-primary disabled:opacity-30 transition-colors"><ChevronLeft class="w-4 h-4" /></button>
-            <span class="text-white text-xs font-bold w-16 text-center">Pág {{ currentPage + 1 }} / {{ totalPages }}</span>
-            <button @click="nextPage" :disabled="currentPage === totalPages - 1" class="text-white hover:text-aso-primary disabled:opacity-30 transition-colors"><ChevronRight class="w-4 h-4" /></button>
+            <button @click="prevImage" :disabled="imagePage === 0" aria-label="Foto anterior" class="text-white hover:text-aso-yellow disabled:opacity-30 transition-colors"><ChevronLeft class="w-4 h-4" /></button>
+            <span class="text-white text-xs font-bold w-16 text-center">Foto {{ imagePage + 1 }} / {{ totalImages }}</span>
+            <button @click="nextImage" :disabled="imagePage >= totalImages - 1" aria-label="Foto siguiente" class="text-white hover:text-aso-yellow disabled:opacity-30 transition-colors"><ChevronRight class="w-4 h-4" /></button>
           </div>
         </div>
 
-        <div class="flex-1 overflow-y-auto p-4 pt-20 custom-scrollbar">
-          <img v-if="currentImage" :src="currentImage.url" class="w-full h-auto object-contain rounded shadow-2xl">
+        <div class="flex-1 min-h-0 pt-14">
+          <ImageViewer v-if="currentImage" :src="currentImage.url" :alt="`Foto ${imagePage + 1} de la plancha`" />
           <div v-else class="text-gray-500 text-sm flex flex-col items-center justify-center h-full gap-2">
             <ImageIcon class="w-10 h-10 opacity-30" />
-            <p>No hay imágenes asociadas a este lote</p>
+            <p>No hay imágenes asociadas a esta plancha</p>
+          </div>
+        </div>
+
+        <!-- Miniaturas: saltar a una foto y, antes de guardar, cambiar su orden. -->
+        <div v-if="allEvidenceImages.length > 1" class="shrink-0 border-t border-white/10 bg-black/60 px-3 py-2">
+          <div class="flex items-center gap-2 overflow-x-auto">
+            <button
+              v-for="(img, index) in allEvidenceImages"
+              :key="img.id ?? img.url"
+              type="button"
+              class="relative h-14 w-11 shrink-0 overflow-hidden rounded-md ring-2 transition-all"
+              :class="imagePage === index ? 'ring-aso-yellow' : 'ring-transparent opacity-60 hover:opacity-100'"
+              :aria-label="`Ver foto ${index + 1}`"
+              :aria-current="imagePage === index ? 'true' : undefined"
+              @click="imagePage = index"
+            >
+              <img :src="img.url" alt="" class="h-full w-full object-cover">
+              <span class="absolute bottom-0 inset-x-0 bg-black/70 text-[10px] font-bold text-white text-center">{{ index + 1 }}</span>
+            </button>
+          </div>
+          <div v-if="canReorderImages" class="mt-2 flex items-center justify-between gap-2 text-xs text-gray-300">
+            <span>Orden de la foto {{ imagePage + 1 }}</span>
+            <span class="flex items-center gap-1">
+              <button type="button" class="rounded-md bg-white/10 px-2 py-1 font-semibold hover:bg-white/20 disabled:opacity-30" :disabled="imagePage === 0" @click="moveImage(-1)">
+                <ChevronLeft class="w-3.5 h-3.5 inline -mt-0.5" /> Mover antes
+              </button>
+              <button type="button" class="rounded-md bg-white/10 px-2 py-1 font-semibold hover:bg-white/20 disabled:opacity-30" :disabled="imagePage >= totalImages - 1" @click="moveImage(1)">
+                Mover después <ChevronRight class="w-3.5 h-3.5 inline -mt-0.5" />
+              </button>
+            </span>
           </div>
         </div>
       </div>
 
       <div class="w-full lg:w-7/12 space-y-6">
         
-        <div class="card p-5 flex justify-between items-end">
-          <div>
-            <h3 class="text-lg font-black text-gray-900 uppercase">Validación de Datos · Página {{ currentPage + 1 }}</h3>
-            <p class="text-xs text-gray-500 mt-1">Verifica la información contra la imagen de la izquierda.</p>
+        <div class="card p-4 sm:p-5 space-y-3">
+          <div class="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h3 class="font-display text-lg font-bold text-gray-900">Datos de la plancha · página {{ currentPage + 1 }} de {{ FORM_PAGES.length }}</h3>
+              <p class="text-xs text-gray-500 mt-0.5">Compara con las fotos. Las páginas del formulario y las fotos se pasan por separado.</p>
+            </div>
+            <div v-if="isEditing" class="flex items-center gap-2 text-xs text-orange-600 bg-orange-50 px-3 py-1.5 rounded-lg border border-orange-100 font-bold uppercase tracking-wide">
+              <Edit2 class="w-3 h-3" /> Modo Edición
+            </div>
           </div>
-          <div v-if="isEditing" class="flex items-center gap-2 text-xs text-orange-600 bg-orange-50 px-3 py-1.5 rounded-lg border border-orange-100 font-bold uppercase tracking-wide">
-            <Edit2 class="w-3 h-3" /> Modo Edición
-          </div>
+
+          <nav class="flex items-center gap-1 p-1 rounded-2xl bg-gray-100 overflow-x-auto" aria-label="Páginas del formulario">
+            <button
+              v-for="(label, index) in FORM_PAGES"
+              :key="label"
+              type="button"
+              class="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-semibold whitespace-nowrap transition-all"
+              :class="currentPage === index ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-800'"
+              :aria-current="currentPage === index ? 'step' : undefined"
+              @click="currentPage = index"
+            >
+              <span class="flex h-5 w-5 items-center justify-center rounded-full text-[11px]" :class="currentPage === index ? 'bg-aso-primary text-white' : 'bg-gray-200 text-gray-600'">{{ index + 1 }}</span>
+              {{ label }}
+              <span v-if="pageHasPending(index)" class="h-2 w-2 rounded-full bg-amber-400" aria-label="Con datos por completar"></span>
+            </button>
+          </nav>
         </div>
 
         <div v-if="currentPage === 0" class="card p-6 animate-in fade-in duration-300">
           <h4 class="text-sm font-black text-aso-primary uppercase tracking-widest mb-5 border-b border-gray-100 pb-2 flex items-center gap-2"><Users class="w-4 h-4"/> Bloque Directivo (Pág 1 de 2)</h4>
           <div class="space-y-5">
-            <div :class="{'ring-2 ring-red-500 rounded-2xl shadow-sm': hasError('bloque1.presidente')}">
-              <CandidateCard cargo="Presidente (a)" :is-editing="isEditing" v-model:nombre="planchaData.bloque1.presidente.nombre" v-model:identificacion="planchaData.bloque1.presidente.identificacion" v-model:celular="planchaData.bloque1.presidente.celular" v-model:correo="planchaData.bloque1.presidente.correo" />
+            <div :class="{'ring-2 ring-amber-400 rounded-2xl shadow-sm': hasError('bloque1.presidente')}">
+              <CandidateCard cargo="Presidente (a)" :is-editing="isEditing" :estado="planchaData.bloque1.presidente.estado" v-model:nombre="planchaData.bloque1.presidente.nombre" v-model:identificacion="planchaData.bloque1.presidente.identificacion" v-model:celular="planchaData.bloque1.presidente.celular" v-model:correo="planchaData.bloque1.presidente.correo" />
             </div>
-            <div :class="{'ring-2 ring-red-500 rounded-2xl shadow-sm': hasError('bloque1.vicepresidente')}">
-              <CandidateCard cargo="Vicepresidente (a)" :is-editing="isEditing" v-model:nombre="planchaData.bloque1.vicepresidente.nombre" v-model:identificacion="planchaData.bloque1.vicepresidente.identificacion" v-model:celular="planchaData.bloque1.vicepresidente.celular" v-model:correo="planchaData.bloque1.vicepresidente.correo" />
+            <div :class="{'ring-2 ring-amber-400 rounded-2xl shadow-sm': hasError('bloque1.vicepresidente')}">
+              <CandidateCard cargo="Vicepresidente (a)" :is-editing="isEditing" :estado="planchaData.bloque1.vicepresidente.estado" v-model:nombre="planchaData.bloque1.vicepresidente.nombre" v-model:identificacion="planchaData.bloque1.vicepresidente.identificacion" v-model:celular="planchaData.bloque1.vicepresidente.celular" v-model:correo="planchaData.bloque1.vicepresidente.correo" />
             </div>
-            <div :class="{'ring-2 ring-red-500 rounded-2xl shadow-sm': hasError('bloque1.tesorero')}">
-              <CandidateCard cargo="Tesorero (a)" :is-editing="isEditing" v-model:nombre="planchaData.bloque1.tesorero.nombre" v-model:identificacion="planchaData.bloque1.tesorero.identificacion" v-model:celular="planchaData.bloque1.tesorero.celular" v-model:correo="planchaData.bloque1.tesorero.correo" />
+            <div :class="{'ring-2 ring-amber-400 rounded-2xl shadow-sm': hasError('bloque1.tesorero')}">
+              <CandidateCard cargo="Tesorero (a)" :is-editing="isEditing" :estado="planchaData.bloque1.tesorero.estado" v-model:nombre="planchaData.bloque1.tesorero.nombre" v-model:identificacion="planchaData.bloque1.tesorero.identificacion" v-model:celular="planchaData.bloque1.tesorero.celular" v-model:correo="planchaData.bloque1.tesorero.correo" />
             </div>
           </div>
         </div>
@@ -167,25 +231,25 @@
         <div v-if="currentPage === 1" class="space-y-6 animate-in fade-in duration-300">
           <div class="card p-6">
             <h4 class="text-sm font-black text-aso-primary uppercase tracking-widest mb-5 border-b border-gray-100 pb-2 flex items-center gap-2"><Users class="w-4 h-4"/> Bloque Directivo (Fin)</h4>
-            <div :class="{'ring-2 ring-red-500 rounded-2xl shadow-sm': hasError('bloque1.secretario')}">
-              <CandidateCard cargo="Secretario (a)" :is-editing="isEditing" v-model:nombre="planchaData.bloque1.secretario.nombre" v-model:identificacion="planchaData.bloque1.secretario.identificacion" v-model:celular="planchaData.bloque1.secretario.celular" v-model:correo="planchaData.bloque1.secretario.correo" />
+            <div :class="{'ring-2 ring-amber-400 rounded-2xl shadow-sm': hasError('bloque1.secretario')}">
+              <CandidateCard cargo="Secretario (a)" :is-editing="isEditing" :estado="planchaData.bloque1.secretario.estado" v-model:nombre="planchaData.bloque1.secretario.nombre" v-model:identificacion="planchaData.bloque1.secretario.identificacion" v-model:celular="planchaData.bloque1.secretario.celular" v-model:correo="planchaData.bloque1.secretario.correo" />
             </div>
           </div>
 
           <div class="card p-6">
             <h4 class="text-sm font-black text-aso-primary uppercase tracking-widest mb-5 border-b border-gray-100 pb-2 flex items-center gap-2"><UserPlus class="w-4 h-4"/> Delegados Asojuntas (Pág 1 de 2)</h4>
             <div class="space-y-5">
-              <div :class="{'ring-2 ring-red-500 rounded-2xl shadow-sm': hasError('bloque2.suplentePresidente')}">
-                <CandidateCard class="border-l-4 border-amber-400" cargo="Suplente de Presidente" :is-editing="isEditing" v-model:nombre="planchaData.bloque2.suplentePresidente.nombre" v-model:identificacion="planchaData.bloque2.suplentePresidente.identificacion" v-model:celular="planchaData.bloque2.suplentePresidente.celular" v-model:correo="planchaData.bloque2.suplentePresidente.correo" />
+              <div :class="{'ring-2 ring-amber-400 rounded-2xl shadow-sm': hasError('bloque2.suplentePresidente')}">
+                <CandidateCard class="border-l-4 border-amber-400" cargo="Suplente de Presidente" :is-editing="isEditing" :estado="planchaData.bloque2.suplentePresidente.estado" v-model:nombre="planchaData.bloque2.suplentePresidente.nombre" v-model:identificacion="planchaData.bloque2.suplentePresidente.identificacion" v-model:celular="planchaData.bloque2.suplentePresidente.celular" v-model:correo="planchaData.bloque2.suplentePresidente.correo" />
               </div>
-              <div :class="{'ring-2 ring-red-500 rounded-2xl shadow-sm': hasError('bloque2.delegado1')}">
-                <CandidateCard cargo="Delegado (a) 1" :is-editing="isEditing" v-model:nombre="planchaData.bloque2.delegado1.nombre" v-model:identificacion="planchaData.bloque2.delegado1.identificacion" v-model:celular="planchaData.bloque2.delegado1.celular" v-model:correo="planchaData.bloque2.delegado1.correo" />
+              <div :class="{'ring-2 ring-amber-400 rounded-2xl shadow-sm': hasError('bloque2.delegado1')}">
+                <CandidateCard cargo="Delegado (a) 1" :is-editing="isEditing" :estado="planchaData.bloque2.delegado1.estado" v-model:nombre="planchaData.bloque2.delegado1.nombre" v-model:identificacion="planchaData.bloque2.delegado1.identificacion" v-model:celular="planchaData.bloque2.delegado1.celular" v-model:correo="planchaData.bloque2.delegado1.correo" />
               </div>
-              <div :class="{'ring-2 ring-red-500 rounded-2xl shadow-sm': hasError('bloque2.suplente1')}">
-                <CandidateCard cargo="Suplente Delegado 1" :is-editing="isEditing" v-model:nombre="planchaData.bloque2.suplente1.nombre" v-model:identificacion="planchaData.bloque2.suplente1.identificacion" v-model:celular="planchaData.bloque2.suplente1.celular" v-model:correo="planchaData.bloque2.suplente1.correo" />
+              <div :class="{'ring-2 ring-amber-400 rounded-2xl shadow-sm': hasError('bloque2.suplente1')}">
+                <CandidateCard cargo="Suplente Delegado 1" :is-editing="isEditing" :estado="planchaData.bloque2.suplente1.estado" v-model:nombre="planchaData.bloque2.suplente1.nombre" v-model:identificacion="planchaData.bloque2.suplente1.identificacion" v-model:celular="planchaData.bloque2.suplente1.celular" v-model:correo="planchaData.bloque2.suplente1.correo" />
               </div>
-              <div :class="{'ring-2 ring-red-500 rounded-2xl shadow-sm': hasError('bloque2.delegado2')}">
-                <CandidateCard cargo="Delegado (a) 2" :is-editing="isEditing" v-model:nombre="planchaData.bloque2.delegado2.nombre" v-model:identificacion="planchaData.bloque2.delegado2.identificacion" v-model:celular="planchaData.bloque2.delegado2.celular" v-model:correo="planchaData.bloque2.delegado2.correo" />
+              <div :class="{'ring-2 ring-amber-400 rounded-2xl shadow-sm': hasError('bloque2.delegado2')}">
+                <CandidateCard cargo="Delegado (a) 2" :is-editing="isEditing" :estado="planchaData.bloque2.delegado2.estado" v-model:nombre="planchaData.bloque2.delegado2.nombre" v-model:identificacion="planchaData.bloque2.delegado2.identificacion" v-model:celular="planchaData.bloque2.delegado2.celular" v-model:correo="planchaData.bloque2.delegado2.correo" />
               </div>
             </div>
           </div>
@@ -195,14 +259,14 @@
           <div class="card p-6">
             <h4 class="text-sm font-black text-aso-primary uppercase tracking-widest mb-5 border-b border-gray-100 pb-2 flex items-center gap-2"><UserPlus class="w-4 h-4"/> Delegados Asojuntas (Fin)</h4>
             <div class="space-y-5">
-              <div :class="{'ring-2 ring-red-500 rounded-2xl shadow-sm': hasError('bloque2.suplente2')}">
-                <CandidateCard cargo="Suplente Delegado 2" :is-editing="isEditing" v-model:nombre="planchaData.bloque2.suplente2.nombre" v-model:identificacion="planchaData.bloque2.suplente2.identificacion" v-model:celular="planchaData.bloque2.suplente2.celular" v-model:correo="planchaData.bloque2.suplente2.correo" />
+              <div :class="{'ring-2 ring-amber-400 rounded-2xl shadow-sm': hasError('bloque2.suplente2')}">
+                <CandidateCard cargo="Suplente Delegado 2" :is-editing="isEditing" :estado="planchaData.bloque2.suplente2.estado" v-model:nombre="planchaData.bloque2.suplente2.nombre" v-model:identificacion="planchaData.bloque2.suplente2.identificacion" v-model:celular="planchaData.bloque2.suplente2.celular" v-model:correo="planchaData.bloque2.suplente2.correo" />
               </div>
-              <div :class="{'ring-2 ring-red-500 rounded-2xl shadow-sm': hasError('bloque2.delegado3')}">
-                <CandidateCard cargo="Delegado (a) 3" :is-editing="isEditing" v-model:nombre="planchaData.bloque2.delegado3.nombre" v-model:identificacion="planchaData.bloque2.delegado3.identificacion" v-model:celular="planchaData.bloque2.delegado3.celular" v-model:correo="planchaData.bloque2.delegado3.correo" />
+              <div :class="{'ring-2 ring-amber-400 rounded-2xl shadow-sm': hasError('bloque2.delegado3')}">
+                <CandidateCard cargo="Delegado (a) 3" :is-editing="isEditing" :estado="planchaData.bloque2.delegado3.estado" v-model:nombre="planchaData.bloque2.delegado3.nombre" v-model:identificacion="planchaData.bloque2.delegado3.identificacion" v-model:celular="planchaData.bloque2.delegado3.celular" v-model:correo="planchaData.bloque2.delegado3.correo" />
               </div>
-              <div :class="{'ring-2 ring-red-500 rounded-2xl shadow-sm': hasError('bloque2.suplente3')}">
-                <CandidateCard cargo="Suplente Delegado 3" :is-editing="isEditing" v-model:nombre="planchaData.bloque2.suplente3.nombre" v-model:identificacion="planchaData.bloque2.suplente3.identificacion" v-model:celular="planchaData.bloque2.suplente3.celular" v-model:correo="planchaData.bloque2.suplente3.correo" />
+              <div :class="{'ring-2 ring-amber-400 rounded-2xl shadow-sm': hasError('bloque2.suplente3')}">
+                <CandidateCard cargo="Suplente Delegado 3" :is-editing="isEditing" :estado="planchaData.bloque2.suplente3.estado" v-model:nombre="planchaData.bloque2.suplente3.nombre" v-model:identificacion="planchaData.bloque2.suplente3.identificacion" v-model:celular="planchaData.bloque2.suplente3.celular" v-model:correo="planchaData.bloque2.suplente3.correo" />
               </div>
             </div>
           </div>
@@ -210,11 +274,11 @@
           <div class="card p-6">
             <h4 class="text-sm font-black text-aso-primary uppercase tracking-widest mb-5 border-b border-gray-100 pb-2 flex items-center gap-2"><Scale class="w-4 h-4"/> Bloque Fiscal</h4>
             <div class="space-y-5">
-              <div :class="{'ring-2 ring-red-500 rounded-2xl shadow-sm': hasError('bloque3.fiscal')}">
-                <CandidateCard cargo="Fiscal" :is-editing="isEditing" v-model:nombre="planchaData.bloque3.fiscal.nombre" v-model:identificacion="planchaData.bloque3.fiscal.identificacion" v-model:celular="planchaData.bloque3.fiscal.celular" v-model:correo="planchaData.bloque3.fiscal.correo" />
+              <div :class="{'ring-2 ring-amber-400 rounded-2xl shadow-sm': hasError('bloque3.fiscal')}">
+                <CandidateCard cargo="Fiscal" :is-editing="isEditing" :estado="planchaData.bloque3.fiscal.estado" v-model:nombre="planchaData.bloque3.fiscal.nombre" v-model:identificacion="planchaData.bloque3.fiscal.identificacion" v-model:celular="planchaData.bloque3.fiscal.celular" v-model:correo="planchaData.bloque3.fiscal.correo" />
               </div>
-              <div :class="{'ring-2 ring-red-500 rounded-2xl shadow-sm': hasError('bloque3.suplente')}">
-                <CandidateCard cargo="Suplente Fiscal" :is-editing="isEditing" v-model:nombre="planchaData.bloque3.suplente.nombre" v-model:identificacion="planchaData.bloque3.suplente.identificacion" v-model:celular="planchaData.bloque3.suplente.celular" v-model:correo="planchaData.bloque3.suplente.correo" />
+              <div :class="{'ring-2 ring-amber-400 rounded-2xl shadow-sm': hasError('bloque3.suplente')}">
+                <CandidateCard cargo="Suplente Fiscal" :is-editing="isEditing" :estado="planchaData.bloque3.suplente.estado" v-model:nombre="planchaData.bloque3.suplente.nombre" v-model:identificacion="planchaData.bloque3.suplente.identificacion" v-model:celular="planchaData.bloque3.suplente.celular" v-model:correo="planchaData.bloque3.suplente.correo" />
               </div>
             </div>
           </div>
@@ -223,35 +287,123 @@
         <div v-if="currentPage === 3" class="card p-6 animate-in fade-in duration-300">
           <h4 class="text-sm font-black text-aso-primary uppercase tracking-widest mb-5 border-b border-gray-100 pb-2 flex items-center gap-2"><Handshake class="w-4 h-4"/> Convivencia y Empresarial</h4>
           <div class="space-y-5">
-            <div :class="{'ring-2 ring-red-500 rounded-2xl shadow-sm': hasError('bloque4.conciliador1')}">
-              <CandidateCard cargo="Conciliador (a) 1" :is-editing="isEditing" v-model:nombre="planchaData.bloque4.conciliador1.nombre" v-model:identificacion="planchaData.bloque4.conciliador1.identificacion" v-model:celular="planchaData.bloque4.conciliador1.celular" v-model:correo="planchaData.bloque4.conciliador1.correo" />
+            <div :class="{'ring-2 ring-amber-400 rounded-2xl shadow-sm': hasError('bloque4.conciliador1')}">
+              <CandidateCard cargo="Conciliador (a) 1" :is-editing="isEditing" :estado="planchaData.bloque4.conciliador1.estado" v-model:nombre="planchaData.bloque4.conciliador1.nombre" v-model:identificacion="planchaData.bloque4.conciliador1.identificacion" v-model:celular="planchaData.bloque4.conciliador1.celular" v-model:correo="planchaData.bloque4.conciliador1.correo" />
             </div>
-            <div :class="{'ring-2 ring-red-500 rounded-2xl shadow-sm': hasError('bloque4.conciliador2')}">
-              <CandidateCard cargo="Conciliador (a) 2" :is-editing="isEditing" v-model:nombre="planchaData.bloque4.conciliador2.nombre" v-model:identificacion="planchaData.bloque4.conciliador2.identificacion" v-model:celular="planchaData.bloque4.conciliador2.celular" v-model:correo="planchaData.bloque4.conciliador2.correo" />
+            <div :class="{'ring-2 ring-amber-400 rounded-2xl shadow-sm': hasError('bloque4.conciliador2')}">
+              <CandidateCard cargo="Conciliador (a) 2" :is-editing="isEditing" :estado="planchaData.bloque4.conciliador2.estado" v-model:nombre="planchaData.bloque4.conciliador2.nombre" v-model:identificacion="planchaData.bloque4.conciliador2.identificacion" v-model:celular="planchaData.bloque4.conciliador2.celular" v-model:correo="planchaData.bloque4.conciliador2.correo" />
             </div>
-            <div :class="{'ring-2 ring-red-500 rounded-2xl shadow-sm': hasError('bloque4.conciliador3')}">
-              <CandidateCard cargo="Conciliador (a) 3" :is-editing="isEditing" v-model:nombre="planchaData.bloque4.conciliador3.nombre" v-model:identificacion="planchaData.bloque4.conciliador3.identificacion" v-model:celular="planchaData.bloque4.conciliador3.celular" v-model:correo="planchaData.bloque4.conciliador3.correo" />
+            <div :class="{'ring-2 ring-amber-400 rounded-2xl shadow-sm': hasError('bloque4.conciliador3')}">
+              <CandidateCard cargo="Conciliador (a) 3" :is-editing="isEditing" :estado="planchaData.bloque4.conciliador3.estado" v-model:nombre="planchaData.bloque4.conciliador3.nombre" v-model:identificacion="planchaData.bloque4.conciliador3.identificacion" v-model:celular="planchaData.bloque4.conciliador3.celular" v-model:correo="planchaData.bloque4.conciliador3.correo" />
             </div>
-            <div :class="{'ring-2 ring-red-500 rounded-2xl shadow-sm': hasError('bloque4.empresarial')}">
-              <CandidateCard cargo="Coord. Comisión Empresarial" :is-editing="isEditing" v-model:nombre="planchaData.bloque4.empresarial.nombre" v-model:identificacion="planchaData.bloque4.empresarial.identificacion" v-model:celular="planchaData.bloque4.empresarial.celular" v-model:correo="planchaData.bloque4.empresarial.correo" />
+            <div :class="{'ring-2 ring-amber-400 rounded-2xl shadow-sm': hasError('bloque4.empresarial')}">
+              <CandidateCard cargo="Coord. Comisión Empresarial" :is-editing="isEditing" :estado="planchaData.bloque4.empresarial.estado" v-model:nombre="planchaData.bloque4.empresarial.nombre" v-model:identificacion="planchaData.bloque4.empresarial.identificacion" v-model:celular="planchaData.bloque4.empresarial.celular" v-model:correo="planchaData.bloque4.empresarial.correo" />
             </div>
           </div>
         </div>
 
-        <div v-if="currentPage > 3" class="card p-10 text-center">
-          <p class="text-gray-500 font-bold">No hay cargos parametrizados para hojas adicionales.</p>
+        <!-- Anterior / siguiente del formulario (no mueve las fotos). -->
+        <div class="flex items-center justify-between gap-3">
+          <button type="button" class="btn-secondary" :disabled="currentPage === 0" @click="currentPage--">
+            <ChevronLeft class="w-4 h-4" /> Anterior
+          </button>
+          <span class="text-xs text-gray-500">Página {{ currentPage + 1 }} de {{ FORM_PAGES.length }}</span>
+          <button type="button" class="btn-secondary" :disabled="currentPage >= FORM_PAGES.length - 1" @click="currentPage++">
+            Siguiente <ChevronRight class="w-4 h-4" />
+          </button>
         </div>
       </div>
 
     </div>
+
+    <ConfirmModal
+      :open="confirmSave"
+      :title="hasIncompleteData ? 'La plancha tiene datos incompletos' : (isNewPlancha ? '¿Registrar esta plancha?' : '¿Guardar los cambios de la plancha?')"
+      :message="hasIncompleteData
+        ? `${planchaData.numero} · ${planchaData.nombreBarrio}. Puedes ${isNewPlancha ? 'registrarla' : 'guardarla'} así y completar los datos después, o corregirlos ahora.`
+        : `${planchaData.numero} · ${planchaData.nombreBarrio}`"
+      :confirm-text="hasIncompleteData ? (isNewPlancha ? 'Registrar de todas formas' : 'Guardar de todas formas') : (isNewPlancha ? 'Registrar plancha' : 'Guardar cambios')"
+      :cancel-text="hasIncompleteData ? 'Corregir datos' : 'Cancelar'"
+      @confirm="persistPlancha"
+      @cancel="hasIncompleteData ? reviewIncomplete() : (confirmSave = false)"
+    >
+      <!-- Qué falta, cargo por cargo -->
+      <div v-if="hasIncompleteData" class="mb-3 max-h-56 overflow-y-auto rounded-xl bg-amber-50 px-4 py-3 ring-1 ring-amber-100 text-amber-900 space-y-3">
+        <div v-if="incompleteItems.length">
+          <p class="text-xs font-bold uppercase tracking-wide">Candidatos con datos incompletos ({{ incompleteItems.length }})</p>
+          <ul class="mt-1 space-y-1">
+            <li v-for="item in incompleteItems" :key="item.key">
+              <strong>{{ item.nombre }}</strong> <span class="text-amber-700">(pág. {{ item.pagina }})</span>: falta {{ item.faltantes }}
+              <span v-if="item.omitido" class="block text-xs font-semibold text-red-700">Sin nombre no se registra este cargo.</span>
+            </li>
+          </ul>
+        </div>
+        <div v-if="emptyCargos.length">
+          <p class="text-xs font-bold uppercase tracking-wide">Cargos sin candidato ({{ emptyCargos.length }})</p>
+          <p class="mt-1 text-sm">{{ emptyCargos.map((item) => item.nombre).join(', ') }}</p>
+          <p class="text-xs text-amber-700">Quedarán vacantes en esta plancha.</p>
+        </div>
+      </div>
+
+      <ul class="space-y-1.5 rounded-xl bg-gray-50 px-4 py-3 ring-1 ring-gray-100">
+        <li class="flex justify-between gap-3"><span>Cargos con candidato</span><strong class="tabular-nums">{{ saveSummary.filled }} de {{ saveSummary.total }}</strong></li>
+        <li v-if="isNewPlancha" class="flex justify-between gap-3"><span>Imágenes de evidencia</span><strong class="tabular-nums">{{ saveSummary.images }}</strong></li>
+        <li v-if="approvedCount" class="flex justify-between gap-3 text-emerald-800"><span>Ya aprobados (conservan la aprobación)</span><strong class="tabular-nums">{{ approvedCount }}</strong></li>
+        <li v-if="officialCount" class="flex justify-between gap-3 text-gray-500"><span>Ya oficiales (no se modifican)</span><strong class="tabular-nums">{{ officialCount }}</strong></li>
+        <li v-if="saveSummary.unknown" class="flex justify-between gap-3 text-amber-800"><span>Nombres ilegibles (&lt;Desconocido&gt;)</span><strong class="tabular-nums">{{ saveSummary.unknown }}</strong></li>
+        <li v-if="saveSummary.provisional" class="flex justify-between gap-3 text-amber-800"><span>Sin documento (recibirán uno provisional)</span><strong class="tabular-nums">{{ saveSummary.provisional }}</strong></li>
+      </ul>
+      <p class="mt-2 text-xs text-gray-500">Quedará como borrador pendiente de aprobación en la bandeja de revisión.</p>
+    </ConfirmModal>
+
+    <ConfirmModal
+      :open="confirmEdit"
+      title="Esta plancha ya fue revisada"
+      message="Puedes editarla, pero ten en cuenta lo siguiente:"
+      confirm-text="Editar de todas formas"
+      @confirm="startEditing"
+      @cancel="confirmEdit = false"
+    >
+      <ul class="space-y-2 rounded-xl bg-amber-50 px-4 py-3 ring-1 ring-amber-100 text-amber-900">
+        <li v-if="approvedCount"><strong>{{ approvedCount }} candidato(s) ya aprobados:</strong> los cambios sí se guardan y siguen aprobados, listos para oficializar.</li>
+        <li v-if="officialCount"><strong>{{ officialCount }} candidato(s) ya oficiales:</strong> están bloqueados y no se modifican desde aquí.</li>
+      </ul>
+    </ConfirmModal>
+
+    <ConfirmModal
+      :open="confirmDiscard"
+      title="¿Descartar los cambios?"
+      message="Hay cambios sin guardar en la plancha. Si sales de la edición se perderán."
+      confirm-text="Descartar cambios"
+      cancel-text="Seguir editando"
+      danger
+      @confirm="discardEdit"
+      @cancel="confirmDiscard = false"
+    />
+
+    <ConfirmModal
+      :open="confirmPromote"
+      title="¿Oficializar los candidatos aprobados?"
+      :message="`Se publicarán ${promotableDraftCount} candidato(s) aprobados de ${planchaData.nombreBarrio} en las planchas oficiales.`"
+      confirm-text="Oficializar"
+      :loading="isPromoting"
+      @confirm="promoteApprovedBatch"
+      @cancel="confirmPromote = false"
+    />
+
+    <ResultModal :open="result.open" :success="result.success" :title="result.title" :message="result.message" @close="closeResult" />
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue';
+import { ref, reactive, computed, onMounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { Edit2, Save, Users, UserPlus, Scale, Handshake, ChevronLeft, ChevronRight, Image as ImageIcon, ArrowLeft } from 'lucide-vue-next';
+import { AlertTriangle, Edit2, Lock, Save, Users, UserPlus, Scale, Handshake, ChevronLeft, ChevronRight, Image as ImageIcon, ArrowLeft } from 'lucide-vue-next';
 import CandidateCard from '@/components/secretary/CandidateCard.vue';
+import ConfirmModal from '@/components/ConfirmModal.vue';
+import ImageViewer from '@/components/ui/ImageViewer.vue';
+import ResultModal from '@/components/ResultModal.vue';
+import { formatPersonName, isUnknownName, normalizeUnknownName } from '@/utils/unknownCandidate';
 import { useDocumentStore } from '@/stores/document';
 import axios from '@/services/axios';
 
@@ -263,8 +415,58 @@ const isEditing = ref(false);
 const isSaving = ref(false);
 const evidenceFiles = ref([]);
 const isPromoting = ref(false);
+
+// Confirmaciones y resultados (antes eran window.alert).
+const confirmSave = ref(false);
+// Lo que falta en la plancha al momento de guardar (se muestra en la confirmación).
+const incompleteItems = ref([]);
+const emptyCargos = ref([]);
+const blockingError = ref('');
+const hasIncompleteData = computed(() => incompleteItems.value.length > 0 || emptyCargos.value.length > 0);
+const confirmPromote = ref(false);
+const confirmDiscard = ref(false);
+const result = reactive({ open: false, success: true, title: '', message: '', goToInbox: false });
+const showResult = (success, title, message, goToInbox = false) => Object.assign(result, { open: true, success, title, message, goToInbox });
+
+// Después de guardar una plancha (nueva o editada) se vuelve a la bandeja de
+// revisión, para seguir con la siguiente en vez de quedarse en esta.
+const closeResult = () => {
+  result.open = false;
+  if (result.goToInbox) router.push({ name: 'secretary-planchas' });
+};
+
+// Plancha recién escaneada (aún sin guardar) o edición de una ya registrada.
+const isNewPlancha = ref(route.query.preview === '1' || route.params.id === 'preview');
+
+// Copia de los datos al empezar a editar: para saber si hay cambios sin guardar.
+let editSnapshot = null;
+const snapshotPlancha = () => JSON.stringify({
+  bloque1: planchaData.bloque1, bloque2: planchaData.bloque2, bloque3: planchaData.bloque3, bloque4: planchaData.bloque4,
+});
+
+// Resumen para la confirmación de guardado.
+const saveSummary = computed(() => {
+  const cargos = ['bloque1', 'bloque2', 'bloque3', 'bloque4'].flatMap((key) => Object.values(planchaData[key]));
+  return {
+    filled: cargos.filter((cargo) => cargo.nombre?.trim()).length,
+    total: cargos.length,
+    unknown: cargos.filter((cargo) => isUnknownName(cargo.nombre)).length,
+    provisional: cargos.filter((cargo) => cargo.nombre?.trim() && !cargo.identificacion?.trim()).length,
+    images: localEvidenceImages.value.length,
+  };
+});
 const currentBatchUuid = ref((route.query.batch ?? docStore.captureBatchUuid ?? null));
 const promotableDraftCount = ref(0);
+
+// Cómo está la plancha: sirve para avisar antes de editar algo ya aprobado y
+// para bloquear lo que ya se oficializó (el servidor tampoco lo modifica).
+const allCargos = () => ['bloque1', 'bloque2', 'bloque3', 'bloque4'].flatMap((key) => Object.values(planchaData[key]));
+const officialCount = computed(() => allCargos().filter((cargo) => cargo.estado === 'official').length);
+const approvedCount = computed(() => allCargos().filter((cargo) => cargo.estado === 'approved').length);
+const editableCount = computed(() => allCargos().filter((cargo) => cargo.nombre?.trim() && cargo.estado !== 'official').length);
+// Toda la plancha ya es oficial: solo lectura.
+const isFullyOfficial = computed(() => officialCount.value > 0 && editableCount.value === 0);
+const confirmEdit = ref(false);
 const localEvidenceImages = ref([]);
 const dataLoadError = ref(null);
 const isFormManual = ref(false);
@@ -287,15 +489,48 @@ const allEvidenceImages = computed(() => {
   return [];
 });
 
-const totalPages = computed(() => allEvidenceImages.value.length || 1);
-const currentImage = computed(() => allEvidenceImages.value[currentPage.value] || null);
+// currentPage es la página del FORMULARIO; imagePage, la foto que se ve. Antes
+// eran lo mismo: con 2 fotos no se podía llegar a las páginas 3 y 4 de datos.
+const FORM_PAGES = ['Directiva', 'Secretario y delegados', 'Delegados y fiscal', 'Convivencia'];
+const imagePage = ref(0);
+const totalImages = computed(() => allEvidenceImages.value.length || 1);
+const currentImage = computed(() => allEvidenceImages.value[imagePage.value] || null);
 
-const prevPage = () => { if (currentPage.value > 0) currentPage.value--; };
-const nextPage = () => { if (currentPage.value < totalPages.value - 1) currentPage.value++; };
+const prevImage = () => { if (imagePage.value > 0) imagePage.value--; };
+const nextImage = () => { if (imagePage.value < totalImages.value - 1) imagePage.value++; };
+
+// Si cambia la cantidad de fotos, la foto activa no puede quedar fuera de rango.
+watch(() => allEvidenceImages.value.length, (length) => {
+  if (imagePage.value >= length) imagePage.value = Math.max(0, length - 1);
+});
+
+// Reordenar solo las fotos recién tomadas (aún sin guardar): ese orden es el
+// que se guarda como página 1, 2, 3… de la evidencia.
+const canReorderImages = computed(() => localEvidenceImages.value.length > 1);
+const moveImage = (direction) => {
+  const from = imagePage.value;
+  const to = from + direction;
+  if (to < 0 || to >= localEvidenceImages.value.length) return;
+  const images = [...localEvidenceImages.value];
+  [images[from], images[to]] = [images[to], images[from]];
+  localEvidenceImages.value = images;
+  docStore.setImages(images, 'plancha');
+  imagePage.value = to;
+};
+
+// Páginas del formulario con cargos resaltados (tras "Corregir datos").
+const PAGE_BY_KEY = {
+  'bloque1.presidente': 0, 'bloque1.vicepresidente': 0, 'bloque1.tesorero': 0,
+  'bloque1.secretario': 1, 'bloque2.suplentePresidente': 1, 'bloque2.delegado1': 1, 'bloque2.suplente1': 1, 'bloque2.delegado2': 1,
+  'bloque2.suplente2': 2, 'bloque2.delegado3': 2, 'bloque2.suplente3': 2, 'bloque3.fiscal': 2, 'bloque3.suplente': 2,
+  'bloque4.conciliador1': 3, 'bloque4.conciliador2': 3, 'bloque4.conciliador3': 3, 'bloque4.empresarial': 3,
+};
+const pageHasPending = (index) => validationErrors.value.some((key) => PAGE_BY_KEY[key] === index);
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // --- ESTRUCTURA: AHORA SÍ CON CELULAR Y CORREO EN TODOS ---
-const createCargo = () => ({ nombre: '', identificacion: '', celular: '', correo: '' });
+// estado: '' (sin guardar), 'pending', 'approved', 'rejected' u 'official' (ya publicado).
+const createCargo = () => ({ nombre: '', identificacion: '', celular: '', correo: '', estado: '' });
 
 const planchaData = reactive({
   numero: route.query.plancha_number ? `Plancha No. ${route.query.plancha_number}` : 'Plancha No. 1',
@@ -343,7 +578,8 @@ const buildCandidateLookup = () => {
 };
 
 const fillFromLookup = (target, source = {}) => {
-  target.nombre = source.nombre || target.nombre || '';
+  // "<Unknown>" del OCR se muestra y se guarda como "<DESCONOCIDO>".
+  target.nombre = normalizeUnknownName(source.nombre) || target.nombre || '';
   target.identificacion = source.identificacion || target.identificacion || '';
   target.celular = source.celular || target.celular || '';
   target.correo = source.correo || target.correo || '';
@@ -365,7 +601,7 @@ const isRetryableDraftsError = (error, hasBatchUuid) => {
 const composeDraftFullName = (draft) => {
   const rawName = [draft?.first_name, draft?.middle_name, draft?.last_name, draft?.second_last_name]
     .filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
-  return rawName.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+  return formatPersonName(rawName);
 };
 const extractCargoFromNotes = (notes) => { const match = String(notes || '').match(/Cargo:\s*(.+)$/i); return match ? match[1].trim() : ''; };
 // El suplente comparte cargo con su principal (p. ej. ambos "Presidente"): se
@@ -413,6 +649,7 @@ const applyDraftToPlancha = (draft) => {
     celular: draft?.phone || '',
     correo: draft?.email || '',
   });
+  target.estado = draft?.is_processed && draft?.review_status !== 'rejected' ? 'official' : (draft?.review_status || '');
 };
 
 const hydratePlanchaFromDrafts = async () => {
@@ -425,13 +662,13 @@ const hydratePlanchaFromDrafts = async () => {
   let lastContextMessage = '';
 
   isPollingOcr.value = hasBatchUuid;
-  ocrPollMessage.value = hasBatchUuid ? 'Esperando resultado de OCR...' : '';
+  ocrPollMessage.value = hasBatchUuid ? 'Esperando el resultado de la extracción...' : '';
   dataLoadError.value = null;
 
   while (Date.now() - startedAt <= OCR_MAX_WAIT_MS) {
     attempt += 1;
     if (hasBatchUuid) {
-      ocrPollMessage.value = `Procesando OCR del lote... intento ${attempt}`;
+      ocrPollMessage.value = `Extrayendo los datos de la plancha... intento ${attempt}`;
     }
 
     try {
@@ -463,7 +700,7 @@ const hydratePlanchaFromDrafts = async () => {
       }
 
       lastContextMessage = hasBatchUuid
-        ? 'Aun no hay registros OCR disponibles para este lote.'
+        ? 'Aún no hay datos extraídos para esta plancha.'
         : 'No hay borradores disponibles para precargar.';
     } catch (error) {
       console.error('Auditoria - Error al cargar datos:', error);
@@ -478,9 +715,9 @@ const hydratePlanchaFromDrafts = async () => {
       }
 
       if (Number(error?.response?.status) === 422) {
-        lastContextMessage = 'El OCR sigue procesando el lote en servidor.';
+        lastContextMessage = 'La extracción sigue en proceso en el servidor.';
       } else {
-        lastContextMessage = 'Esperando respuesta del servidor de OCR.';
+        lastContextMessage = 'Esperando respuesta del servidor de extracción.';
       }
     }
 
@@ -495,9 +732,9 @@ const hydratePlanchaFromDrafts = async () => {
 
   if (hasBatchUuid) {
     const seconds = Math.round(OCR_MAX_WAIT_MS / 1000);
-    dataLoadError.value = `El OCR aun no finaliza para este lote tras ${seconds}s de espera. Puedes continuar manualmente o reintentar OCR.${lastContextMessage ? ` ${lastContextMessage}` : ''}`;
+    dataLoadError.value = `La extracción aún no termina tras ${seconds}s de espera. Puedes llenar los datos a mano o reintentar la extracción.${lastContextMessage ? ` ${lastContextMessage}` : ''}`;
   } else {
-    dataLoadError.value = 'No se encontro un lote de captura para consultar OCR. Puedes continuar manualmente.';
+    dataLoadError.value = 'No se encontró una plancha capturada para consultar. Puedes llenar los datos a mano.';
   }
 
   return false;
@@ -553,10 +790,16 @@ onMounted(async () => {
     if (!hydratedFromStore) {
       await hydratePlanchaFromDrafts();
     }
+    // Una plancha recién escaneada aún no está guardada: todo lo leído cuenta como cambio.
     return;
   }
 
   await hydratePlanchaFromDrafts();
+  // Se abrió directo en edición (desde la bandeja): punto de partida para detectar cambios.
+  if (isEditing.value) {
+    isEditing.value = false;
+    requestEditing();
+  }
 
   if (currentBatchUuid.value) {
     await loadPromotableCount(currentBatchUuid.value);
@@ -571,10 +814,42 @@ const retryOcrHydration = async () => {
   }
 };
 
-const cancelEdit = () => { 
-  isEditing.value = false; 
-  validationErrors.value = []; 
-  validationDetails.value = []; 
+const cancelEdit = () => {
+  if (editSnapshot && editSnapshot !== snapshotPlancha()) {
+    confirmDiscard.value = true;
+    return;
+  }
+  discardEdit();
+};
+
+// Vuelve a los datos que había al empezar a editar.
+const discardEdit = () => {
+  confirmDiscard.value = false;
+  if (editSnapshot) {
+    const saved = JSON.parse(editSnapshot);
+    ['bloque1', 'bloque2', 'bloque3', 'bloque4'].forEach((key) => {
+      Object.entries(saved[key]).forEach(([cargo, values]) => Object.assign(planchaData[key][cargo], values));
+    });
+  }
+  isEditing.value = false;
+  validationErrors.value = [];
+  validationDetails.value = [];
+};
+
+// Editar algo ya aprobado u oficial se permite, pero avisando antes qué va a pasar.
+const requestEditing = () => {
+  if (isFullyOfficial.value) return;
+  if (approvedCount.value > 0 || officialCount.value > 0) {
+    confirmEdit.value = true;
+    return;
+  }
+  startEditing();
+};
+
+const startEditing = () => {
+  confirmEdit.value = false;
+  editSnapshot = snapshotPlancha();
+  isEditing.value = true;
 };
 
 const saveChanges = () => {
@@ -602,27 +877,70 @@ const saveChanges = () => {
     { key: 'bloque4.empresarial', obj: planchaData.bloque4.empresarial, nombre: 'Coord. Comisión Empresarial', pagina: 4 },
   ];
 
+  // Los datos incompletos ya no impiden guardar: se listan en la ventana de
+  // confirmación y la secretaria decide si registra así o los corrige.
+  const incomplete = [];
+  const empty = [];
+
   for (const cargo of cargosAChequear) {
+    if (cargo.obj.estado === 'official') continue; // bloqueado: no se corrige desde aquí
+    const has = (field) => Boolean(String(cargo.obj[field] ?? '').trim());
+    const hasName = has('nombre');
+
+    if (!hasName && !has('identificacion') && !has('celular') && !has('correo')) {
+      empty.push({ key: cargo.key, pagina: cargo.pagina, nombre: cargo.nombre });
+      continue;
+    }
+
+    // Candidato ilegible (<Desconocido>): es normal que no tenga más datos.
+    const ilegible = isUnknownName(cargo.obj.nombre);
     const faltantes = [];
-    if (!cargo.obj.nombre?.trim()) faltantes.push('Nombre');
-    if (!cargo.obj.identificacion?.trim()) faltantes.push('No. Identificación');
-    if (!cargo.obj.celular?.trim()) faltantes.push('Celular');
-    if (!cargo.obj.correo?.trim()) faltantes.push('Correo Electrónico');
+    if (!hasName) faltantes.push('Nombre');
+    if (!ilegible && !has('identificacion')) faltantes.push('No. Identificación');
+    if (!ilegible && !has('celular')) faltantes.push('Celular');
+    if (!ilegible && !has('correo')) faltantes.push('Correo Electrónico');
 
     if (faltantes.length > 0) {
-      validationErrors.value.push(cargo.key);
-      validationDetails.value.push({
+      incomplete.push({
+        key: cargo.key,
         pagina: cargo.pagina,
         nombre: cargo.nombre,
-        faltantes: faltantes.join(', ')
+        faltantes: faltantes.join(', '),
+        // Sin nombre no hay a quién registrar: ese cargo se omite al guardar.
+        omitido: !hasName,
       });
     }
   }
 
-  if (validationErrors.value.length > 0) {
+  incompleteItems.value = incomplete;
+  emptyCargos.value = empty;
+
+  // Lo único que sí impide guardar: una plancha sin ningún candidato con nombre.
+  if (officialCount.value === 0 && empty.length + incomplete.filter((item) => item.omitido).length === cargosAChequear.length) {
+    blockingError.value = 'La plancha no tiene ningún candidato con nombre. Escribe al menos uno para registrarla.';
     window.scrollTo({ top: 0, behavior: 'smooth' });
-    return; // Se detiene el proceso y muestra los errores en pantalla
+    return;
   }
+
+  blockingError.value = '';
+  confirmSave.value = true;
+};
+
+// "Corregir datos": cierra la ventana, resalta los cargos incompletos y lleva
+// a la primera página que tiene alguno.
+const reviewIncomplete = () => {
+  confirmSave.value = false;
+  const pending = [...incompleteItems.value, ...emptyCargos.value];
+  validationErrors.value = pending.map((item) => item.key);
+  validationDetails.value = incompleteItems.value;
+  if (pending.length) {
+    currentPage.value = Math.min(...pending.map((item) => item.pagina)) - 1;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+};
+
+const persistPlancha = () => {
+  confirmSave.value = false;
 
   const generatedBatchUuid = currentBatchUuid.value || (globalThis.crypto?.randomUUID?.() ?? null);
   const captureBatchUuid = generatedBatchUuid || `batch-${Date.now()}`;
@@ -667,6 +985,8 @@ const saveChanges = () => {
 
   // PASO 1: Intentar guardar los datos
   let dataSaveSuccess = false;
+  let rejectedMessage = '';
+  let lockedOfficial = [];
   axios.post('/secretary/planchas/drafts', {
     source_type: 'ocr',
     capture_batch_uuid: captureBatchUuid,
@@ -678,15 +998,27 @@ const saveChanges = () => {
     timeout: 240000,
     skipGlobalLoading: true,
   })
-    .then(async () => {
+    .then(async (response) => {
       dataSaveSuccess = true;
+      lockedOfficial = response?.data?.data?.locked_official ?? [];
       console.log('✅ Datos guardados exitosamente');
     })
     .catch((error) => {
       console.error('❌ Error al guardar datos:', error);
       dataSaveSuccess = false;
+      // El servidor rechazó la plancha (p. ej. el barrio ya tiene un acta aprobada).
+      if (Number(error?.response?.status) === 422) {
+        rejectedMessage = error.response.data?.message || 'El servidor rechazó los datos de la plancha.';
+      }
     })
     .finally(async () => {
+      if (rejectedMessage) {
+        // Sin plancha no tiene sentido subir las imágenes.
+        showResult(false, 'No se pudo registrar la plancha', rejectedMessage);
+        isSaving.value = false;
+        return;
+      }
+
       // PASO 2: SIEMPRE intentar guardar las imágenes, independientemente de si los datos se guardaron
       let evidenceWarning = '';
       let evidenceSaveSuccess = false;
@@ -740,9 +1072,23 @@ const saveChanges = () => {
         } else if (evidenceSaveSuccess) {
           message = 'Imágenes guardadas en borradores (datos no se procesaron).';
         }
-        window.alert(message);
+        if (dataSaveSuccess) {
+          if (lockedOfficial.length) {
+            message += `\n\n${lockedOfficial.length} cargo(s) ya oficiales no se modificaron.`;
+          }
+          showResult(true, isNewPlancha.value ? 'Plancha registrada' : 'Cambios guardados', `${message}\n\nAl cerrar este aviso volverás a la bandeja de revisión.`, true);
+          isNewPlancha.value = false;
+          editSnapshot = null;
+          allCargos().forEach((cargo) => {
+            if (cargo.nombre?.trim() && !cargo.estado) cargo.estado = 'pending';
+          });
+          validationErrors.value = [];
+          validationDetails.value = [];
+        } else {
+          showResult(false, 'Solo se guardaron las imágenes', message);
+        }
       } else {
-        window.alert(`No se pudo guardar la plancha ni las imágenes.${evidenceWarning}`);
+        showResult(false, 'No se pudo guardar', `No se pudo guardar la plancha ni las imágenes.${evidenceWarning}`);
       }
       
       isSaving.value = false;
@@ -778,9 +1124,10 @@ const loadPromotableCount = async (batchUuid) => {
 };
 
 const promoteApprovedBatch = async () => {
+  confirmPromote.value = false;
   if (!currentBatchUuid.value || isPromoting.value) return;
   if (promotableDraftCount.value === 0) {
-    window.alert('No hay borradores aprobados pendientes en este lote.');
+    showResult(false, 'Nada para oficializar', 'No hay borradores aprobados pendientes en este lote.');
     return;
   }
   isPromoting.value = true;
@@ -790,9 +1137,11 @@ const promoteApprovedBatch = async () => {
       skipGlobalLoading: true,
     });
     await loadPromotableCount(currentBatchUuid.value);
-    window.alert('Promoción finalizada con éxito.');
+    await hydratePlanchaFromDrafts();
+    isEditing.value = false;
+    showResult(true, 'Plancha oficializada', 'Los candidatos aprobados ya aparecen en "Planchas por Barrio" y salieron de la bandeja de revisión.');
   } catch (error) {
-    window.alert(`Fallo al promover: ${error?.response?.data?.message || error?.message}`);
+    showResult(false, 'No se pudo oficializar', error?.response?.data?.message || error?.message || 'Error de conexión.');
   } finally {
     isPromoting.value = false;
   }

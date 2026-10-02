@@ -78,7 +78,7 @@ class SlateDraftCorrectionTest extends TestCase
 
         $corregido = $drafts->firstWhere('document_number', '5550099');
         $this->assertNotNull($corregido);
-        $this->assertSame('CARLOS', $corregido->first_name); // los nombres se guardan en mayúsculas
+        $this->assertSame('Carlos', $corregido->first_name); // formato estándar: mayúscula inicial
         $this->assertSame('approved', $corregido->review_status, 'Conserva la aprobación.');
 
         // Ya con documento, la oficialización del lote no omite a nadie.

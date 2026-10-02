@@ -30,7 +30,10 @@
             @click="selectNeighborhood(item)"
             class="p-4 hover:bg-gray-50 cursor-pointer border-b border-gray-50 last:border-0 transition-colors"
           >
-            <p class="font-bold text-gray-900">{{ item.name }}</p>
+            <p class="font-bold text-gray-900 flex items-center gap-2">
+              {{ item.name }}
+              <span v-if="item.active_election?.has_approved_acta" class="badge-red">Acta aprobada</span>
+            </p>
             <p class="text-xs text-gray-500">{{ item.commune?.name || 'Comuna no asignada' }}</p>
           </div>
         </div>
@@ -59,11 +62,20 @@
           </div>
         </div>
       </transition>
+
+      <!-- Con un acta aprobada la votación ya ocurrió: no entran planchas nuevas. -->
+      <div v-if="captureLocked" class="mt-3 rounded-xl bg-red-50 border border-red-200 text-red-700 px-4 py-3 text-sm flex items-start gap-2" role="alert">
+        <Lock class="w-4 h-4 mt-0.5 shrink-0" />
+        <div>
+          <p class="font-bold">Registro de planchas cerrado para este barrio</p>
+          <p>Ya tiene un acta de escrutinio aprobada, así que no se pueden registrar planchas nuevas. Las planchas ya registradas se pueden seguir consultando y corrigiendo desde la bandeja de revisión.</p>
+        </div>
+      </div>
     </div>
 
-    <div 
+    <div
       class="card p-6 flex-1 flex flex-col transition-opacity duration-300"
-      :class="{ 'opacity-40 pointer-events-none': !selectedNeighborhood }"
+      :class="{ 'opacity-40 pointer-events-none': !selectedNeighborhood || captureLocked }"
     >
       <div v-if="!selectedNeighborhood" class="absolute inset-0 z-10 flex items-center justify-center">
         <p class="bg-white px-4 py-2 rounded-full shadow-md text-sm font-bold text-gray-500 border border-gray-100">
@@ -93,9 +105,19 @@
           <div v-for="(img, index) in capturedImages" :key="img.id" class="relative group aspect-[3/4] bg-gray-100 rounded-xl overflow-hidden border border-gray-200 shadow-sm">
             <img :src="img.url" class="w-full h-full object-cover">
             <div class="absolute top-2 left-2 bg-black/60 text-white text-xs font-bold px-2 py-1 rounded-md">Pág {{ index + 1 }}</div>
-            <button @click="removeImage(img.id)" class="absolute top-2 right-2 p-1.5 bg-red-500 text-white rounded-lg opacity-90 hover:opacity-100 shadow-md">
+            <button @click="removeImage(img.id)" class="absolute top-2 right-2 p-1.5 bg-red-500 text-white rounded-lg opacity-90 hover:opacity-100 shadow-md" :aria-label="`Quitar la página ${index + 1}`">
               <X class="w-4 h-4" />
             </button>
+            <!-- Cambiar el orden de las páginas sin tener que volver a tomarlas. -->
+            <div v-if="capturedImages.length > 1" class="absolute bottom-0 inset-x-0 flex items-center justify-between bg-black/65 px-1.5 py-1">
+              <button type="button" class="rounded-md p-1.5 text-white hover:bg-white/20 disabled:opacity-30" :disabled="index === 0" :aria-label="`Mover la página ${index + 1} antes`" @click="moveImage(index, -1)">
+                <ChevronLeft class="w-4 h-4" />
+              </button>
+              <span class="text-[10px] font-semibold uppercase tracking-wide text-white/80">Mover</span>
+              <button type="button" class="rounded-md p-1.5 text-white hover:bg-white/20 disabled:opacity-30" :disabled="index === capturedImages.length - 1" :aria-label="`Mover la página ${index + 1} después`" @click="moveImage(index, 1)">
+                <ChevronRight class="w-4 h-4" />
+              </button>
+            </div>
           </div>
           <label v-if="capturedImages.length < MAX_PLANCHA_PAGES" for="secretaryCameraInput" class="aspect-[3/4] flex flex-col items-center justify-center gap-2 border-2 border-dashed border-gray-300 rounded-xl bg-gray-50 hover:bg-gray-100 cursor-pointer">
             <Plus class="w-8 h-8 text-gray-400" />
@@ -103,7 +125,7 @@
           </label>
         </div>
 
-        <button @click="extractPlanchas" :disabled="isExtracting" class="btn-primary w-full py-4 mt-4 shrink-0">
+        <button @click="askExtract" :disabled="isExtracting" class="btn-primary w-full py-4 mt-4 shrink-0">
           <template v-if="isExtracting">
             <Loader2 class="w-5 h-5 animate-spin" /> Extrayendo...
           </template>
@@ -116,15 +138,25 @@
         <p v-if="extractError" class="text-xs text-red-600 font-semibold">{{ extractError }}</p>
       </div>
     </div>
+
+    <ConfirmModal
+      :open="confirmExtract"
+      title="¿Extraer los datos de la plancha?"
+      :message="`Se leerán ${capturedImages.length} página(s) de ${selectedNeighborhood?.name ?? 'este barrio'} para extraer sus datos. Después podrás revisar y corregir todo antes de registrarla.`"
+      confirm-text="Extraer datos"
+      @confirm="confirmExtract = false; extractPlanchas()"
+      @cancel="confirmExtract = false"
+    />
   </div>
 </template>
 
 <script setup>
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import axios, { extractorInstance } from '@/services/axios';
 import { useDocumentStore } from '@/stores/document';
-import { ArrowLeft, ScanLine, Camera, Send, Loader2, Plus, X, Search, MapPin } from 'lucide-vue-next';
+import ConfirmModal from '@/components/ConfirmModal.vue';
+import { ArrowLeft, ScanLine, Camera, ChevronLeft, ChevronRight, Send, Loader2, Lock, Plus, X, Search, MapPin } from 'lucide-vue-next';
 
 const router = useRouter();
 const docStore = useDocumentStore();
@@ -135,6 +167,7 @@ docStore.setCaptureBatchUuid(null);
 const searchQuery = ref('');
 const searchResults = ref([]);
 const selectedNeighborhood = ref(null);
+const captureLocked = computed(() => Boolean(selectedNeighborhood.value?.active_election?.has_approved_acta));
 let searchDebounce = null;
 
 // Estados de Captura
@@ -202,6 +235,15 @@ const removeImage = (idToRemove) => {
   capturedImages.value = capturedImages.value.filter((img) => img.id !== idToRemove);
 };
 
+// Intercambia una página con su vecina (el orden es el número de página que se guarda).
+const moveImage = (index, direction) => {
+  const target = index + direction;
+  if (target < 0 || target >= capturedImages.value.length) return;
+  const images = [...capturedImages.value];
+  [images[index], images[target]] = [images[target], images[index]];
+  capturedImages.value = images;
+};
+
 const createManualPageTemplate = () => ({ bloques: [] });
 const PREVIEW_MAX_ATTEMPTS = 3;
 const PREVIEW_BASE_BACKOFF_MS = 1200;
@@ -253,6 +295,26 @@ const isRetryablePreviewError = (error) => {
 };
 
 // --- LÓGICA DE EXTRACCIÓN (Vinculada al flujo Slates > Election > Neighborhood) ---
+// Revisa lo básico y pide confirmación antes de gastar la extracción con IA.
+const confirmExtract = ref(false);
+const APPROVED_ACTA_MESSAGE = 'Este barrio ya tiene un acta de escrutinio aprobada: no se pueden registrar planchas nuevas.';
+const askExtract = () => {
+  extractError.value = '';
+  if (!selectedNeighborhood.value?.active_election?.id) {
+    extractError.value = 'El barrio seleccionado no tiene una elección activa configurada.';
+    return;
+  }
+  if (selectedNeighborhood.value.active_election.has_approved_acta) {
+    extractError.value = APPROVED_ACTA_MESSAGE;
+    return;
+  }
+  if (capturedImages.value.length === 0) {
+    extractError.value = 'Debes cargar al menos una imagen.';
+    return;
+  }
+  confirmExtract.value = true;
+};
+
 const extractPlanchas = async () => {
   extractError.value = '';
   docStore.clearExtractionWarning();
@@ -332,7 +394,7 @@ const extractPlanchas = async () => {
     const fallbackTriggered = fallbackPages.length > 0;
     if (fallbackTriggered) {
       docStore.setExtractionWarning(
-        `OCR no pudo completar las páginas ${fallbackPages.join(', ')}. Esas páginas quedaron habilitadas para corrección manual.`
+        `La extracción no pudo completar las páginas ${fallbackPages.join(', ')}. Esas páginas quedaron habilitadas para corrección manual.`
       );
     }
 

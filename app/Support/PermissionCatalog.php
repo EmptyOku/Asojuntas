@@ -62,7 +62,7 @@ final class PermissionCatalog
                     'scope_note' => 'Quien lo tiene ve actas y planchas de todos los barrios, no solo del suyo.',
                 ],
                 'records.approve' => ['display_name' => 'Approve records', 'description' => 'Aprobar actas', 'depends_on' => ['records.review']],
-                'ocr.process' => ['display_name' => 'Process OCR', 'description' => 'Reprocesar OCR de candidatos', 'depends_on' => ['records.review']],
+                'ocr.process' => ['display_name' => 'Process OCR', 'description' => 'Reprocesar la extracción de candidatos', 'depends_on' => ['records.review']],
             ],
         ],
         'slates' => [

@@ -100,7 +100,7 @@ class SlateSeatAssignmentTest extends TestCase
             $this->makeCandidate($election, $plancha1, $cargos[$code], $name);
         }
         // Suplente de presidente inscrito ANTES que otros: no debe tomar la presidencia.
-        $this->makeCandidate($election, $plancha1, $cargos['DIR_PRES'], 'SuplenteAna', substitute: true);
+        $this->makeCandidate($election, $plancha1, $cargos['DIR_PRES'], 'Suplenteana', substitute: true);
 
         foreach (['DIR_PRES' => 'Elena', 'DIR_VICE' => 'Fabio', 'DIR_TESO' => 'Gina', 'DIR_SECR' => 'Hugo'] as $code => $name) {
             $this->makeCandidate($election, $plancha2, $cargos[$code], $name);
@@ -140,7 +140,7 @@ class SlateSeatAssignmentTest extends TestCase
         // La plancha con más votos provee presidente y vicepresidente con sus principales.
         $this->assertSame('Ana Prueba', $asignados['Presidente']['persona']['nombre']);
         $this->assertSame('Plancha 1', $asignados['Presidente']['plancha']);
-        $this->assertSame('SuplenteAna Prueba', $asignados['Presidente']['suplente']);
+        $this->assertSame('Suplenteana Prueba', $asignados['Presidente']['suplente']);
         $this->assertSame('Beto Prueba', $asignados['Vicepresidente']['persona']['nombre']);
 
         // La segunda plancha continúa con los cargos siguientes, no repite presidente.

@@ -1,147 +1,134 @@
 <template>
-  <div class="space-y-6 max-w-7xl mx-auto pb-10">
-    <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-5 rounded-xl shadow-sm border border-gray-200">
-      <div>
-        <h2 class="text-xl font-bold text-gray-900">Bandeja de Revisión de Planchas</h2>
-        <p class="text-xs text-gray-500 mt-0.5">Aprueba o rechaza por lote antes de la promoción oficial.</p>
+  <div class="space-y-6">
+    <!-- Encabezado -->
+    <section class="card p-5 sm:p-6 flex flex-col lg:flex-row lg:items-center gap-5">
+      <div class="min-w-0 flex-1">
+        <p class="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.12em] text-aso-primary">
+          <ClipboardCheck class="w-3.5 h-3.5" />
+          Revisión de planchas
+        </p>
+        <h2 class="page-title mt-1">Bandeja de revisión</h2>
+        <p class="page-subtitle">Revisa cada plancha, apruébala por lote y oficialízala para publicarla.</p>
       </div>
 
-      <div class="flex w-full md:w-auto items-center gap-2">
-        <div class="relative w-full md:w-72">
-          <div class="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none">
-            <Search class="w-4 h-4 text-gray-400" />
-          </div>
+      <div class="flex w-full lg:w-auto flex-col sm:flex-row gap-2">
+        <div class="relative w-full sm:w-72">
+          <Search class="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
-            v-model="searchQuery"
+            v-model.trim="searchQuery"
+            type="search"
+            class="field field-search"
+            placeholder="Buscar barrio, nombre o documento"
+            aria-label="Buscar barrio, nombre o documento"
             @input="handleSearch"
-            type="text"
-            placeholder="Buscar barrio, nombre o documento..."
-            class="block w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 placeholder-gray-400 focus:outline-none focus:bg-white focus:ring-1 focus:ring-aso-primary focus:border-aso-primary transition-colors"
-          >
+          />
         </div>
-
-        <button
-          @click="fetchData(1)"
-          class="btn-secondary px-3"
-        >
+        <button type="button" class="btn-secondary" :disabled="loading" @click="fetchData(pagination.current_page)">
           <RefreshCw :class="{ 'animate-spin': loading }" class="w-4 h-4" />
-          <span class="hidden sm:inline">Recargar</span>
+          Recargar
         </button>
       </div>
+    </section>
+
+    <!-- Pasos del flujo -->
+    <ol class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm" aria-label="Pasos de la revisión">
+      <li v-for="(stepItem, index) in STEPS" :key="stepItem.title" class="card px-4 py-3 flex items-start gap-3">
+        <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-aso-primary/10 font-display text-sm font-bold text-aso-primary">{{ index + 1 }}</span>
+        <div>
+          <p class="font-semibold text-gray-900">{{ stepItem.title }}</p>
+          <p class="text-xs text-gray-500">{{ stepItem.text }}</p>
+        </div>
+      </li>
+    </ol>
+
+    <div v-if="loading && !neighborhoods.length" class="space-y-3">
+      <div v-for="n in 4" :key="n" class="card h-20 animate-pulse"></div>
     </div>
 
-    <div v-if="loading && neighborhoods.length === 0" class="flex justify-center p-10">
-      <div class="w-10 h-10 border-4 border-gray-200 border-t-aso-primary rounded-full animate-spin"></div>
+    <div v-else-if="errorMessage" class="card p-8 flex flex-col items-center text-center gap-3">
+      <span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-red-50 text-red-500"><AlertCircle class="w-6 h-6" /></span>
+      <div>
+        <p class="font-display text-lg font-semibold text-gray-900">No se pudo cargar la bandeja</p>
+        <p class="text-sm text-gray-500">{{ errorMessage }}</p>
+      </div>
+      <button type="button" class="btn-primary" @click="fetchData(1)"><RefreshCw class="w-4 h-4" /> Reintentar</button>
     </div>
 
-    <div v-else-if="errorMessage" class="bg-red-50 border-l-4 border-red-500 p-4 rounded-xl shadow-sm">
-      <p class="text-sm font-bold text-red-800">Error al cargar datos</p>
-      <p class="text-sm text-red-700">{{ errorMessage }}</p>
+    <div v-else-if="!neighborhoods.length" class="card p-10 flex flex-col items-center text-center gap-3">
+      <span class="flex h-14 w-14 items-center justify-center rounded-2xl bg-gray-100 text-gray-400"><Inbox class="w-7 h-7" /></span>
+      <p class="font-display text-lg font-semibold text-gray-900">Bandeja vacía</p>
+      <p class="text-sm text-gray-500 max-w-sm">
+        {{ searchQuery ? 'Ninguna plancha coincide con la búsqueda.' : 'No hay planchas capturadas pendientes de revisión.' }}
+      </p>
     </div>
 
-    <div v-else-if="neighborhoods.length === 0" class="bg-white rounded-xl border border-gray-200 p-10 text-center text-gray-500">
-      <p class="font-bold">No se encontraron resultados.</p>
-      <p class="text-sm mt-1">No hay barrios con planchas pendientes que coincidan con tu búsqueda.</p>
-    </div>
-
-    <div v-else class="space-y-4">
-      <NeighborhoodAccordion 
-        v-for="neighborhood in neighborhoods" 
-        :key="neighborhood.election_id" 
+    <div v-else class="space-y-3" :class="{ 'opacity-60 transition-opacity': loading }">
+      <NeighborhoodAccordion
+        v-for="neighborhood in neighborhoods"
+        :key="neighborhood.election_id"
         :neighborhood="neighborhood"
         @reload-requested="fetchData(pagination.current_page)"
       />
 
-      <div v-if="pagination.last_page > 1" class="flex items-center justify-between bg-white px-4 py-3 border border-gray-200 rounded-xl sm:px-6">
-        <div class="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
-          <div>
-            <p class="text-sm text-gray-700">
-              Mostrando página <span class="font-medium">{{ pagination.current_page }}</span> de <span class="font-medium">{{ pagination.last_page }}</span>
-              (Total: {{ pagination.total_neighborhoods }} barrios)
-            </p>
-          </div>
-          <div>
-            <nav class="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
-              <button 
-                @click="fetchData(pagination.current_page - 1)" 
-                :disabled="pagination.current_page === 1"
-                class="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50"
-              >
-                <span class="sr-only">Anterior</span>
-                <ChevronLeft class="h-5 w-5" />
-              </button>
-              
-              <button 
-                @click="fetchData(pagination.current_page + 1)" 
-                :disabled="pagination.current_page === pagination.last_page"
-                class="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50"
-              >
-                <span class="sr-only">Siguiente</span>
-                <ChevronRight class="h-5 w-5" />
-              </button>
-            </nav>
-          </div>
-        </div>
+      <div class="card overflow-hidden">
+        <PaginationBar
+          :current="pagination.current_page"
+          :last="pagination.last_page"
+          :total="pagination.total_neighborhoods"
+          :from="pageFrom"
+          :to="pageFrom + neighborhoods.length - 1"
+          :loading="loading"
+          label="barrios"
+          @change="fetchData"
+        />
       </div>
     </div>
-
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
-import { Search, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-vue-next';
+import { computed, onMounted, ref } from 'vue';
+import { AlertCircle, ClipboardCheck, Inbox, RefreshCw, Search } from 'lucide-vue-next';
 import axios from '@/services/axios';
-
-// Importamos el componente hijo que crearemos en el paso 2
+import PaginationBar from '@/components/ui/PaginationBar.vue';
 import NeighborhoodAccordion from '@/components/secretary/NeighborhoodAccordion.vue';
+
+const STEPS = [
+  { title: 'Revisar', text: 'Abre la plancha y corrige lo que la extracción leyó mal.' },
+  { title: 'Aprobar lote', text: 'Aprueba todos los candidatos de la plancha.' },
+  { title: 'Oficializar', text: 'Publica lo aprobado en las planchas oficiales.' },
+];
 
 const searchQuery = ref('');
 const loading = ref(false);
 const errorMessage = ref('');
 const neighborhoods = ref([]);
+const pagination = ref({ current_page: 1, last_page: 1, total_neighborhoods: 0 });
+// El servidor pagina de a 10 barrios.
+const pageFrom = computed(() => (pagination.value.current_page - 1) * 10 + 1);
 
-const pagination = ref({
-  current_page: 1,
-  last_page: 1,
-  total_neighborhoods: 0
-});
-
-let searchTimeout = null;
-
-// Función principal para traer los datos del nuevo endpoint
 const fetchData = async (page = 1) => {
   loading.value = true;
   errorMessage.value = '';
-
   try {
     const { data } = await axios.get('/secretary/planchas/drafts/grouped', {
-      params: {
-        page: page,
-        q: searchQuery.value
-      },
+      params: { page, q: searchQuery.value || undefined },
       skipGlobalLoading: true,
     });
-
-    neighborhoods.value = data.data;
-    pagination.value = data.meta;
-
+    neighborhoods.value = data?.data ?? [];
+    pagination.value = { ...pagination.value, ...(data?.meta ?? {}) };
   } catch (error) {
-    errorMessage.value = error?.response?.data?.message || error.message;
+    errorMessage.value = error?.response?.data?.message || error?.message || 'Error de conexión.';
   } finally {
     loading.value = false;
   }
 };
 
-// Evita hacer spam al backend mientras el usuario escribe
+let searchTimeout = null;
 const handleSearch = () => {
-  if (searchTimeout) clearTimeout(searchTimeout);
-  searchTimeout = setTimeout(() => {
-    fetchData(1); // Volvemos a la página 1 al buscar
-  }, 500);
+  clearTimeout(searchTimeout);
+  searchTimeout = setTimeout(() => fetchData(1), 500);
 };
 
-onMounted(() => {
-  fetchData();
-});
+onMounted(() => fetchData(1));
 </script>

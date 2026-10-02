@@ -11,6 +11,7 @@ class CandidateDraft extends Model
 {
     use HasFactory;
     use SoftDeletes;
+    use Concerns\NormalizesPersonData;
 
     protected $fillable = [
         'election_id',
