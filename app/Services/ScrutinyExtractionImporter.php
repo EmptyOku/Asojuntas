@@ -209,7 +209,9 @@ class ScrutinyExtractionImporter
                 'scrutiny_extraction_id' => $extraction->id,
                 'votes' => (int) $row['votes'],
                 'source_type' => $row['source_type'],
-                'status' => $row['status'],
+                // Si el acta ya fue aprobada o rechazada, una página que llegue tarde
+                // hereda esa decisión en vez de volver a "pending".
+                'status' => ScrutinyRecord::BLOCK_STATUS_BY_DECISION[$record->status] ?? $row['status'],
                 'confidence_score' => $row['confidence_score'],
                 'notes' => ! empty($row['notes']) ? implode(' | ', array_values(array_unique($row['notes']))) : null,
             ]);

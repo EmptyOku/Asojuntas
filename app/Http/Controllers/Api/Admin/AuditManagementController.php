@@ -78,6 +78,10 @@ class AuditManagementController extends Controller
             $query->whereIn('status', ['reviewed', 'approved', 'consolidated']);
         }
 
+        if ($filter === 'rejected') {
+            $query->where('status', 'rejected');
+        }
+
         $records = $query
             ->latest('updated_at')
             ->paginate((int) $request->integer('per_page', 20))
@@ -122,8 +126,9 @@ class AuditManagementController extends Controller
             ->selectRaw('COUNT(*) AS total_count')
             ->selectRaw("COALESCE(SUM(CASE WHEN status IN ({$processedIn}) THEN 1 ELSE 0 END), 0) AS processed_count", $processed)
             ->selectRaw("COALESCE(SUM(CASE WHEN status IN ({$reviewIn}) THEN 1 ELSE 0 END), 0) AS review_count", $review)
+            ->selectRaw("COALESCE(SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END), 0) AS rejected_count")
             ->selectRaw("COUNT(DISTINCT CASE WHEN status IN ({$reviewIn}) THEN created_by_user_id END) AS active_juries_count", $review)
-            ->selectRaw('(SELECT COALESCE(SUM(votes), 0) FROM scrutiny_block_results) AS valid_votes_total')
+            ->selectRaw("(SELECT COALESCE(SUM(votes), 0) FROM scrutiny_block_results WHERE status <> 'rejected') AS valid_votes_total")
             ->toBase()
             ->first();
 
@@ -140,6 +145,7 @@ class AuditManagementController extends Controller
                     'total_count' => $totalCount,
                     'processed_count' => $processedCount,
                     'review_count' => $reviewCount,
+                    'rejected_count' => (int) $stats->rejected_count,
                     'active_juries_count' => $activeJuriesCount,
                     'valid_votes_total' => $validVotesTotal,
                 ],
@@ -471,40 +477,66 @@ class AuditManagementController extends Controller
     {
         $validated = $request->validate([
             'decision' => 'required|in:approved,rejected,reviewed',
-            'comments' => 'nullable|string|max:1000',
+            // Rechazar exige un motivo: queda en la auditoría y el jurado sabe qué corregir.
+            'comments' => 'nullable|required_if:decision,rejected|string|min:5|max:1000',
             'changes_payload' => 'nullable|array',
+        ], [
+            'comments.required_if' => 'Indica el motivo del rechazo.',
+            'comments.min' => 'El motivo debe tener al menos 5 caracteres.',
         ]);
 
         $decision = (string) $validated['decision'];
         $changesPayload = is_array($validated['changes_payload'] ?? null) ? $validated['changes_payload'] : [];
+        // Un rechazo no aplica cifras editadas: el acta completa queda fuera del conteo.
+        if ($decision === 'rejected') {
+            $changesPayload = [];
+        }
 
-        $this->applyReviewChangesToBlockResults($scrutinyRecord, $changesPayload);
+        $record = DB::transaction(function () use ($scrutinyRecord, $decision, $changesPayload, $validated): ScrutinyRecord {
+            // Bloquea el acta: dos auditores decidiendo a la vez no deben pisarse.
+            $record = ScrutinyRecord::query()->lockForUpdate()->findOrFail($scrutinyRecord->id);
 
-        $scrutinyRecord->status = $decision;
-        $scrutinyRecord->save();
+            $this->applyReviewChangesToBlockResults($record, $changesPayload);
 
-        ScrutinyReview::create([
-            'scrutiny_record_id' => $scrutinyRecord->id,
-            'scrutiny_extraction_id' => $scrutinyRecord->extractions()->latest()->value('id'),
-            'reviewed_by_user_id' => Auth::id(),
-            'decision' => $decision,
-            'reviewed_at' => now(),
-            'comments' => $validated['comments'] ?? null,
-            'changes_payload' => $changesPayload !== [] ? $changesPayload : null,
-        ]);
+            // Todos los resultados del acta siguen la decisión (antes solo los
+            // editados cambiaban, y un acta rechazada seguía sumando votos).
+            $record->blockResults()->update(['status' => ScrutinyRecord::BLOCK_STATUS_BY_DECISION[$decision]]);
+
+            $record->status = $decision;
+            $record->save();
+
+            $latestExtraction = $record->extractions()->latest('id')->first();
+            $latestExtraction?->update(['status' => match ($decision) {
+                'approved' => 'verified',
+                'rejected' => 'discarded',
+                default => 'corrected',
+            }]);
+
+            ScrutinyReview::create([
+                'scrutiny_record_id' => $record->id,
+                'scrutiny_extraction_id' => $latestExtraction?->id,
+                'reviewed_by_user_id' => Auth::id(),
+                'decision' => $decision,
+                'reviewed_at' => now(),
+                'comments' => $validated['comments'] ?? null,
+                'changes_payload' => $changesPayload !== [] ? $changesPayload : null,
+            ]);
+
+            return $record;
+        });
 
         app(AuditTrailLogger::class)->recordSystemEvent('review_decision', [
-            'scrutiny_record_id' => $scrutinyRecord->id,
+            'scrutiny_record_id' => $record->id,
             'decision' => $decision,
             'reviewed_by_user_id' => Auth::id(),
         ]);
 
         return response()->json([
             'success' => true,
-            'message' => 'Acta actualizada correctamente.',
+            'message' => $decision === 'rejected' ? 'Acta rechazada: sus votos no se cuentan.' : 'Acta aprobada: sus votos ya cuentan en los resultados.',
             'data' => [
-                'id' => $scrutinyRecord->id,
-                'status' => $scrutinyRecord->status,
+                'id' => $record->id,
+                'status' => $record->status,
             ],
         ]);
     }
@@ -539,14 +571,13 @@ class AuditManagementController extends Controller
             }
 
             $votes = is_array($block['votes'] ?? null) ? $block['votes'] : [];
-            foreach ([1, 2, 3] as $slateNumber) {
-                $slateCode = 'P'.$slateNumber;
-                $result = $resultsByBlock[$blockName][$slateCode] ?? null;
-                if (! $result) {
+            foreach ($resultsByBlock[$blockName] as $slateCode => $result) {
+                $voteKey = 'plancha_'.ltrim((string) $slateCode, 'P');
+                if (! array_key_exists($voteKey, $votes) || ! is_numeric($votes[$voteKey])) {
                     continue;
                 }
 
-                $voteValue = max(0, (int) ($votes['plancha_'.$slateNumber] ?? $result->votes));
+                $voteValue = max(0, (int) $votes[$voteKey]);
                 $result->votes = $voteValue;
                 $result->status = 'reviewed';
                 $result->source_type = 'manual';
@@ -558,6 +589,13 @@ class AuditManagementController extends Controller
 
     private function buildStatusTag(string $recordStatus, ?float $confidence): array
     {
+        if ($recordStatus === 'rejected') {
+            return [
+                'kind' => 'rejected',
+                'text' => 'Rechazada',
+            ];
+        }
+
         if (in_array($recordStatus, ['reviewed', 'approved', 'consolidated'], true)) {
             $confidenceText = $confidence !== null
                 ? sprintf('%d%% confianza', (int) round($confidence * 100))

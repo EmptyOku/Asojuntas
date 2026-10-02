@@ -10,6 +10,31 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 class ScrutinyRecord extends Model
 {
+    /**
+     * Estado que toman los resultados por bloque según la decisión sobre el
+     * acta. Solo "approved" y "reviewed" cuentan en el cuociente; un acta
+     * rechazada deja sus votos fuera ("rejected").
+     */
+    /** Estados de un acta cuyos votos ya cuentan en los resultados. */
+    public const APPROVED_STATUSES = ['approved', 'reviewed', 'consolidated'];
+
+    /**
+     * Con un acta aprobada la votación ya ocurrió: no se admiten planchas nuevas.
+     */
+    public static function electionHasApprovedActa(int $electionId): bool
+    {
+        return static::query()
+            ->where('election_id', $electionId)
+            ->whereIn('status', self::APPROVED_STATUSES)
+            ->exists();
+    }
+
+    public const BLOCK_STATUS_BY_DECISION = [
+        'approved' => 'approved',
+        'reviewed' => 'reviewed',
+        'rejected' => 'rejected',
+    ];
+
     use HasFactory;
     use SoftDeletes;
 

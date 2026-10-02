@@ -18,6 +18,23 @@
         <p class="page-subtitle">Cuociente electoral, curules y dignatarios por bloque.</p>
       </div>
 
+      <!-- Exportar: solo cuando el barrio ya tiene resultados. -->
+      <div v-if="!loading && barrio?.resultados?.length" class="shrink-0 flex flex-col gap-1.5 lg:items-end">
+        <div class="flex items-center gap-2">
+          <button type="button" class="btn-secondary" :disabled="exporting !== null" @click="runExport('pdf')">
+            <Loader2 v-if="exporting === 'pdf'" class="w-4 h-4 animate-spin" />
+            <FileText v-else class="w-4 h-4 text-red-600" />
+            PDF
+          </button>
+          <button type="button" class="btn-secondary" :disabled="exporting !== null" @click="runExport('excel')">
+            <Loader2 v-if="exporting === 'excel'" class="w-4 h-4 animate-spin" />
+            <FileSpreadsheet v-else class="w-4 h-4 text-emerald-700" />
+            Excel
+          </button>
+        </div>
+        <p v-if="exportError" class="field-error" role="alert">{{ exportError }}</p>
+      </div>
+
       <div v-if="barrio?.plancha_ganadora" class="shrink-0 flex items-center gap-3 rounded-2xl bg-emerald-50 px-4 py-3 ring-1 ring-emerald-100">
         <span class="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-amber-500 shadow-sm">
           <Trophy class="w-5 h-5" />
@@ -242,9 +259,10 @@
 import { ref, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {
-  AlertCircle, ArrowLeft, FileX, IdCard, Layers, Mail, Phone, RefreshCw, Trophy, Users, Vote
+  AlertCircle, ArrowLeft, FileSpreadsheet, FileText, FileX, IdCard, Layers, Loader2, Mail, Phone, RefreshCw, Trophy, Users, Vote
 } from 'lucide-vue-next';
 import axios from '@/services/axios';
+import { blockTitle, exportResultsExcel, exportResultsPdf, planchaColor, winnerInfo } from '@/utils/resultsExport';
 
 const route  = useRoute();
 const router = useRouter();
@@ -281,37 +299,6 @@ const totalCargos = computed(() => (barrio.value?.resultados ?? [])
 const cargosSinCandidato = computed(() => (barrio.value?.resultados ?? [])
   .reduce((sum, b) => sum + (b.cargos ?? []).filter((c) => c.sin_candidato).length, 0));
 
-// Color estable por plancha: el mismo en barras, curules y dignatarios.
-// Colores del escudo primero (verde, azul, amarillo, rojo) y luego neutros de apoyo.
-const PLANCHA_COLORS = ['#45821f', '#3576d1', '#dcae0c', '#d0141d', '#7b5ea7', '#1f8a8a'];
-const planchaColor = (name) => {
-  const match = String(name ?? '').match(/(\d+)/);
-  const index = match ? Number(match[1]) - 1 : 0;
-  return PLANCHA_COLORS[((index % PLANCHA_COLORS.length) + PLANCHA_COLORS.length) % PLANCHA_COLORS.length];
-};
-
-// "COMISIÓN DE CONVIVENCIA..." en mayúsculas desde el OCR: se muestra en formato título.
-const blockTitle = (bloque) => {
-  const name = String(bloque?.nombre_bloque ?? 'Bloque').toLowerCase();
-  return name.charAt(0).toUpperCase() + name.slice(1);
-};
-
-// Con empate en curules, la plancha con más votos es la que provee la
-// presidencia y los primeros cargos: se dice así en vez de solo "Empate".
-const winnerInfo = (bloque) => {
-  if (bloque?.plancha_ganadora?.plancha) {
-    return { label: bloque.plancha_ganadora.plancha, tie: false };
-  }
-
-  const tied = Array.isArray(bloque?.planchas_ganadoras) ? bloque.planchas_ganadoras : [];
-  if (tied.length > 1) {
-    const top = [...tied].sort((a, b) => (b.votos ?? 0) - (a.votos ?? 0))[0];
-    return { label: `${top.plancha} · empate en curules`, tie: true };
-  }
-
-  return { label: 'Sin resultado', tie: true };
-};
-
 const getPercent = (votos, total) => {
   if (!total) return 0;
   return Math.round((votos / total) * 100);
@@ -330,6 +317,28 @@ const initials = (name) => String(name || '?')
   .slice(0, 2)
   .map((part) => part.charAt(0).toUpperCase())
   .join('');
+
+// PDF / Excel. Las librerías se descargan al primer clic (import dinámico).
+const exporting = ref(null);
+const exportError = ref('');
+
+const runExport = async (format) => {
+  if (!barrio.value || exporting.value) return;
+  exporting.value = format;
+  exportError.value = '';
+  try {
+    if (format === 'pdf') {
+      await exportResultsPdf(barrio.value);
+    } else {
+      await exportResultsExcel(barrio.value);
+    }
+  } catch (err) {
+    console.error('Error exportando resultados:', err);
+    exportError.value = 'No se pudo generar el archivo. Intenta de nuevo.';
+  } finally {
+    exporting.value = null;
+  }
+};
 
 const fetchResultados = async () => {
   const barrioId = route.params.id;

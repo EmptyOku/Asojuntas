@@ -515,7 +515,7 @@ class NeighborhoodDirectoryController extends Controller
     {
         ini_set('max_execution_time', 120);
 
-        $neighborhood = Neighborhood::findOrFail($id);
+        $neighborhood = Neighborhood::with('commune:id,name')->findOrFail($id);
         $election = $neighborhood->elections()
             ->where('is_active', true)
             ->latest('election_date')
@@ -539,7 +539,9 @@ class NeighborhoodDirectoryController extends Controller
                 'blockResults.slateBlock.slate:id,code,name',
             ])
             ->where('election_id', $election->id)
-            ->whereIn('status', ['draft', 'pending', 'pending_review', 'reviewed', 'approved', 'consolidated'])
+            // Solo actas ya aprobadas: igual que los votos por plancha. Un acta
+            // pendiente o rechazada no aporta blancos, nulos ni bloques del OCR.
+            ->whereIn('status', ['reviewed', 'approved', 'consolidated'])
             ->latest('updated_at')
             ->first();
 
@@ -813,6 +815,9 @@ class NeighborhoodDirectoryController extends Controller
             'data'    => [
                 'id'         => $neighborhood->id,
                 'name'       => $neighborhood->name,
+                // Encabezado de los reportes PDF/Excel.
+                'comuna'     => $neighborhood->commune?->name,
+                'eleccion'   => $election->name,
                 'resultados' => $resultadosFormateados,
                 'plancha_ganadora' => $planchaGanadoraGlobal,
             ],

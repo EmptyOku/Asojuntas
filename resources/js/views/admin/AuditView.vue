@@ -117,8 +117,8 @@
               <td class="text-right font-display font-bold text-gray-900 tabular-nums">{{ row.valid_votes ?? '—' }}</td>
               <td>
                 <div class="flex flex-col gap-1">
-                  <span :class="row.status_tag?.kind === 'ok' ? 'badge-green' : 'badge-amber'" class="w-fit">
-                    <span class="badge-dot" :class="{ 'animate-pulse': row.status_tag?.kind !== 'ok' }"></span>
+                  <span :class="{ ok: 'badge-green', rejected: 'badge-red' }[row.status_tag?.kind] || 'badge-amber'" class="w-fit">
+                    <span class="badge-dot" :class="{ 'animate-pulse': row.status_tag?.kind === 'review' }"></span>
                     {{ row.status_tag?.text || 'Sin estado' }}
                   </span>
                   <div v-if="row.ai_confidence !== null && row.ai_confidence !== undefined" class="flex items-center gap-2" :title="`Confianza de la lectura: ${confidencePercent(row)}%`">
@@ -167,7 +167,7 @@ const PER_PAGE = 15;
 
 const isLoading = ref(false);
 const records = ref([]);
-const stats = ref({ total_count: 0, processed_count: 0, review_count: 0 });
+const stats = ref({ total_count: 0, processed_count: 0, review_count: 0, rejected_count: 0 });
 const pagination = ref({ current_page: 1, last_page: 1, total: 0, from: 0, to: 0 });
 
 const search = ref('');
@@ -178,6 +178,7 @@ const FILTERS = [
   { value: 'all', label: 'Todas', count: () => stats.value.total_count },
   { value: 'review', label: 'Requieren revisión', count: () => stats.value.review_count },
   { value: 'processed', label: 'Procesadas', count: () => stats.value.processed_count },
+  { value: 'rejected', label: 'Rechazadas', count: () => stats.value.rejected_count },
 ];
 
 const processedPercent = computed(() => (stats.value.total_count
@@ -235,7 +236,7 @@ const fetchAuditRecords = async () => {
       from: Number(paginated.from || 0),
       to: Number(paginated.to || 0),
     };
-    stats.value = { total_count: 0, processed_count: 0, review_count: 0, ...(payload.stats || {}) };
+    stats.value = { total_count: 0, processed_count: 0, review_count: 0, rejected_count: 0, ...(payload.stats || {}) };
   } catch (error) {
     records.value = [];
   } finally {
