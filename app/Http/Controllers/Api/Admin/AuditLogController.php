@@ -24,6 +24,9 @@ class AuditLogController extends Controller
         'password_reset' => 'Restablecimiento de contraseña',
         'permission_assignment' => 'Asignación de permiso',
         'role_status_change' => 'Cambio de estado de rol',
+        // Avisos de la campanita (App\Services\AdminNotifications).
+        'notify.acta_received' => 'Acta recibida',
+        'notify.plancha_captured' => 'Plancha registrada',
     ];
 
     /**
@@ -38,7 +41,7 @@ class AuditLogController extends Controller
         'App\\Models\\RolePermission' => 'Asignación de permiso',
         'App\\Models\\ScrutinyRecord' => 'Acta de escrutinio',
         'App\\Models\\ScrutinyRecordFile' => 'Archivo de acta',
-        'App\\Models\\ScrutinyExtraction' => 'Extracción OCR',
+        'App\\Models\\ScrutinyExtraction' => 'Extracción de datos',
         'App\\Models\\ScrutinyReview' => 'Revisión de acta',
         'App\\Models\\ScrutinyBlockResult' => 'Resultado de bloque',
         'App\\Models\\ScrutinyElectedPerson' => 'Persona electa',

@@ -43,12 +43,10 @@
         </div>
 
         <div class="flex items-center gap-2 sm:gap-3 relative">
-          <button type="button" class="h-10 w-10 flex items-center justify-center text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-colors relative" aria-label="Notificaciones">
-            <Bell class="w-5 h-5" />
-            <span class="absolute top-2 right-2.5 w-2 h-2 bg-red-500 rounded-full ring-2 ring-white"></span>
-          </button>
+          <!-- Campana: solo para quien revisa actas o planchas (el punto rojo antes era fijo). -->
+          <NotificationBell />
 
-          <div class="h-8 w-px bg-gray-200 hidden sm:block"></div>
+          <div v-if="authStore.canAny(['records.review', 'slates.view'])" class="h-8 w-px bg-gray-200 hidden sm:block"></div>
 
           <div>
             <button type="button" class="flex items-center gap-3 rounded-xl p-1 sm:pr-3 hover:bg-gray-100 transition-colors focus:outline-none" aria-label="Menú de usuario" @click="isProfileOpen = !isProfileOpen">
@@ -94,10 +92,11 @@
 <script setup>
 import { computed, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
-import { Bell, ChevronDown, LogOut, Menu } from 'lucide-vue-next';
+import { ChevronDown, LogOut, Menu } from 'lucide-vue-next';
 import { useAuthStore } from '@/stores/auth';
 import { navigationFor } from '@/router';
 import AppSidebar from '@/components/layout/AppSidebar.vue';
+import NotificationBell from '@/components/layout/NotificationBell.vue';
 
 const route = useRoute();
 const authStore = useAuthStore();

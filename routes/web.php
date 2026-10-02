@@ -18,6 +18,7 @@ use App\Http\Controllers\Api\Admin\PermissionManagementController;
 use App\Http\Controllers\Api\Admin\RoleManagementController;
 use App\Http\Controllers\Api\Admin\UserManagementController;
 use App\Http\Controllers\Api\Admin\CompleteUserManagementController;
+use App\Http\Controllers\Api\Admin\NotificationController;
 use App\Http\Controllers\Api\Admin\AuditManagementController;
 use App\Http\Controllers\Api\Admin\AuditLogController as SystemAuditLogController;
 use App\Http\Controllers\Api\Admin\PersonController as ApiPersonController;
@@ -227,6 +228,21 @@ Route::prefix('api')->name('api.')->group(function (): void {
             Route::get('/people/without-users', [UserManagementController::class, 'getAvailablePersons'])
                 ->middleware('api.permission:users.view')
                 ->name('admin.people.without-users');
+
+            // =========================================================
+            // NOTIFICACIONES (campanita): actas recibidas y planchas registradas
+            // =========================================================
+            Route::get('/notifications/unread-count', [NotificationController::class, 'unreadCount'])
+                ->middleware('api.permission:records.review,slates.view')
+                ->name('admin.notifications.unread-count');
+
+            Route::get('/notifications', [NotificationController::class, 'index'])
+                ->middleware('api.permission:records.review,slates.view')
+                ->name('admin.notifications.index');
+
+            Route::post('/notifications/seen', [NotificationController::class, 'markSeen'])
+                ->middleware('api.permission:records.review,slates.view')
+                ->name('admin.notifications.seen');
 
             // =========================================================
             // RUTAS DE USUARIOS

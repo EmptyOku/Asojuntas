@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Services\AdminNotifications;
 use App\Models\Election;
 use App\Models\PollingTable;
 use App\Models\ScrutinyExtraction;
@@ -553,7 +554,7 @@ class JuryIngestController extends Controller
                 return $existing;
             }
 
-            return ScrutinyRecord::create([
+            $record = ScrutinyRecord::create([
                 'election_id' => $pollingTable->election_id,
                 'polling_table_id' => $pollingTable->id,
                 'created_by_user_id' => $request->user()->id,
@@ -566,6 +567,16 @@ class JuryIngestController extends Controller
                     'origin' => 'jury-ui',
                 ],
             ]);
+
+            // Aviso para el administrador (campanita): una sola vez por acta.
+            $neighborhood = $pollingTable->election?->neighborhood;
+            app(AdminNotifications::class)->record(AdminNotifications::ACTA_RECEIVED, [
+                'neighborhood_id' => $neighborhood?->id,
+                'neighborhood' => $neighborhood?->name,
+                'polling_table' => $pollingTable->name,
+            ], ScrutinyRecord::class, $record->id);
+
+            return $record;
         }
 
         $lastRecord = ScrutinyRecord::query()
@@ -837,7 +848,7 @@ class JuryIngestController extends Controller
         }
 
         throw new RuntimeException(
-            'No se encontro un ejecutable de Python valido para OCR. '
+            'No se encontro un ejecutable de Python válido para la extracción. '
             .'Crea .venv en la raiz del proyecto o configura EXTRACTOR_PYTHON_BIN con la ruta local de tu equipo.'
         );
     }
