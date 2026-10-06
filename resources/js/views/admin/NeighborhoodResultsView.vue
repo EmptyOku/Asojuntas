@@ -19,7 +19,7 @@
       </div>
 
       <!-- Exportar: solo cuando el barrio ya tiene resultados. -->
-      <div v-if="!loading && barrio?.resultados?.length" class="shrink-0 flex flex-col gap-1.5 lg:items-end">
+      <div v-if="!loading && barrio?.resultados?.length && authStore.can('results.export')" class="shrink-0 flex flex-col gap-1.5 lg:items-end">
         <div class="flex items-center gap-2">
           <button type="button" class="btn-secondary" :disabled="exporting !== null" @click="runExport('pdf')">
             <Loader2 v-if="exporting === 'pdf'" class="w-4 h-4 animate-spin" />
@@ -262,8 +262,10 @@ import {
   AlertCircle, ArrowLeft, FileSpreadsheet, FileText, FileX, IdCard, Layers, Loader2, Mail, Phone, RefreshCw, Trophy, Users, Vote
 } from 'lucide-vue-next';
 import axios from '@/services/axios';
+import { useAuthStore } from '@/stores/auth';
 import { blockTitle, exportResultsExcel, exportResultsPdf, planchaColor, winnerInfo } from '@/utils/resultsExport';
 
+const authStore = useAuthStore();
 const route  = useRoute();
 const router = useRouter();
 

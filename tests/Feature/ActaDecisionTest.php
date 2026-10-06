@@ -71,7 +71,7 @@ class ActaDecisionTest extends TestCase
     public function aprobar_guarda_las_cifras_corregidas_y_los_votos_cuentan(): void
     {
         $record = $this->makeActa();
-        $auditor = $this->makeUser(['records.review']);
+        $auditor = $this->makeUser(['scrutiny_records.view', 'scrutiny_records.approve']);
         $this->assertSame(0, $this->countedVotes($record), 'Un acta pendiente no cuenta.');
 
         $this->actingAs($auditor)->postJson("/api/admin/audit-records/{$record->id}/decision", [
@@ -89,7 +89,7 @@ class ActaDecisionTest extends TestCase
     {
         $record = $this->makeActa();
 
-        $this->actingAs($this->makeUser(['records.review']))
+        $this->actingAs($this->makeUser(['scrutiny_records.view', 'scrutiny_records.approve']))
             ->postJson("/api/admin/audit-records/{$record->id}/decision", ['decision' => 'approved'])
             ->assertOk();
 
@@ -101,7 +101,7 @@ class ActaDecisionTest extends TestCase
     {
         $record = $this->makeActa();
 
-        $this->actingAs($this->makeUser(['records.review']))
+        $this->actingAs($this->makeUser(['scrutiny_records.view', 'scrutiny_records.approve']))
             ->postJson("/api/admin/audit-records/{$record->id}/decision", ['decision' => 'rejected'])
             ->assertUnprocessable()
             ->assertJsonValidationErrors('comments');
@@ -113,7 +113,7 @@ class ActaDecisionTest extends TestCase
     public function rechazar_un_acta_aprobada_saca_sus_votos_de_los_resultados(): void
     {
         $record = $this->makeActa();
-        $auditor = $this->makeUser(['records.review']);
+        $auditor = $this->makeUser(['scrutiny_records.view', 'scrutiny_records.approve']);
 
         $this->actingAs($auditor)->postJson("/api/admin/audit-records/{$record->id}/decision", [
             'decision' => 'approved',

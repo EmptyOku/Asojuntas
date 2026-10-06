@@ -193,7 +193,7 @@ class SlateSeatAssignmentTest extends TestCase
     {
         $neighborhood = $this->makeNeighborhood('Barrio Planchas');
         $election = $this->makeElection($neighborhood);
-        $secretary = $this->makeUser(['slates.capture', 'slates.review']);
+        $secretary = $this->makeUser(['candidate_drafts.view', 'candidate_drafts.create', 'candidate_drafts.update', 'candidate_drafts.approve']);
 
         $lotes = [];
         foreach (['1', '2'] as $n) {

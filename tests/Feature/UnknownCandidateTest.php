@@ -21,7 +21,7 @@ class UnknownCandidateTest extends TestCase
     public function traduce_unknown_y_asigna_documentos_provisionales_unicos(): void
     {
         $election = $this->makeElection($this->makeNeighborhood('Barrio Ilegible'));
-        $secretary = $this->makeUser(['slates.capture', 'slates.review', 'slates.promote']);
+        $secretary = $this->makeUser(['candidate_drafts.view', 'candidate_drafts.create', 'candidate_drafts.update', 'candidate_drafts.approve', 'candidate_drafts.promote']);
 
         $batch = $this->actingAs($secretary)->postJson('/api/secretary/planchas/drafts', [
             'election_id' => $election->id,
@@ -59,7 +59,7 @@ class UnknownCandidateTest extends TestCase
         $this->assertSame(3, $promotion->json('data.processed'));
 
         // Planchas oficiales: "Plancha 1" (no "Plancha P1") y el documento provisional marcado.
-        $official = $this->actingAs($this->makeUser(['slates.view']))
+        $official = $this->actingAs($this->makeUser(['slates.view', 'candidates.view']))
             ->getJson('/api/admin/planchas/by-neighborhood')->assertOk()->json('data.items.0.slates.0');
         $this->assertSame('Plancha 1', $official['label']);
         $reps = collect($official['representatives']);

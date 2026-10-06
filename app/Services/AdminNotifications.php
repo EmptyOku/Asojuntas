@@ -25,7 +25,7 @@ class AdminNotifications
 
     /** Acción => permiso necesario para verla. */
     public const EVENTS = [
-        self::ACTA_RECEIVED => 'records.review',
+        self::ACTA_RECEIVED => 'scrutiny_records.view',
         self::PLANCHA_CAPTURED => 'slates.view',
     ];
 

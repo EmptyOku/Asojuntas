@@ -45,8 +45,8 @@ class AdminNotificationsTest extends TestCase
     public function registrar_una_plancha_avisa_al_administrador_y_no_a_quien_la_registro(): void
     {
         $election = $this->makeElection($this->makeNeighborhood('Barrio Avisos'));
-        $secretary = $this->makeUser(['slates.capture', 'slates.view']);
-        $admin = $this->makeUser(['records.review', 'slates.view']);
+        $secretary = $this->makeUser(['candidate_drafts.view', 'candidate_drafts.create', 'candidate_drafts.update', 'slates.view', 'candidates.view']);
+        $admin = $this->makeUser(['scrutiny_records.view', 'scrutiny_records.approve', 'slates.view', 'candidates.view']);
 
         $batch = $this->capturePlancha($secretary, $election->id);
 
@@ -69,8 +69,8 @@ class AdminNotificationsTest extends TestCase
     public function corregir_una_plancha_existente_no_genera_otro_aviso(): void
     {
         $election = $this->makeElection($this->makeNeighborhood('Barrio Avisos'));
-        $secretary = $this->makeUser(['slates.capture', 'slates.review']);
-        $admin = $this->makeUser(['records.review', 'slates.view']);
+        $secretary = $this->makeUser(['candidate_drafts.view', 'candidate_drafts.create', 'candidate_drafts.update', 'candidate_drafts.approve']);
+        $admin = $this->makeUser(['scrutiny_records.view', 'scrutiny_records.approve', 'slates.view', 'candidates.view']);
 
         $batch = $this->capturePlancha($secretary, $election->id);
         $this->capturePlancha($secretary, $election->id, $batch);
@@ -89,20 +89,20 @@ class AdminNotificationsTest extends TestCase
             'record_number' => 'ACTA-1',
             'status' => 'draft',
         ]);
-        $this->actaNotification($this->makeUser(['records.upload']), $record);
+        $this->actaNotification($this->makeUser(['scrutiny_records.create']), $record);
 
-        $slatesOnly = $this->makeUser(['slates.view']);
+        $slatesOnly = $this->makeUser(['slates.view', 'candidates.view']);
         $this->actingAs($slatesOnly)->getJson('/api/admin/notifications/unread-count')
             ->assertJsonPath('data.unread', 0);
 
-        $auditor = $this->makeUser(['records.review']);
+        $auditor = $this->makeUser(['scrutiny_records.view', 'scrutiny_records.approve']);
         $item = $this->actingAs($auditor)->getJson('/api/admin/notifications')->json('data.items.0');
         $this->assertSame('acta', $item['type']);
         $this->assertSame($record->id, $item['record_id']);
         $this->assertSame('Barrio Avisos · Mesa 1', $item['detail']);
 
         // Sin ninguno de los dos permisos no hay campana.
-        $this->actingAs($this->makeUser(['users.view']))
+        $this->actingAs($this->makeUser(['users.view', 'persons.view']))
             ->getJson('/api/admin/notifications/unread-count')->assertForbidden();
     }
 
@@ -111,7 +111,7 @@ class AdminNotificationsTest extends TestCase
     {
         $election = $this->makeElection($this->makeNeighborhood('Barrio Avisos'));
         $table = $this->makePollingTable($election);
-        $jury = $this->makeUser(['records.upload']);
+        $jury = $this->makeUser(['scrutiny_records.create']);
 
         foreach (range(1, 7) as $n) {
             $record = ScrutinyRecord::create([
@@ -121,7 +121,7 @@ class AdminNotificationsTest extends TestCase
             $this->actaNotification($jury, $record);
         }
 
-        $admin = $this->makeUser(['records.review']);
+        $admin = $this->makeUser(['scrutiny_records.view', 'scrutiny_records.approve']);
         $first = $this->actingAs($admin)->getJson('/api/admin/notifications?per_page=5')->assertOk();
         $this->assertCount(5, $first->json('data.items'));
         $this->assertTrue($first->json('data.has_more'));
@@ -143,7 +143,7 @@ class AdminNotificationsTest extends TestCase
         Storage::fake('local');
         $barrio = $this->makeNeighborhood('Barrio Mesa');
         $mesa = $this->makePollingTable($this->makeElection($barrio));
-        $jurado = $this->makeUser(['records.upload'], $barrio);
+        $jurado = $this->makeUser(['scrutiny_records.create'], $barrio);
 
         foreach ([1, 2] as $page) {
             $this->actingAs($jurado)->postJson('/api/jury/submit', [
@@ -154,7 +154,7 @@ class AdminNotificationsTest extends TestCase
             ])->assertCreated();
         }
 
-        $admin = $this->makeUser(['records.review']);
+        $admin = $this->makeUser(['scrutiny_records.view', 'scrutiny_records.approve']);
         $items = $this->actingAs($admin)->getJson('/api/admin/notifications')->assertOk()->json('data.items');
 
         $this->assertCount(1, $items, 'La segunda página es la misma acta: no repite el aviso.');

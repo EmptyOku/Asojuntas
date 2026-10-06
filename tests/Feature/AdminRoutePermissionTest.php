@@ -22,7 +22,7 @@ class AdminRoutePermissionTest extends TestCase
     {
         $barrio = $this->makeNeighborhood('Barrio Jurado');
         $eleccion = $this->makeElection($barrio);
-        $jurado = $this->makeUser(['records.upload'], $barrio);
+        $jurado = $this->makeUser(['scrutiny_records.create'], $barrio);
 
         $this->actingAs($jurado)
             ->postJson('/api/admin/neighborhoods/elections/close-all')
@@ -38,7 +38,7 @@ class AdminRoutePermissionTest extends TestCase
     public function un_jurado_no_puede_crear_elecciones_en_masa(): void
     {
         $barrio = $this->makeNeighborhood('Barrio Jurado');
-        $jurado = $this->makeUser(['records.upload'], $barrio);
+        $jurado = $this->makeUser(['scrutiny_records.create'], $barrio);
 
         $this->actingAs($jurado)
             ->postJson('/api/admin/neighborhoods/elections/create-all')
@@ -49,7 +49,7 @@ class AdminRoutePermissionTest extends TestCase
     public function un_jurado_no_puede_listar_personas(): void
     {
         $barrio = $this->makeNeighborhood('Barrio Jurado');
-        $jurado = $this->makeUser(['records.upload'], $barrio);
+        $jurado = $this->makeUser(['scrutiny_records.create'], $barrio);
 
         $this->actingAs($jurado)
             ->getJson('/api/admin/persons')
@@ -64,7 +64,7 @@ class AdminRoutePermissionTest extends TestCase
     public function un_administrador_con_permiso_si_accede(): void
     {
         $barrio = $this->makeNeighborhood('Barrio Admin');
-        $admin = $this->makeUser(['users.view', 'elections.view', 'elections.update'], $barrio);
+        $admin = $this->makeUser(['users.view', 'persons.view', 'elections.view', 'elections.update'], $barrio);
 
         $this->actingAs($admin)
             ->getJson('/api/admin/persons')

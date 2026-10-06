@@ -21,6 +21,8 @@ import RegistrationPlatesView from '@/views/admin/RegistrationPlatesView.vue';
 // Permisos por ruta (roles dinámicos)
 // ==========================================
 // Cada ruta hija declara lo que exige:
+// Los permisos son por tabla y operación (persons.view, neighborhoods.update…)
+// más unas pocas acciones especiales; ver app/Support/PermissionCatalog.php.
 //   meta.permission: 'x.view'            -> exige ese permiso
 //   meta.anyPermission: ['a', 'b']       -> basta con uno
 // y, si aparece en el menú, meta.nav:
@@ -56,7 +58,7 @@ const routes = [
       },
       {
         path: 'geography', name: 'admin-geography', component: () => import('@/views/admin/GeographyView.vue'),
-        meta: { permission: 'geography.view', nav: { label: 'Geografía Electoral', icon: 'Map', section: 'Administración', order: 20 } }
+        meta: { permission: 'neighborhoods.view', nav: { label: 'Geografía Electoral', icon: 'Map', section: 'Administración', order: 20 } }
       },
       {
         path: 'map', name: 'admin-map', component: () => import('@/views/admin/ElectoralMapView.vue'),
@@ -68,29 +70,29 @@ const routes = [
       },
       {
         path: 'audit', name: 'admin-audit', component: () => import('@/views/admin/AuditView.vue'),
-        meta: { permission: 'records.review', nav: { label: 'Auditoría de Actas', icon: 'FileCheck', section: 'Administración', order: 50 } }
+        meta: { permission: 'scrutiny_records.view', nav: { label: 'Auditoría de Actas', icon: 'FileCheck', section: 'Administración', order: 50 } }
       },
       {
         path: 'audit-logs', name: 'admin-audit-logs', component: () => import('@/views/admin/AuditLogsView.vue'),
-        meta: { permission: 'audit.view', nav: { label: 'Bitácora del Sistema', icon: 'ClipboardList', section: 'Administración', order: 60 } }
+        meta: { permission: 'audit_logs.view', nav: { label: 'Bitácora del Sistema', icon: 'ClipboardList', section: 'Administración', order: 60 } }
       },
       {
         path: 'registration', name: 'admin.registration', component: RegistrationPlatesView,
-        meta: { permission: 'slates.view', nav: { label: 'Revisión de planchas', icon: 'ShieldAlert', section: 'Administración', order: 70 } }
+        meta: { permission: 'candidates.view', nav: { label: 'Revisión de planchas', icon: 'ShieldAlert', section: 'Administración', order: 70 } }
       },
       {
         path: 'audit/:id', name: 'admin-audit-detail', component: () => import('@/views/admin/VoteValidationView.vue'),
-        meta: { permission: 'records.review' }
+        meta: { permission: 'scrutiny_records.view' }
       },
       {
         path: 'neighborhood/:id/results', name: 'admin.neighborhood.results', component: NeighborhoodResultsView,
-        meta: { anyPermission: ['candidates.view', 'geography.view', 'map.view'] }
+        meta: { anyPermission: ['candidates.view', 'neighborhoods.view', 'map.view'] }
       },
       {
         path: 'roles', name: 'admin-roles', component: () => import('@/views/security-config/RolesPermissionsView.vue'),
         // Aquí se crean personas y cuentas, no solo roles: título propio en el header.
         meta: {
-          anyPermission: ['users.view', 'roles.view'],
+          anyPermission: ['users.view', 'persons.view', 'roles.view'],
           title: 'Administración de usuarios',
           subtitle: 'Personas, cuentas de acceso, roles y permisos',
           nav: { label: 'Usuarios y accesos', icon: 'UserCog', section: 'Configuración', order: 900, position: 'bottom' },
@@ -109,23 +111,23 @@ const routes = [
     children: [
       {
         path: 'dashboard', name: 'secretary-dashboard', component: SecretaryDashboardView,
-        meta: { permission: 'slates.capture', nav: { label: 'Dashboard', icon: 'LayoutDashboard', section: 'Secretaría', order: 110 } }
+        meta: { permission: 'candidate_drafts.create', nav: { label: 'Dashboard', icon: 'LayoutDashboard', section: 'Secretaría', order: 110 } }
       },
       {
         path: 'capture', name: 'secretary-capture', component: SecretaryCaptureView,
-        meta: { permission: 'slates.capture', nav: { label: 'Escanear Planchas', icon: 'Camera', section: 'Secretaría', order: 120, query: { doc: 'plancha' } } }
+        meta: { permission: 'candidate_drafts.create', nav: { label: 'Escanear Planchas', icon: 'Camera', section: 'Secretaría', order: 120, query: { doc: 'plancha' } } }
       },
       {
         path: 'planchas', name: 'secretary-planchas', component: SecretaryPlanchasList,
-        meta: { anyPermission: ['slates.capture', 'slates.review'], nav: { label: 'Auditoría de Planchas', icon: 'Files', section: 'Secretaría', order: 130 } }
+        meta: { permission: 'candidate_drafts.view', nav: { label: 'Auditoría de Planchas', icon: 'Files', section: 'Secretaría', order: 130 } }
       },
       {
         path: 'planchas-por-barrio', name: 'secretary-neighborhood-slates', component: SecretaryNeighborhoodSlatesView,
-        meta: { anyPermission: ['slates.view', 'slates.capture'], nav: { label: 'Planchas por Barrio', icon: 'MapPinned', section: 'Secretaría', order: 140 } }
+        meta: { permission: 'candidates.view', nav: { label: 'Planchas por Barrio', icon: 'MapPinned', section: 'Secretaría', order: 140 } }
       },
       {
         path: 'planchas/:id', name: 'secretary-plancha-detail', component: SecretaryPlanchaDetailView,
-        meta: { anyPermission: ['slates.capture', 'slates.review'] }
+        meta: { permission: 'candidate_drafts.view' }
       }
     ]
   },
@@ -140,10 +142,10 @@ const routes = [
     children: [
       {
         path: 'dashboard', name: 'jury-dashboard', component: () => import('@/views/jury/JuryDashboardView.vue'),
-        meta: { permission: 'records.upload', nav: { label: 'Actas de mesa', icon: 'Camera', section: 'Jurado', order: 210 } }
+        meta: { permission: 'scrutiny_records.create', nav: { label: 'Actas de mesa', icon: 'Camera', section: 'Jurado', order: 210 } }
       },
-      { path: 'capture', name: 'jury-capture', component: () => import('@/views/jury/CaptureSlatesView.vue'), meta: { permission: 'records.upload' } },
-      { path: 'review', name: 'jury-review', component: () => import('@/views/jury/PreviousReviewView.vue'), meta: { permission: 'records.upload' } }
+      { path: 'capture', name: 'jury-capture', component: () => import('@/views/jury/CaptureSlatesView.vue'), meta: { permission: 'scrutiny_records.create' } },
+      { path: 'review', name: 'jury-review', component: () => import('@/views/jury/PreviousReviewView.vue'), meta: { permission: 'scrutiny_records.create' } }
     ]
   },
 

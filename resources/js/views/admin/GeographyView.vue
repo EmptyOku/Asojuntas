@@ -8,6 +8,7 @@
 
       <div class="flex flex-wrap items-center gap-2">
         <button
+          v-can="'elections.create'"
           type="button"
           class="btn bg-white text-emerald-700 ring-1 ring-emerald-200 hover:bg-emerald-50"
           :disabled="loading || bulkCreateCount === 0"
@@ -18,6 +19,7 @@
           <span class="rounded-full bg-emerald-100 px-1.5 text-[11px] tabular-nums">{{ bulkCreateCount }}</span>
         </button>
         <button
+          v-can="'elections.update'"
           type="button"
           class="btn bg-white text-amber-700 ring-1 ring-amber-200 hover:bg-amber-50"
           :disabled="loading || bulkCloseCount === 0"
@@ -100,7 +102,7 @@
       <div v-if="error" class="mx-5 sm:mx-6 mt-4 rounded-xl bg-red-50 border border-red-200 text-red-700 px-4 py-3 text-sm">{{ error }}</div>
 
       <div class="px-5 sm:px-6 py-2.5 border-b border-gray-100 bg-gray-50/60">
-        <ActionLegend :items="LEGEND_ITEMS" />
+        <ActionLegend v-if="legendItems.length" :items="legendItems" />
       </div>
 
       <div class="table-wrap rounded-none" :class="{ 'opacity-60 transition-opacity': loading && neighborhoods.length }">
@@ -155,6 +157,7 @@
                 <div class="flex justify-end gap-2">
                   <button
                     v-if="!neighborhood.has_active_election"
+                    v-can="'elections.create'"
                     type="button"
                     class="icon-btn-green"
                     data-tooltip="Crear elección"
@@ -167,6 +170,7 @@
                   </button>
                   <button
                     v-else
+                    v-can="'elections.update'"
                     type="button"
                     class="icon-btn-amber"
                     data-tooltip="Cerrar elección"
@@ -179,6 +183,7 @@
                   </button>
                   <RouterLink
                     :to="`/admin/neighborhood/${neighborhood.id}/results`"
+                    v-can="'candidates.view'"
                     class="icon-btn-blue"
                     data-tooltip="Ver resultados"
                     aria-label="Ver resultados"
@@ -267,13 +272,18 @@ import {
 import axios from '@/services/axios';
 import PaginationBar from '@/components/ui/PaginationBar.vue';
 import ActionLegend from '@/components/ui/ActionLegend.vue';
+import { useAuthStore } from '@/stores/auth';
+
+const authStore = useAuthStore();
 
 // Qué hace cada botón de la columna Acciones.
-const LEGEND_ITEMS = [
-  { icon: CalendarPlus, label: 'Crear elección', tone: 'green' },
-  { icon: CalendarX, label: 'Cerrar elección', tone: 'amber' },
-  { icon: BarChart3, label: 'Ver resultados', tone: 'blue' },
+const ALL_LEGEND_ITEMS = [
+  { icon: CalendarPlus, label: 'Crear elección', tone: 'green', permission: 'elections.create' },
+  { icon: CalendarX, label: 'Cerrar elección', tone: 'amber', permission: 'elections.update' },
+  { icon: BarChart3, label: 'Ver resultados', tone: 'blue', permission: 'candidates.view' },
 ];
+// La leyenda solo explica los botones que este usuario ve.
+const legendItems = computed(() => ALL_LEGEND_ITEMS.filter((item) => authStore.can(item.permission)));
 
 const neighborhoods = ref([]);
 const communes = ref([]);

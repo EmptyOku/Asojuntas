@@ -19,7 +19,7 @@ class PrivilegeEscalationTest extends TestCase
     use RefreshDatabase;
     use ElectoralScenario;
 
-    private const ADMIN_PERMISSIONS = ['users.view', 'users.create', 'users.update', 'roles.view', 'roles.manage', 'roles.assign'];
+    private const ADMIN_PERMISSIONS = ['users.view', 'persons.view', 'users.create', 'persons.create', 'users.update', 'persons.update', 'users.reset_password', 'roles.view', 'roles.create', 'roles.update', 'users.assign_role'];
 
     private function superAdminRole(): Role
     {

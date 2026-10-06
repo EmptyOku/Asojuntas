@@ -30,6 +30,18 @@ class CompleteUserManagementController extends Controller
         }
 
         $guard = app(ElectoralAccessGuard::class);
+
+        // Esta operación toca dos tablas: la ruta ya exigió "crear usuarios";
+        // aquí se exige además "crear personas".
+        if (! $guard->hasPermission(Auth::user(), 'persons.create')) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No autorizado para esta acción',
+                'required_permission' => 'persons.create',
+                'required_permissions' => ['users.create', 'persons.create'],
+            ], 403);
+        }
+
         $rolePermissions = $guard->permissionsForRoles($data['roles']);
         $guard->assertCanGrant(Auth::user(), $rolePermissions, 'asignar esos roles');
 

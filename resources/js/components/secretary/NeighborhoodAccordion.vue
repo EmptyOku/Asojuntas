@@ -35,7 +35,7 @@
         <span class="badge-green"><span class="badge-dot"></span> {{ neighborhood.total_approved }} aprobados</span>
 
         <button
-          v-can="'slates.promote'"
+          v-can="'candidate_drafts.promote'"
           type="button"
           class="btn-primary"
           :disabled="isPromoting || promotableTotal === 0"

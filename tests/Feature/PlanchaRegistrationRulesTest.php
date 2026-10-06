@@ -49,7 +49,7 @@ class PlanchaRegistrationRulesTest extends TestCase
     {
         $neighborhood = $this->makeNeighborhood('Barrio Cerrado');
         $election = $this->makeElection($neighborhood);
-        $secretary = $this->makeUser(['slates.capture', 'slates.review']);
+        $secretary = $this->makeUser(['candidate_drafts.view', 'candidate_drafts.create', 'candidate_drafts.update', 'candidate_drafts.approve']);
 
         $batch = $this->capture($secretary, [
             'election_id' => $election->id,
@@ -86,7 +86,7 @@ class PlanchaRegistrationRulesTest extends TestCase
     public function avisa_cuando_un_candidato_ya_esta_registrado(): void
     {
         $election = $this->makeElection($this->makeNeighborhood('Barrio Repetidos'));
-        $secretary = $this->makeUser(['slates.capture', 'slates.review', 'slates.promote']);
+        $secretary = $this->makeUser(['candidate_drafts.view', 'candidate_drafts.create', 'candidate_drafts.update', 'candidate_drafts.approve', 'candidate_drafts.promote']);
 
         // Plancha 1: se aprueba y se oficializa.
         $first = $this->capture($secretary, [
@@ -128,9 +128,43 @@ class PlanchaRegistrationRulesTest extends TestCase
     }
 
     #[Test]
+    public function cada_plancha_registrada_queda_con_su_propio_numero(): void
+    {
+        $election = $this->makeElection($this->makeNeighborhood('Barrio Tres Planchas'));
+        $secretary = $this->makeUser(['candidate_drafts.view', 'candidate_drafts.create', 'candidate_drafts.update', 'candidate_drafts.approve', 'candidate_drafts.promote', 'slates.view', 'candidates.view']);
+        $register = fn (array $extra) => $this->capture($secretary, ['election_id' => $election->id, ...$extra]);
+
+        // Sin número: toma el primero libre. Con número: se respeta.
+        $first = $register(['review_page_data' => $this->cargos([['PRESIDENTE', 'Ana Uno', '7770001']])])->assertCreated();
+        $third = $register(['slate_code' => 'P3', 'review_page_data' => $this->cargos([['PRESIDENTE', 'Ana Tres', '7770003']])])->assertCreated();
+        $second = $register(['review_page_data' => $this->cargos([['PRESIDENTE', 'Ana Dos', '7770002']])])->assertCreated();
+
+        $this->assertSame(['P1', 'P3', 'P2'], [$first->json('data.slate_code'), $third->json('data.slate_code'), $second->json('data.slate_code')]);
+
+        // Un número ya ocupado se rechaza: antes todas caían en la Plancha 1 y se fusionaban.
+        $register(['slate_code' => 'P1', 'review_page_data' => $this->cargos([['PRESIDENTE', 'Otra Persona', '7770009']])])
+            ->assertUnprocessable()->assertJsonValidationErrors('slate_code');
+
+        // El buscador de la captura informa los números ocupados.
+        $this->actingAs($secretary)->getJson('/api/secretary/neighborhoods/search?q=Tres Planchas')
+            ->assertOk()->assertJsonPath('data.0.active_election.occupied_slate_numbers', [1, 2, 3]);
+
+        // Oficializadas, son tres planchas distintas con un cargo cada una.
+        foreach ([$first, $second, $third] as $response) {
+            $batch = $response->json('data.capture_batch_uuid');
+            $this->actingAs($secretary)->postJson('/api/secretary/planchas/drafts/decision/batch', ['decision' => 'approved', 'capture_batch_uuid' => $batch])->assertOk();
+            $this->actingAs($secretary)->postJson('/api/secretary/planchas/drafts/promote', ['capture_batch_uuid' => $batch])->assertOk();
+        }
+
+        $slates = collect($this->actingAs($secretary)->getJson('/api/secretary/planchas/by-neighborhood')->assertOk()->json('data.items.0.slates'));
+        $this->assertSame(['Plancha 1', 'Plancha 2', 'Plancha 3'], $slates->pluck('label')->sort()->values()->all());
+        $this->assertSame([1, 1, 1], $slates->map(fn ($slate) => count($slate['representatives']))->all());
+    }
+
+    #[Test]
     public function oficializar_exige_indicar_la_plancha(): void
     {
-        $this->actingAs($this->makeUser(['slates.promote']))
+        $this->actingAs($this->makeUser(['candidate_drafts.promote']))
             ->postJson('/api/secretary/planchas/drafts/promote', [])
             ->assertUnprocessable()
             ->assertJsonValidationErrors('capture_batch_uuid');
@@ -140,7 +174,7 @@ class PlanchaRegistrationRulesTest extends TestCase
     public function una_plancha_oficializada_sale_de_la_bandeja_y_ya_no_se_modifica(): void
     {
         $election = $this->makeElection($this->makeNeighborhood('Barrio Limpio'));
-        $secretary = $this->makeUser(['slates.capture', 'slates.review', 'slates.promote', 'slates.view']);
+        $secretary = $this->makeUser(['candidate_drafts.view', 'candidate_drafts.create', 'candidate_drafts.update', 'candidate_drafts.approve', 'candidate_drafts.promote', 'slates.view', 'candidates.view']);
         $inbox = fn () => $this->actingAs($secretary)->getJson('/api/secretary/planchas/drafts/grouped')->assertOk()->json('data');
 
         $first = $this->capture($secretary, [
@@ -189,7 +223,7 @@ class PlanchaRegistrationRulesTest extends TestCase
 
         // Plancha desde el OCR (mayúsculas, cédula con puntos).
         $election = $this->makeElection($this->makeNeighborhood('Barrio Formato'));
-        $secretary = $this->makeUser(['slates.capture']);
+        $secretary = $this->makeUser(['candidate_drafts.view', 'candidate_drafts.create', 'candidate_drafts.update']);
         $this->capture($secretary, [
             'election_id' => $election->id,
             'review_page_data' => $this->cargos([['PRESIDENTE', 'MARÍA GÓMEZ', '1.070.622.867']]),
@@ -199,7 +233,7 @@ class PlanchaRegistrationRulesTest extends TestCase
         $this->assertSame(['María', 'Gómez', '1070622867'], [$draft->first_name, $draft->last_name, $draft->document_number]);
 
         // Persona desde el asistente: mismo formato, y el documento con puntos no se duplica.
-        $admin = $this->makeUser(['users.view', 'users.create', 'roles.view', 'roles.assign']);
+        $admin = $this->makeUser(['users.view', 'persons.view', 'users.create', 'persons.create', 'roles.view', 'users.assign_role']);
         $payload = [
             'document_type_id' => DocumentType::firstOrCreate(['code' => 'CC'], ['name' => 'Cédula de ciudadanía'])->id,
             'document_number' => '1.070.111.222',

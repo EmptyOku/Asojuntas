@@ -20,24 +20,23 @@ class RolePermissionSeeder extends Seeder
         $matrix = [
             // Super admin recibe todo lo que declara el catálogo.
             'super_admin' => PermissionCatalog::names(),
-            'admin_electoral' => [
-                'dashboard.view', 'geography.view', 'geography.manage', 'map.view', 'candidates.view',
-                'users.view', 'users.create', 'users.update',
-                'roles.view', 'roles.manage', 'roles.assign',
-                'elections.view', 'elections.create', 'elections.update',
-                'records.upload', 'records.review', 'records.approve',
-                'slates.view', 'slates.capture', 'slates.review', 'slates.promote',
-                'reports.view', 'audit.view',
-            ],
-            'digitizer' => [
-                'elections.view',
-                'records.upload',
-                'reports.view',
-            ],
-            'consultant' => [
-                'elections.view',
-                'reports.view',
-            ],
+            // Administra el proceso electoral completo. Queda fuera lo que es del
+            // Super Admin: los catálogos base, las mesas, y eliminar cuentas,
+            // elecciones, planchas o candidatos.
+            'admin_electoral' => array_values(array_diff(PermissionCatalog::names(), [
+                'communes.create', 'communes.update', 'communes.delete',
+                'document_types.view', 'document_types.create', 'document_types.update', 'document_types.delete',
+                'blocks.view', 'blocks.create', 'blocks.update', 'blocks.delete',
+                'positions.view', 'positions.create', 'positions.update', 'positions.delete',
+                'polling_tables.create', 'polling_tables.update', 'polling_tables.delete',
+                'persons.delete', 'users.delete', 'elections.delete',
+                'slates.update', 'slates.delete',
+                'candidate_drafts.delete', 'candidate_drafts.extract',
+                'candidates.update', 'candidates.delete',
+            ])),
+            // Jurado: sube el acta de su barrio.
+            'digitizer' => ['elections.view', 'polling_tables.view', 'scrutiny_records.create'],
+            'consultant' => ['elections.view', 'polling_tables.view'],
         ];
 
         $rows = [];

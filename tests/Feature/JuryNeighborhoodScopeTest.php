@@ -43,7 +43,7 @@ class JuryNeighborhoodScopeTest extends TestCase
         $mesaAjena = $this->makePollingTable($eleccionAjena);
 
         $barrioPropio = $this->makeNeighborhood('Barrio Propio');
-        $jurado = $this->makeUser(['records.upload'], $barrioPropio);
+        $jurado = $this->makeUser(['scrutiny_records.create'], $barrioPropio);
 
         $this->actingAs($jurado)
             ->postJson('/api/jury/submit', $this->payload($mesaAjena->id))
@@ -60,7 +60,7 @@ class JuryNeighborhoodScopeTest extends TestCase
 
         // Sin barrio: antes de la corrección esto pasaba el control y permitía
         // cargar en cualquier mesa del sistema.
-        $juradoSinBarrio = $this->makeUser(['records.upload'], null);
+        $juradoSinBarrio = $this->makeUser(['scrutiny_records.create'], null);
 
         $this->actingAs($juradoSinBarrio)
             ->postJson('/api/jury/submit', $this->payload($mesa->id))
@@ -74,7 +74,7 @@ class JuryNeighborhoodScopeTest extends TestCase
         $barrio = $this->makeNeighborhood('Barrio Propio');
         $eleccion = $this->makeElection($barrio);
         $mesa = $this->makePollingTable($eleccion);
-        $jurado = $this->makeUser(['records.upload'], $barrio);
+        $jurado = $this->makeUser(['scrutiny_records.create'], $barrio);
 
         $this->actingAs($jurado)
             ->postJson('/api/jury/submit', $this->payload($mesa->id))

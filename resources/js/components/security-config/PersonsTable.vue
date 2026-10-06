@@ -55,7 +55,7 @@
             </td>
             <td>
               <div class="flex justify-end">
-                <button v-can="'users.update'" type="button" class="icon-btn-blue" data-tooltip="Editar persona" aria-label="Editar persona" @click="$emit('edit-person', person)">
+                <button v-can="'persons.update'" type="button" class="icon-btn-blue" data-tooltip="Editar persona" aria-label="Editar persona" @click="$emit('edit-person', person)">
                   <Pencil class="w-4 h-4" />
                 </button>
               </div>
@@ -118,7 +118,7 @@ import ActionLegend from '@/components/ui/ActionLegend.vue';
 import { useAuthStore } from '@/stores/auth';
 
 const authStore = useAuthStore();
-const legendItems = computed(() => (authStore.can('users.update')
+const legendItems = computed(() => (authStore.can('persons.update')
   ? [{ icon: Pencil, label: 'Editar datos de la persona', tone: 'blue' }]
   : []));
 

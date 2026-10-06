@@ -25,7 +25,7 @@
         class="badge-red sm:ml-auto"
         data-tooltip="Este barrio ya tiene un acta aprobada: no admite planchas nuevas."
       ><Lock class="w-3 h-3" /> Registro cerrado</span>
-      <button v-else v-can="'slates.capture'" type="button" class="btn-secondary sm:ml-auto" @click="router.push({ name: 'secretary-capture' })">
+      <button v-else v-can="'candidate_drafts.create'" type="button" class="btn-secondary sm:ml-auto" @click="router.push({ name: 'secretary-capture' })">
         <Plus class="w-4 h-4" /> Escanear otra plancha
       </button>
     </div>
@@ -44,7 +44,7 @@
           <Eye class="w-4 h-4" /> Ver / Editar
         </button>
         <button
-          v-can="'slates.review'"
+          v-can="'candidate_drafts.approve'"
           type="button"
           class="btn-secondary !text-red-600 hover:!bg-red-50 hover:!border-red-200"
           :disabled="currentBatch.pending === 0 || deciding"
@@ -53,7 +53,7 @@
           <X class="w-4 h-4" /> Rechazar lote
         </button>
         <button
-          v-can="'slates.review'"
+          v-can="'candidate_drafts.approve'"
           type="button"
           class="btn-primary"
           :disabled="currentBatch.pending === 0 || deciding"

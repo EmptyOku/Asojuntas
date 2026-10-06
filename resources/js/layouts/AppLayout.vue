@@ -46,7 +46,7 @@
           <!-- Campana: solo para quien revisa actas o planchas (el punto rojo antes era fijo). -->
           <NotificationBell />
 
-          <div v-if="authStore.canAny(['records.review', 'slates.view'])" class="h-8 w-px bg-gray-200 hidden sm:block"></div>
+          <div v-if="authStore.canAny(['scrutiny_records.view', 'slates.view'])" class="h-8 w-px bg-gray-200 hidden sm:block"></div>
 
           <div>
             <button type="button" class="flex items-center gap-3 rounded-xl p-1 sm:pr-3 hover:bg-gray-100 transition-colors focus:outline-none" aria-label="Menú de usuario" @click="isProfileOpen = !isProfileOpen">

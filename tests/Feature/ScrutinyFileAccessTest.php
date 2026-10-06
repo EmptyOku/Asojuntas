@@ -55,7 +55,7 @@ class ScrutinyFileAccessTest extends TestCase
         $barrio = $this->makeNeighborhood('Barrio Propio');
         $eleccion = $this->makeElection($barrio);
         $mesa = $this->makePollingTable($eleccion);
-        $jurado = $this->makeUser(['records.upload'], $barrio);
+        $jurado = $this->makeUser(['scrutiny_records.create'], $barrio);
 
         $archivo = $this->makeRecordFile($jurado->id, $eleccion->id, $mesa->id);
 
@@ -70,10 +70,10 @@ class ScrutinyFileAccessTest extends TestCase
         $barrioA = $this->makeNeighborhood('Barrio A');
         $eleccionA = $this->makeElection($barrioA);
         $mesaA = $this->makePollingTable($eleccionA);
-        $autor = $this->makeUser(['records.upload'], $barrioA);
+        $autor = $this->makeUser(['scrutiny_records.create'], $barrioA);
 
         $barrioB = $this->makeNeighborhood('Barrio B');
-        $intruso = $this->makeUser(['records.upload'], $barrioB);
+        $intruso = $this->makeUser(['scrutiny_records.create'], $barrioB);
 
         $archivo = $this->makeRecordFile($autor->id, $eleccionA->id, $mesaA->id);
 
@@ -88,10 +88,10 @@ class ScrutinyFileAccessTest extends TestCase
         $barrioA = $this->makeNeighborhood('Barrio A');
         $eleccionA = $this->makeElection($barrioA);
         $mesaA = $this->makePollingTable($eleccionA);
-        $autor = $this->makeUser(['records.upload'], $barrioA);
+        $autor = $this->makeUser(['scrutiny_records.create'], $barrioA);
 
         $barrioB = $this->makeNeighborhood('Barrio B');
-        $revisor = $this->makeUser(['records.upload', 'records.review'], $barrioB);
+        $revisor = $this->makeUser(['scrutiny_records.create', 'scrutiny_records.view', 'scrutiny_records.approve'], $barrioB);
 
         $archivo = $this->makeRecordFile($autor->id, $eleccionA->id, $mesaA->id);
 
@@ -105,10 +105,10 @@ class ScrutinyFileAccessTest extends TestCase
     {
         $barrioA = $this->makeNeighborhood('Barrio A');
         $eleccionA = $this->makeElection($barrioA);
-        $secretaria = $this->makeUser(['slates.capture'], $barrioA);
+        $secretaria = $this->makeUser(['candidate_drafts.view', 'candidate_drafts.create', 'candidate_drafts.update'], $barrioA);
 
         $barrioB = $this->makeNeighborhood('Barrio B');
-        $intruso = $this->makeUser(['slates.capture'], $barrioB);
+        $intruso = $this->makeUser(['candidate_drafts.view', 'candidate_drafts.create', 'candidate_drafts.update'], $barrioB);
 
         Storage::disk('local')->put('planchas/evidencia.jpg', 'cedula-escaneada');
 

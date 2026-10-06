@@ -39,7 +39,7 @@ class UserWizardCreationTest extends TestCase
 
     private function admin(): User
     {
-        return $this->makeUser(['users.view', 'users.create', 'roles.view', 'roles.assign']);
+        return $this->makeUser(['users.view', 'persons.view', 'users.create', 'persons.create', 'roles.view', 'users.assign_role']);
     }
 
     #[Test]

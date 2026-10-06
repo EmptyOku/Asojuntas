@@ -102,7 +102,7 @@ const PER_PAGE = 8;
 
 const router = useRouter();
 const authStore = useAuthStore();
-const canSee = computed(() => authStore.canAny(['records.review', 'slates.view']));
+const canSee = computed(() => authStore.canAny(['scrutiny_records.view', 'slates.view']));
 
 const root = ref(null);
 const open = ref(false);
@@ -178,7 +178,7 @@ const go = (item) => {
     router.push(`/admin/audit/${item.record_id}`);
     return;
   }
-  if (item.type === 'plancha' && item.batch && authStore.canAny(['slates.review', 'slates.capture'])) {
+  if (item.type === 'plancha' && item.batch && authStore.can('candidate_drafts.view')) {
     router.push({
       name: 'secretary-plancha-detail',
       params: { id: item.batch },

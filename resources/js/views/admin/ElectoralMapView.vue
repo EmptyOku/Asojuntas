@@ -298,6 +298,7 @@
               </select>
               <button
                 type="button"
+                v-can="'neighborhoods.create'"
                 @click="startCreatingBarrio"
                 :disabled="!locateCommuneId"
                 data-tooltip="Agregar un barrio nuevo"
@@ -350,6 +351,7 @@
               </button>
               <button
                 type="button"
+                v-can="'neighborhoods.delete'"
                 @click="askDeleteBarrio"
                 :disabled="locateSaving"
                 data-tooltip="Eliminar este barrio"
@@ -644,7 +646,7 @@ const showResult = (success, title, message) => {
 
 const router = useRouter();
 const authStore = useAuthStore();
-const canEditLocation = computed(() => authStore.permissions?.includes('elections.update'));
+const canEditLocation = computed(() => authStore.can('neighborhoods.update'));
 
 // Un color por comuna (identidad), deliberadamente lejos del rojo/verde/
 // blanco que usa el semaforo (estado de actas), para no confundir "de que

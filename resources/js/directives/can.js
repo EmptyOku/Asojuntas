@@ -4,8 +4,8 @@ import { useAuthStore } from '@/stores/auth';
 /**
  * v-can: oculta un elemento si el usuario no tiene el permiso.
  *
- *   <button v-can="'records.approve'">Aprobar</button>
- *   <button v-can="['slates.review', 'slates.promote']">…</button>   // basta con uno
+ *   <button v-can="'scrutiny_records.approve'">Aprobar</button>
+ *   <button v-can="['candidate_drafts.approve', 'candidate_drafts.promote']">…</button>   // basta con uno
  *
  * Solo oculta (display: none): es para acciones dentro de una pantalla. Para
  * no montar un componente, usa v-if="auth.can('…')". La seguridad real la

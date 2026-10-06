@@ -29,6 +29,12 @@ class PermissionManagementController extends Controller
                 return $permission->toArray() + [
                     'module' => $module,
                     'module_label' => $meta['module_label'] ?? ucfirst($module),
+                    // Tabla y operación (ver | create | update | delete), o acción especial.
+                    'group' => $meta['group'] ?? 'special',
+                    'group_label' => $meta['group_label'] ?? 'Otros',
+                    'action' => $meta['action'] ?? 'special',
+                    'special' => $meta['special'] ?? true,
+                    'related_resource' => $meta['related_resource'] ?? null,
                     'screen' => $meta['screen'] ?? false,
                     'depends_on' => $meta['depends_on'] ?? [],
                     'scope_note' => $meta['scope_note'] ?? null,
@@ -41,6 +47,9 @@ class PermissionManagementController extends Controller
         return response()->json([
             'success' => true,
             'data' => $permissions,
+            // Las tablas y sus operaciones, para pintar la matriz de roles.
+            'resources' => PermissionCatalog::resources(),
+            'crud_actions' => PermissionCatalog::CRUD_ACTIONS,
         ]);
     }
 }

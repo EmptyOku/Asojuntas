@@ -71,10 +71,10 @@
                 <button v-can="'users.update'" type="button" class="icon-btn-blue" data-tooltip="Editar usuario" aria-label="Editar usuario" @click="$emit('edit-user', user)">
                   <Pencil class="w-4 h-4" />
                 </button>
-                <button v-can="'roles.assign'" type="button" class="icon-btn-amber" data-tooltip="Cambiar rol" aria-label="Cambiar rol" @click="$emit('edit-roles', user)">
+                <button v-can="'users.assign_role'" type="button" class="icon-btn-amber" data-tooltip="Cambiar rol" aria-label="Cambiar rol" @click="$emit('edit-roles', user)">
                   <ShieldCheck class="w-4 h-4" />
                 </button>
-                <button v-can="'users.update'" type="button" class="icon-btn-gray" data-tooltip="Restablecer contraseña" aria-label="Restablecer contraseña" @click="$emit('reset-password', user)">
+                <button v-can="'users.reset_password'" type="button" class="icon-btn-gray" data-tooltip="Restablecer contraseña" aria-label="Restablecer contraseña" @click="$emit('reset-password', user)">
                   <KeyRound class="w-4 h-4" />
                 </button>
                 <button
@@ -176,8 +176,8 @@ const authStore = useAuthStore();
 // Leyenda de la columna Acciones: solo lo que este usuario puede hacer.
 const legendItems = computed(() => [
   { icon: Pencil, label: 'Editar datos', tone: 'blue', permission: 'users.update' },
-  { icon: ShieldCheck, label: 'Cambiar rol', tone: 'amber', permission: 'roles.assign' },
-  { icon: KeyRound, label: 'Restablecer contraseña', tone: 'gray', permission: 'users.update' },
+  { icon: ShieldCheck, label: 'Cambiar rol', tone: 'amber', permission: 'users.assign_role' },
+  { icon: KeyRound, label: 'Restablecer contraseña', tone: 'gray', permission: 'users.reset_password' },
   { icon: Power, label: 'Deshabilitar', tone: 'red', permission: 'users.update' },
   { icon: Power, label: 'Habilitar', tone: 'green', permission: 'users.update' },
 ].filter((item) => authStore.can(item.permission)));

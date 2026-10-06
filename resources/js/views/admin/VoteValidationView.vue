@@ -120,10 +120,10 @@
             Esta acta ya está aprobada y sus votos cuentan en los resultados.
           </p>
           <div class="flex items-center justify-between gap-3">
-            <button @click="openDecision('rejected')" :disabled="isSubmitting" class="px-3 lg:px-4 py-2 text-xs lg:text-sm font-semibold text-red-600 bg-white border border-red-200 hover:bg-red-50 rounded-xl transition-colors disabled:opacity-60">
+            <button v-can="'scrutiny_records.approve'" @click="openDecision('rejected')" :disabled="isSubmitting" class="px-3 lg:px-4 py-2 text-xs lg:text-sm font-semibold text-red-600 bg-white border border-red-200 hover:bg-red-50 rounded-xl transition-colors disabled:opacity-60">
               Rechazar
             </button>
-            <button @click="openDecision('approved')" :disabled="isSubmitting" class="flex-1 lg:flex-none px-4 lg:px-6 py-2 text-xs lg:text-sm font-semibold text-white bg-aso-primary hover:bg-aso-primary-dark shadow-md rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-60">
+            <button v-can="'scrutiny_records.approve'" @click="openDecision('approved')" :disabled="isSubmitting" class="flex-1 lg:flex-none px-4 lg:px-6 py-2 text-xs lg:text-sm font-semibold text-white bg-aso-primary hover:bg-aso-primary-dark shadow-md rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-60">
               <Save class="w-4 h-4" /> Confirmar Datos
             </button>
           </div>

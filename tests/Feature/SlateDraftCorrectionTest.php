@@ -29,7 +29,7 @@ class SlateDraftCorrectionTest extends TestCase
     public function el_detalle_carga_el_lote_completo_con_total(): void
     {
         $election = $this->makeElection($this->makeNeighborhood('Barrio Detalle'));
-        $secretary = $this->makeUser(['slates.capture', 'slates.review']);
+        $secretary = $this->makeUser(['candidate_drafts.view', 'candidate_drafts.create', 'candidate_drafts.update', 'candidate_drafts.approve']);
 
         $cargos = collect(range(1, 3))->flatMap(fn ($n) => [
             ['puesto' => "DELEGADO ASOJUNTAS {$n}", 'nombre' => "Delegado {$n}", 'identificacion' => "10{$n}0"],
@@ -52,7 +52,7 @@ class SlateDraftCorrectionTest extends TestCase
         $election = $this->makeElection($this->makeNeighborhood('Barrio Original'));
         // Otra elección activa más reciente: antes, sin election_id, se guardaba ahí.
         $this->makeElection($this->makeNeighborhood('Barrio Ajeno'));
-        $secretary = $this->makeUser(['slates.capture', 'slates.review']);
+        $secretary = $this->makeUser(['candidate_drafts.view', 'candidate_drafts.create', 'candidate_drafts.update', 'candidate_drafts.approve']);
 
         $batch = $this->capture($secretary, $election->id, [
             ['puesto' => 'PRESIDENTE', 'nombre' => 'Ana Prueba', 'identificacion' => '5550001'],
@@ -82,7 +82,7 @@ class SlateDraftCorrectionTest extends TestCase
         $this->assertSame('approved', $corregido->review_status, 'Conserva la aprobación.');
 
         // Ya con documento, la oficialización del lote no omite a nadie.
-        $promotion = $this->actingAs($this->makeUser(['slates.promote', 'slates.review']))
+        $promotion = $this->actingAs($this->makeUser(['candidate_drafts.promote', 'candidate_drafts.view', 'candidate_drafts.approve']))
             ->postJson('/api/secretary/planchas/drafts/promote', ['capture_batch_uuid' => $batch])
             ->assertOk();
         $this->assertSame(0, $promotion->json('data.skipped'));

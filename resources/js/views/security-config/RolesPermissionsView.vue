@@ -20,7 +20,7 @@
     </div>
 
     <UserCreationWizard
-      v-if="authStore.can('users.create')"
+      v-if="authStore.can('users.create') && authStore.can('persons.create')"
       v-show="activeTab === 'create'"
       :communes="communes"
       :roles="roles"
@@ -32,6 +32,7 @@
     <template v-if="activeTab === 'roles'">
       <RoleCatalogEditor
         :permissions="permissions"
+        :resources="permissionResources"
         @reload="loadRoles"
         @reload-users="loadUsers"
         @show-result="showResult"
@@ -46,7 +47,7 @@
             <p class="page-subtitle">Consulta y edita las personas registradas.</p>
           </div>
           <button
-            v-can="'users.create'"
+            v-can="'persons.create'"
             type="button"
             class="btn-primary px-3"
             @click="creatingPersonOpen = true"
@@ -164,15 +165,16 @@ const authStore = useAuthStore();
 // Cada pestaña se muestra solo con el permiso que exige su API.
 // Orden: primero crear y consultar cuentas (lo más usado), al final la configuración de roles.
 const TABS = [
-  { key: 'create', label: 'Nueva cuenta', permission: 'users.create', icon: UserPlus },
-  { key: 'users', label: 'Usuarios', permission: 'users.view', icon: Users },
-  { key: 'persons', label: 'Personas', permission: 'users.view', icon: IdCard },
-  { key: 'roles', label: 'Roles y permisos', permission: 'roles.view', icon: ShieldCheck },
+  // "Nueva cuenta" crea persona y usuario: exige los dos permisos.
+  { key: 'create', label: 'Nueva cuenta', permissions: ['users.create', 'persons.create'], icon: UserPlus },
+  { key: 'users', label: 'Usuarios', permissions: ['users.view'], icon: Users },
+  { key: 'persons', label: 'Personas', permissions: ['persons.view'], icon: IdCard },
+  { key: 'roles', label: 'Roles y permisos', permissions: ['roles.view'], icon: ShieldCheck },
 ];
 
 // Registros por página de los listados de personas y usuarios.
 const DEFAULT_PER_PAGE = 10;
-const visibleTabs = computed(() => TABS.filter((tab) => authStore.can(tab.permission)));
+const visibleTabs = computed(() => TABS.filter((tab) => tab.permissions.every((permission) => authStore.can(permission))));
 
 const loading = ref(false);
 const activeTab = ref(visibleTabs.value[0]?.key ?? 'users');
@@ -182,6 +184,8 @@ const users = ref([]);
 const persons = ref([]);
 const roles = ref([]);
 const permissions = ref([]);
+// Tablas del catálogo con sus operaciones (filas de la matriz de roles).
+const permissionResources = ref([]);
 const communes = ref([]);
 const assignmentContext = ref([]);
 
@@ -223,6 +227,7 @@ const loadRoles = async () => {
 const loadPermissions = async () => {
   const { data } = await axios.get('/admin/permissions', { skipGlobalLoading: true });
   permissions.value = data.data ?? [];
+  permissionResources.value = data.resources ?? [];
 };
 
 // El listado se pagina y se filtra en el backend (usuario/correo/documento/nombre/barrio/comuna),
@@ -318,10 +323,10 @@ const loadAssignmentContext = async () => {
 const LOADERS = {
   communes: { load: loadCommunes },
   roles: { load: loadRoles, permission: 'roles.view' },
-  permissions: { load: loadPermissions, permission: 'roles.view' },
+  permissions: { load: loadPermissions, permission: 'permissions.view' },
   users: { load: loadUsers, permission: 'users.view' },
   assignment: { load: loadAssignmentContext, permission: 'users.view' },
-  persons: { load: loadPersons, permission: 'users.view' },
+  persons: { load: loadPersons, permission: 'persons.view' },
 };
 
 // RoleCatalogEditor carga sus propios roles; aquí solo necesita los permisos.

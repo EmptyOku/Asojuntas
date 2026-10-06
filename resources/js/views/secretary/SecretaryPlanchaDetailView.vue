@@ -27,6 +27,7 @@
         </span>
         <button
           v-else-if="!isEditing"
+          v-can="'candidate_drafts.update'"
           @click="requestEditing"
           class="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 hover:border-aso-primary hover:text-aso-primary text-gray-700 text-sm font-bold rounded-xl shadow-sm transition-colors"
         >
@@ -44,6 +45,7 @@
 
         <button
           v-if="currentBatchUuid"
+          v-can="'candidate_drafts.promote'"
           @click="confirmPromote = true"
           :disabled="isPromoting || promotableDraftCount === 0"
           class="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-xl shadow-sm transition-colors"
@@ -535,7 +537,8 @@ const createCargo = () => ({ nombre: '', identificacion: '', celular: '', correo
 const planchaData = reactive({
   numero: route.query.plancha_number ? `Plancha No. ${route.query.plancha_number}` : 'Plancha No. 1',
   nombreBarrio: route.query.neighborhood_name || 'Cargando territorio...',
-  nombrePlancha: 'Transparencia Comunal',
+  // Título de la pantalla (antes era un nombre fijo de ejemplo).
+  nombrePlancha: route.query.plancha_number ? `Plancha ${route.query.plancha_number}` : 'Plancha',
   bloque1: {
     presidente: createCargo(),
     vicepresidente: createCargo(),
@@ -1061,7 +1064,7 @@ const persistPlancha = () => {
         router.replace({
           name: 'secretary-plancha-detail',
           params: { id: route.params.id || 'preview' },
-          query: { batch: captureBatchUuid },
+          query: { batch: captureBatchUuid, plancha_number: route.query.plancha_number, neighborhood_name: route.query.neighborhood_name },
         });
 
         let message = '';

@@ -16,14 +16,14 @@ use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
  */
 class ElectoralAccessGuard
 {
-    /** Permiso que habilita a revisar material de cualquier barrio. */
-    public const REVIEW_PERMISSION = 'records.review';
+    /** Permiso que habilita a revisar material de cualquier barrio (ver las actas). */
+    public const REVIEW_PERMISSION = 'scrutiny_records.view';
 
-    /** Permiso de captura de actas del jurado. */
-    public const JURY_PERMISSION = 'records.upload';
+    /** Permiso de captura de actas del jurado (crear actas). */
+    public const JURY_PERMISSION = 'scrutiny_records.create';
 
     /** Permisos cuyo uso queda limitado al barrio del usuario (si no es revisor). */
-    public const NEIGHBORHOOD_SCOPED_PERMISSIONS = ['records.upload', 'slates.capture'];
+    public const NEIGHBORHOOD_SCOPED_PERMISSIONS = ['scrutiny_records.create', 'candidate_drafts.create'];
 
     /** @var array<int, Collection<int, string>> Memo por request, evita reconsultar roles. */
     private array $permissionCache = [];
@@ -117,7 +117,7 @@ class ElectoralAccessGuard
     }
 
     /**
-     * Sin records.review, capturar actas o planchas solo funciona dentro del
+     * Sin "ver actas" (scrutiny_records.view), capturar actas o planchas solo funciona dentro del
      * barrio propio (ver canReachNeighborhood), así que esos permisos exigen barrio.
      *
      * @param  Collection<int, string>  $permissions

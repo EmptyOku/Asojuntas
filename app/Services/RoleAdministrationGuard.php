@@ -12,12 +12,13 @@ use Illuminate\Validation\ValidationException;
  *
  * preserve() aplica el cambio (editar o desactivar un rol, cambiar los roles de
  * un usuario, desactivar un usuario) dentro de una transacción: si antes había
- * al menos un usuario activo con roles.manage y después no queda ninguno, lanza
+ * al menos un usuario activo con roles.update y después no queda ninguno, lanza
  * una ValidationException (422) y la transacción se revierte.
  */
 class RoleAdministrationGuard
 {
-    public const MANAGE_PERMISSION = 'roles.manage';
+    /** Editar roles: sin nadie que lo tenga, el sistema queda sin administrador de accesos. */
+    public const MANAGE_PERMISSION = 'roles.update';
 
     /**
      * @template T
@@ -36,7 +37,7 @@ class RoleAdministrationGuard
 
             if ($hadManagers && ! $this->managersRemain()) {
                 throw ValidationException::withMessages([
-                    'roles' => 'El cambio dejaría el sistema sin ningún usuario activo que pueda administrar roles (permiso "roles.manage"). Asigna ese permiso a otro usuario antes de hacerlo.',
+                    'roles' => 'El cambio dejaría el sistema sin ningún usuario activo que pueda administrar roles (permiso "Editar roles"). Asigna ese permiso a otro usuario antes de hacerlo.',
                 ]);
             }
 

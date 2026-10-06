@@ -69,7 +69,7 @@ class RoleManagementController extends Controller
 
     /**
      * Permisos pedidos (IDs o nombres) más, en cascada, los que exigen según
-     * PermissionCatalog (p. ej. slates.promote trae slates.review), para que un
+     * PermissionCatalog (p. ej. persons.create trae persons.view), para que un
      * rol nunca quede con una acción sin la pantalla o permiso que necesita.
      */
     private function resolvePermissions(array $rawPermissions): Collection

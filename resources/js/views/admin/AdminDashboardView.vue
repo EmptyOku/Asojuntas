@@ -19,7 +19,7 @@
           <RefreshCw class="w-4 h-4" :class="{ 'animate-spin': isLoading }" />
           Actualizar
         </button>
-        <router-link v-can="'records.review'" to="/admin/audit" class="btn-primary">
+        <router-link v-can="'scrutiny_records.view'" to="/admin/audit" class="btn-primary">
           <FileCheck class="w-4 h-4" />
           Auditar actas
         </router-link>
@@ -196,7 +196,7 @@
             <MapPin class="w-4 h-4" />
             Mapa
           </router-link>
-          <router-link v-can="'audit.view'" to="/admin/audit-logs" class="btn-secondary">
+          <router-link v-can="'audit_logs.view'" to="/admin/audit-logs" class="btn-secondary">
             <ClipboardList class="w-4 h-4" />
             Bitácora
           </router-link>
