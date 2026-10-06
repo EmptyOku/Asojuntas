@@ -18,6 +18,7 @@ use App\Http\Controllers\Api\Admin\PermissionManagementController;
 use App\Http\Controllers\Api\Admin\RoleManagementController;
 use App\Http\Controllers\Api\Admin\UserManagementController;
 use App\Http\Controllers\Api\Admin\CompleteUserManagementController;
+use App\Http\Controllers\Api\Admin\DatabaseBackupController;
 use App\Http\Controllers\Api\Admin\NotificationController;
 use App\Http\Controllers\Api\Admin\PanelController;
 use App\Http\Controllers\Api\Admin\AuditManagementController;
@@ -237,6 +238,10 @@ Route::prefix('api')->name('api.')->group(function (): void {
             // el controlador y no el middleware de la ruta.
             // =========================================================
             Route::get('/panel/resources', [PanelController::class, 'resources'])->name('admin.panel.resources');
+            // Copia de seguridad de toda la base (va antes de /panel/{resource}).
+            Route::get('/panel/backup', [DatabaseBackupController::class, 'download'])
+                ->middleware('api.permission:database.backup')
+                ->name('admin.panel.backup');
             Route::prefix('panel/{resource}')->where(['resource' => '[a-z_]+'])->group(function (): void {
                 Route::get('/options', [PanelController::class, 'options'])->name('admin.panel.options');
                 Route::get('/', [PanelController::class, 'index'])->name('admin.panel.index');

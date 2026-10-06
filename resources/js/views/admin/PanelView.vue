@@ -1,13 +1,22 @@
 <template>
   <div class="space-y-6">
     <!-- Encabezado -->
-    <section class="card p-5 sm:p-6">
-      <p class="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.12em] text-aso-primary">
-        <Database class="w-3.5 h-3.5" />
-        Panel de datos
-      </p>
-      <h2 class="page-title mt-1">Administración por tabla</h2>
-      <p class="page-subtitle">Consulta, crea, edita y elimina los datos de cada tabla. Solo ves las tablas y los botones que tu rol permite.</p>
+    <section class="card p-5 sm:p-6 flex flex-col lg:flex-row lg:items-center gap-4">
+      <div class="min-w-0 flex-1">
+        <p class="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.12em] text-aso-primary">
+          <Database class="w-3.5 h-3.5" />
+          Panel de datos
+        </p>
+        <h2 class="page-title mt-1">Administración por tabla</h2>
+        <p class="page-subtitle">Consulta, crea, edita y elimina los datos de cada tabla. Solo ves las tablas y los botones que tu rol permite.</p>
+      </div>
+
+      <!-- Copia de seguridad de toda la base: permiso propio (database.backup). -->
+      <button v-if="authStore.can('database.backup')" type="button" class="btn-secondary shrink-0 self-start lg:self-center" :disabled="backingUp" @click="confirmBackup = true">
+        <Loader2 v-if="backingUp" class="w-4 h-4 animate-spin" />
+        <DatabaseBackup v-else class="w-4 h-4 text-aso-primary" />
+        {{ backingUp ? 'Generando copia…' : 'Copia de seguridad' }}
+      </button>
     </section>
 
     <div v-if="loadingResources" class="card h-64 animate-pulse"></div>
@@ -261,6 +270,21 @@
       @cancel="rowToDelete = null"
     />
 
+    <ConfirmModal
+      :open="confirmBackup"
+      title="¿Descargar una copia de la base de datos?"
+      message="Se generará un archivo con todos los datos del sistema, para guardarlo como respaldo."
+      confirm-text="Descargar copia"
+      @confirm="downloadBackup"
+      @cancel="confirmBackup = false"
+    >
+      <ul class="space-y-1.5 rounded-xl bg-amber-50 px-4 py-3 ring-1 ring-amber-100 text-amber-900 text-sm">
+        <li>Incluye datos personales (nombres, cédulas, celulares) y las contraseñas cifradas: guárdalo en un lugar seguro y no lo compartas.</li>
+        <li>No incluye las sesiones abiertas ni las fotos de actas y planchas (esas son archivos, no están en la base).</li>
+        <li>La descarga queda registrada en la bitácora.</li>
+      </ul>
+    </ConfirmModal>
+
     <ResultModal :open="result.open" :success="result.success" :title="result.title" :message="result.message" @close="result.open = false" />
   </div>
 </template>
@@ -269,9 +293,10 @@
 import { computed, onMounted, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {
-  Database, Eye, Info, Loader2, Pencil, Plus, RotateCcw, Search, Trash2, X
+  Database, DatabaseBackup, Eye, Info, Loader2, Pencil, Plus, RotateCcw, Search, Trash2, X
 } from 'lucide-vue-next';
 import axios from '@/services/axios';
+import { useAuthStore } from '@/stores/auth';
 import ActionLegend from '@/components/ui/ActionLegend.vue';
 import PaginationBar from '@/components/ui/PaginationBar.vue';
 import ConfirmModal from '@/components/ConfirmModal.vue';
@@ -285,6 +310,7 @@ const INPUT_TYPES = { text: 'text', email: 'email', number: 'number', decimal: '
 
 const route = useRoute();
 const router = useRouter();
+const authStore = useAuthStore();
 
 const loadingResources = ref(true);
 const resources = ref([]);
@@ -488,6 +514,50 @@ const restore = async (row) => {
     showResult(false, 'No se pudo restaurar', errorMessage(error, 'No fue posible restaurar el registro.'));
   } finally {
     busyId.value = null;
+  }
+};
+
+// ------------------------------------------------------------------ copia de seguridad
+
+const confirmBackup = ref(false);
+const backingUp = ref(false);
+
+const downloadBackup = async () => {
+  confirmBackup.value = false;
+  backingUp.value = true;
+  try {
+    const response = await axios.get('/admin/panel/backup', {
+      responseType: 'blob',
+      timeout: 300000, // una base grande tarda en generarse
+      skipGlobalLoading: true,
+    });
+
+    const disposition = response.headers?.['content-disposition'] ?? '';
+    const filename = disposition.match(/filename="?([^";]+)"?/)?.[1] ?? 'asojuntas-backup';
+
+    const url = URL.createObjectURL(response.data);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+    const megabytes = (response.data.size / 1024 / 1024).toFixed(1);
+    showResult(true, 'Copia descargada', `Se descargó "${filename}" (${megabytes} MB). Guárdala en un lugar seguro.`);
+  } catch (error) {
+    // Con responseType "blob" el mensaje de error del servidor también llega como archivo.
+    let message = 'No se pudo generar la copia de seguridad.';
+    try {
+      const text = await error?.response?.data?.text?.();
+      message = (text && JSON.parse(text).message) || message;
+    } catch {
+      // se deja el mensaje genérico
+    }
+    showResult(false, 'No se pudo descargar la copia', message);
+  } finally {
+    backingUp.value = false;
   }
 };
 

@@ -21,8 +21,8 @@ class RolePermissionSeeder extends Seeder
             // Super admin recibe todo lo que declara el catálogo.
             'super_admin' => PermissionCatalog::names(),
             // Administra el proceso electoral completo. Queda fuera lo que es del
-            // Super Admin: los catálogos base, las mesas, y eliminar cuentas,
-            // elecciones, planchas o candidatos.
+            // Super Admin: los catálogos base, las mesas, eliminar cuentas,
+            // elecciones, planchas o candidatos, y la copia de la base de datos.
             'admin_electoral' => array_values(array_diff(PermissionCatalog::names(), [
                 'communes.create', 'communes.update', 'communes.delete',
                 'document_types.view', 'document_types.create', 'document_types.update', 'document_types.delete',
@@ -33,6 +33,7 @@ class RolePermissionSeeder extends Seeder
                 'slates.update', 'slates.delete',
                 'candidate_drafts.delete', 'candidate_drafts.extract',
                 'candidates.update', 'candidates.delete',
+                'database.backup',
             ])),
             // Jurado: sube el acta de su barrio.
             'digitizer' => ['elections.view', 'polling_tables.view', 'scrutiny_records.create'],

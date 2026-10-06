@@ -135,6 +135,21 @@ return [
     |
     */
 
+    /*
+    |--------------------------------------------------------------------------
+    | Copia de seguridad (botón del Panel)
+    |--------------------------------------------------------------------------
+    |
+    | En PostgreSQL la copia se hace con pg_dump. Si no está en el PATH del
+    | servidor, indica aquí su ruta completa. Si no se puede usar, el sistema
+    | genera de todos modos un .sql con los datos.
+    |
+    */
+
+    'backup' => [
+        'pg_dump_path' => env('PG_DUMP_PATH', 'pg_dump'),
+    ],
+
     'migrations' => [
         'table' => 'migrations',
         'update_date_on_publish' => true,

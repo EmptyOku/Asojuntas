@@ -33,6 +33,7 @@ class AuditLogController extends Controller
         'password_reset' => 'Cambio de contraseña',
         'permission_assignment' => 'Cambio de permisos',
         'role_status_change' => 'Rol activado o desactivado',
+        'database_backup' => 'Copia de seguridad',
         'notify.acta_received' => 'Acta recibida',
         'notify.plancha_captured' => 'Plancha registrada',
     ];
@@ -45,7 +46,7 @@ class AuditLogController extends Controller
         'access' => ['label' => 'Ingresos y salidas', 'actions' => ['login', 'logout']],
         'actas' => ['label' => 'Actas (recibidas y decisiones)', 'actions' => ['notify.acta_received', 'review_decision']],
         'planchas' => ['label' => 'Planchas registradas', 'actions' => ['notify.plancha_captured']],
-        'security' => ['label' => 'Roles, permisos y contraseñas', 'actions' => ['role_assignment', 'permission_assignment', 'role_status_change', 'password_reset']],
+        'security' => ['label' => 'Roles, contraseñas y copias de seguridad', 'actions' => ['role_assignment', 'permission_assignment', 'role_status_change', 'password_reset', 'database_backup']],
     ];
 
     /** Nombre de cada tipo de registro, con su artículo, para armar frases. */
@@ -269,6 +270,8 @@ class AuditLogController extends Controller
                 $verb = ['approved' => 'Aprobó', 'rejected' => 'Rechazó', 'reviewed' => 'Revisó'][$meta['decision'] ?? ''] ?? 'Decidió sobre';
 
                 return [$verb.' el acta n.º '.($meta['scrutiny_record_id'] ?? '?'), 'decision'];
+            case 'database_backup':
+                return ['Descargó una copia de seguridad de la base de datos', 'security'];
             case 'role_assignment':
                 return ['Cambió el rol de '.($meta['target_username'] ?? 'un usuario'), 'security'];
             case 'password_reset':

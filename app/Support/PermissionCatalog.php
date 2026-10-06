@@ -120,6 +120,8 @@ final class PermissionCatalog
         'candidate_drafts.extract' => ['label' => 'Reprocesar la extracción', 'description' => 'Volver a extraer los datos de candidatos de un documento', 'depends_on' => ['scrutiny_records.view']],
         'users.assign_role' => ['label' => 'Asignar rol a un usuario', 'description' => 'Cambiar el rol de una cuenta', 'depends_on' => ['users.view', 'roles.view']],
         'users.reset_password' => ['label' => 'Restablecer contraseñas', 'description' => 'Poner una contraseña nueva a otro usuario', 'depends_on' => ['users.view']],
+        // La copia lleva datos personales y contraseñas cifradas: va aparte de todo lo demás.
+        'database.backup' => ['label' => 'Descargar copia de seguridad', 'description' => 'Descargar una copia completa de la base de datos'],
     ];
 
     /**
