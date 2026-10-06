@@ -21,9 +21,19 @@ class AuditTrailLogger
         'two_factor_recovery_codes',
     ];
 
+    /** Columnas de control interno: un cambio solo en ellas no se registra. */
+    private const BOOKKEEPING_KEYS = ['updated_at', 'last_login_at', 'remember_token', 'notifications_seen_id'];
+
     public function recordModelEvent(string $action, Model $model, array $metadata = []): void
     {
         if ($this->shouldSkipLogging($model)) {
+            return;
+        }
+
+        // Cambios que no son una acción de nadie (la hora del último ingreso, hasta
+        // qué aviso vio el usuario): no se anotan. Antes cada inicio de sesión
+        // dejaba dos filas en la bitácora.
+        if ($action === 'updated' && array_diff(array_keys($model->getDirty()), self::BOOKKEEPING_KEYS) === []) {
             return;
         }
 
