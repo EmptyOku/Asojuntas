@@ -1,149 +1,127 @@
 <template>
-  <div class="space-y-6 flex-1 flex flex-col">
-
-    <div class="flex items-center gap-4">
-      <button @click="goBack" class="p-2 bg-white text-gray-500 hover:text-gray-900 rounded-full shadow-sm border border-gray-100 transition-colors">
-        <ArrowLeft class="w-5 h-5" />
+  <div class="space-y-5">
+    <!-- Encabezado -->
+    <section class="card p-5 flex items-start gap-3">
+      <button type="button" class="btn-secondary px-3 shrink-0" aria-label="Volver" @click="goBack">
+        <ArrowLeft class="w-4 h-4" />
       </button>
-      <h2 class="text-xl font-bold text-gray-900">Capturar {{ isPlancha ? 'Planchas' : 'Escrutinio' }}</h2>
-    </div>
+      <div class="min-w-0">
+        <p class="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.12em] text-aso-primary">
+          <ScanLine class="w-3.5 h-3.5" />
+          {{ isPlancha ? 'Planchas de candidatos' : 'Acta de escrutinio' }}
+        </p>
+        <h2 class="page-title mt-1">{{ isPlancha ? 'Capturar planchas' : 'Cargar el acta' }}</h2>
+        <p class="page-subtitle">
+          {{ isPlancha
+            ? `Hasta ${MAX_PLANCHA_PAGES} páginas. Que los nombres y números se lean bien.`
+            : 'Una sola foto del acta. Enfoca bien la tabla con los totales.' }}
+        </p>
+      </div>
+    </section>
 
-    <div class="card p-6 flex-1 flex flex-col">
-
-      <input type="file" accept="image/*" ref="fileInputRef" :capture="dynamicCapture" class="hidden" @change="handleImageUpload"
->
-      <div v-if="capturedImages.length === 0" class="flex-1 flex flex-col items-center justify-center text-center space-y-6">
-        <div :class="isPlancha ? 'bg-orange-50 text-orange-500' : 'bg-green-50 text-aso-primary'" class="w-24 h-24 rounded-full flex items-center justify-center">
-          <ScanLine class="w-12 h-12" />
-        </div>
-
+    <section class="card overflow-hidden">
+      <div class="card-header">
         <div>
-          <h3 class="text-lg font-bold text-gray-900">
-            Fotografía {{ isPlancha ?
-            'las Planchas de Candidatos' : 'el Formato de Escrutinio' }}
-          </h3>
-          <p class="text-sm text-gray-500 mt-2 max-w-xs mx-auto">
-            {{ isPlancha ? 'Son alrededor de 6 páginas. Asegúrate de que los nombres y números sean legibles.' : 'Debes subir una sola foto del acta de escrutinio. Enfoca claramente la tabla con los totales numéricos.' }}
+          <h3 class="card-title">{{ isPlancha ? 'Fotos de la plancha' : 'Foto del acta' }}</h3>
+          <p class="card-subtitle">Toma la foto con buena luz, sin sombras y con la hoja completa.</p>
+        </div>
+        <span v-if="capturedImages.length" class="badge-green shrink-0">{{ capturedImages.length }} de {{ maxPages }}</span>
+      </div>
+
+      <input ref="fileInputRef" type="file" accept="image/*" :capture="dynamicCapture" class="hidden" @change="handleImageUpload">
+
+      <!-- Sin fotos todavía -->
+      <div v-if="!capturedImages.length" class="p-5">
+        <button
+          type="button"
+          class="group flex w-full flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-gray-300 bg-gray-50/70 px-6 py-12 text-center transition-colors hover:border-aso-primary hover:bg-emerald-50/40"
+          @click="showOptions = true"
+        >
+          <span class="flex h-16 w-16 items-center justify-center rounded-2xl bg-white text-aso-primary shadow-sm ring-1 ring-gray-200 transition-transform group-hover:-translate-y-0.5">
+            <Camera class="w-7 h-7" />
+          </span>
+          <span class="font-display text-lg font-semibold text-gray-900">
+            {{ isPlancha ? 'Fotografía las planchas' : 'Fotografía el acta de escrutinio' }}
+          </span>
+          <span class="text-sm text-gray-500 max-w-xs">Puedes tomarla con la cámara o elegirla de la galería.</span>
+          <span class="btn-primary mt-1 pointer-events-none"><Camera class="w-4 h-4" /> Abrir cámara o galería</span>
+        </button>
+      </div>
+
+      <!-- Fotos cargadas -->
+      <div v-else class="p-5 space-y-5">
+        <p v-if="showScrutinyWarning" class="rounded-xl bg-amber-50 border border-amber-200 text-amber-900 px-4 py-3 text-sm flex items-start gap-2" role="alert">
+          <AlertTriangle class="w-4 h-4 mt-0.5 shrink-0 text-amber-600" /> {{ scrutinyWarningText }}
+        </p>
+
+        <CapturedPagesGrid
+          :images="capturedImages"
+          :max="maxPages"
+          :rotating-id="rotatingId"
+          @remove="removeImage"
+          @move="moveImage"
+          @rotate="rotateImage"
+          @add="showOptions = true"
+        />
+
+        <p v-if="uploadError" class="rounded-xl bg-red-50 border border-red-200 text-red-700 px-4 py-3 text-sm flex items-start gap-2" role="alert">
+          <AlertTriangle class="w-4 h-4 mt-0.5 shrink-0" /> {{ uploadError }}
+        </p>
+
+        <div class="border-t border-gray-100 pt-5 space-y-2">
+          <button type="button" class="btn-primary w-full py-3" :disabled="isUploading || !canSendPackage" @click="enviarActa">
+            <Loader2 v-if="isUploading" class="w-4 h-4 animate-spin" />
+            <Send v-else class="w-4 h-4" />
+            {{ isUploading ? 'Enviando…' : (isPlancha ? 'Enviar planchas' : 'Enviar acta') }}
+          </button>
+          <p v-if="uploadStep" class="text-xs text-gray-500 text-center">
+            <Loader2 class="w-3.5 h-3.5 inline -mt-0.5 mr-1 animate-spin text-aso-primary" />{{ uploadStep }}
           </p>
         </div>
-
-        <button 
-          @click="showOptions = true" 
-          class="w-full sm:w-auto inline-flex items-center justify-center gap-3 bg-gray-900 hover:bg-black text-white px-8 py-4 rounded-2xl font-bold text-lg shadow-md transition-transform hover:-translate-y-1">
-          <Camera class="w-6 h-6" /> Abrir Cámara / Galería
-        </button>
       </div>
-
-      <div v-else class="flex-1 flex flex-col h-full space-y-4">
-        <h3 class="text-sm font-bold text-gray-500 uppercase tracking-wider">
-          Páginas capturadas ({{ capturedImages.length }})
-        </h3>
-
-        <div v-if="showScrutinyWarning" class="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-amber-800 text-sm font-semibold">
-          {{ scrutinyWarningText }}
-        </div>
-
-        <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 overflow-y-auto flex-1 p-1 custom-scrollbar">
-
-          <div v-for="(img, index) in capturedImages" :key="img.id" 
-               class="relative group aspect-[3/4] bg-gray-100 rounded-xl overflow-hidden border border-gray-200 shadow-sm transition-all hover:border-gray-300">
-            
-            <img :src="img.url" class="w-full h-full object-cover">
-
-            <div class="absolute top-2 left-2 bg-black/70 text-white text-[11px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider">
-              Pág {{ index + 1 }}
-            </div>
-
-            <button @click="removeImage(img.id)" :aria-label="`Quitar la página ${index + 1}`"
-                    class="absolute top-2 right-2 p-2 bg-red-600/90 text-white rounded-xl shadow-md transition-all hover:bg-red-700 active:scale-95 sm:opacity-0 sm:group-hover:opacity-100">
-              <X class="w-4 h-4" />
-            </button>
-            <!-- Cambiar el orden de las páginas sin tener que volver a tomarlas. -->
-            <div v-if="capturedImages.length > 1" class="absolute bottom-0 inset-x-0 flex items-center justify-between bg-black/65 px-1.5 py-1">
-              <button type="button" class="rounded-md p-1.5 text-white hover:bg-white/20 disabled:opacity-30" :disabled="index === 0" :aria-label="`Mover la página ${index + 1} antes`" @click="moveImage(index, -1)">
-                <ChevronLeft class="w-4 h-4" />
-              </button>
-              <span class="text-[10px] font-semibold uppercase tracking-wide text-white/80">Mover</span>
-              <button type="button" class="rounded-md p-1.5 text-white hover:bg-white/20 disabled:opacity-30" :disabled="index === capturedImages.length - 1" :aria-label="`Mover la página ${index + 1} después`" @click="moveImage(index, 1)">
-                <ChevronRight class="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-
-          <button v-if="(isPlancha && capturedImages.length < MAX_PLANCHA_PAGES) || (!isPlancha && capturedImages.length < REQUIRED_SCRUTINY_PAGES)"
-            @click="showOptions = true" 
-            class="flex flex-col items-center justify-center gap-3 aspect-[3/4] border-2 border-dashed border-gray-300 rounded-xl bg-gray-50 hover:bg-gray-100 hover:border-gray-400 cursor-pointer transition-all active:scale-[0.98] p-3 group">
-             
-             <div class="bg-gray-200 text-gray-500 p-3.5 rounded-full group-hover:bg-gray-300 group-hover:text-gray-700 transition-colors">
-                <Plus class="w-6 h-6" />
-             </div>
-             
-             <div class="flex flex-col items-center">
-                <span class="text-sm font-bold text-gray-700 leading-tight">Añadir</span>
-                <span class="text-sm font-bold text-gray-700 leading-tight">página</span>
-             </div>
-          </button>
-        </div>
-       
-        <button @click="enviarActa" :disabled="isUploading || !canSendPackage" class="btn-primary w-full py-4 mt-4 shrink-0">
-          <template v-if="isUploading">
-            <Loader2 class="w-5 h-5 animate-spin" /> Encolando acta...
-          </template>
-          <template v-else>
-            <Send class="w-5 h-5" /> Enviar {{ isPlancha ? 'Planchas' : 'Escrutinio' }}
-          </template>
-        </button>
-
-        <p v-if="uploadStep" class="text-xs text-gray-500 font-semibold">{{ uploadStep }}</p>
-        <p v-if="uploadError" class="text-xs text-red-600 font-semibold">{{ uploadError }}</p>
-      </div>
-
-    </div>
+    </section>
   </div>
-  <div v-if="showOptions" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 animate-in fade-in duration-200">
-      <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden flex flex-col">
-        
-        <div class="p-5 border-b border-gray-100">
-          <h3 class="text-lg font-bold text-gray-900 text-center">Seleccionar fuente</h3>
-          <p class="text-xs text-gray-500 text-center mt-1">¿Desde dónde deseas subir la imagen?</p>
+
+  <!-- De dónde sale la foto -->
+  <Teleport to="body">
+    <div v-if="showOptions" class="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-slate-950/60 backdrop-blur-sm p-4" role="dialog" aria-modal="true" aria-label="Elegir de dónde subir la foto" @click.self="showOptions = false">
+      <div class="w-full max-w-sm rounded-3xl bg-white shadow-2xl ring-1 ring-black/5 overflow-hidden animate-rise">
+        <div class="px-6 pt-6 pb-3 text-center">
+          <h3 class="font-display text-lg font-bold text-gray-900">¿De dónde subes la foto?</h3>
+          <p class="mt-1 text-sm text-gray-500">La cámara suele dar mejor resultado.</p>
         </div>
 
-        <div class="p-2 flex flex-col gap-1">
-          <button @click="triggerInput('camera')" class="flex items-center gap-3 p-4 hover:bg-gray-50 rounded-xl transition-colors text-left w-full">
-            <div class="bg-emerald-100 p-2 rounded-full text-emerald-600">
-              <Camera class="w-5 h-5" />
-            </div>
-            <div>
-              <span class="block font-bold text-gray-900">Cámara (Recomendado)</span>
-              <span class="block text-xs text-gray-500">Tomar foto en tiempo real</span>
-            </div>
+        <div class="px-3 pb-3 space-y-1">
+          <button type="button" class="flex w-full items-center gap-3 rounded-2xl p-3 text-left transition-colors hover:bg-gray-50" @click="triggerInput('camera')">
+            <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-aso-primary"><Camera class="w-5 h-5" /></span>
+            <span>
+              <span class="block font-semibold text-gray-900">Cámara <span class="badge-green ml-1">Recomendado</span></span>
+              <span class="block text-xs text-gray-500">Tomar la foto ahora</span>
+            </span>
           </button>
-
-          <button @click="triggerInput('gallery')" class="flex items-center gap-3 p-4 hover:bg-gray-50 rounded-xl transition-colors text-left w-full">
-            <div class="bg-gray-100 p-2 rounded-full text-gray-600">
-              <ScanLine class="w-5 h-5" />
-            </div>
-            <div>
-              <span class="block font-bold text-gray-900">Galería / Archivos</span>
-              <span class="block text-xs text-gray-500">Seleccionar foto guardada</span>
-            </div>
+          <button type="button" class="flex w-full items-center gap-3 rounded-2xl p-3 text-left transition-colors hover:bg-gray-50" @click="triggerInput('gallery')">
+            <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gray-100 text-gray-600"><ImageIcon class="w-5 h-5" /></span>
+            <span>
+              <span class="block font-semibold text-gray-900">Galería o archivos</span>
+              <span class="block text-xs text-gray-500">Elegir una foto ya guardada</span>
+            </span>
           </button>
         </div>
 
-        <div class="p-3 bg-gray-50">
-          <button @click="showOptions = false" class="w-full py-3 font-bold text-gray-600 hover:text-gray-900 hover:bg-gray-200 rounded-xl transition-colors text-sm">
-            Cancelar
-          </button>
+        <div class="px-6 py-4 bg-gray-50">
+          <button type="button" class="btn-secondary w-full" @click="showOptions = false">Cancelar</button>
         </div>
-
       </div>
     </div>
+  </Teleport>
 </template>
 
 <script setup>
 import { ref, computed, nextTick } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
-import { ArrowLeft, ScanLine, Camera, ChevronLeft, ChevronRight, Send, Loader2, Plus, X } from 'lucide-vue-next';
+import { AlertTriangle, ArrowLeft, Camera, Image as ImageIcon, Loader2, ScanLine, Send } from 'lucide-vue-next';
+import CapturedPagesGrid from '@/components/ui/CapturedPagesGrid.vue';
+import { rotateCapturedImage } from '@/utils/imageRotation';
 import { useDocumentStore } from '@/stores/document';
 import axios, { extractorInstance } from '@/services/axios';
 
@@ -199,6 +177,8 @@ const DEFAULT_SCRUTINY_BLOCKS = 4; // Ajustado a 4 bloques según el nuevo forma
 const docStore = useDocumentStore();
 
 const isPlancha = computed(() => route.query.doc === 'plancha');
+// Máximo de páginas según el documento: 6 para planchas, 1 para el acta.
+const maxPages = computed(() => (isPlancha.value ? MAX_PLANCHA_PAGES : REQUIRED_SCRUTINY_PAGES));
 const missingScrutinyPages = computed(() => Math.max(0, REQUIRED_SCRUTINY_PAGES - capturedImages.value.length));
 const extraScrutinyPages = computed(() => Math.max(0, capturedImages.value.length - REQUIRED_SCRUTINY_PAGES));
 const showScrutinyWarning = computed(() => !isPlancha.value && capturedImages.value.length > 0 && capturedImages.value.length !== REQUIRED_SCRUTINY_PAGES);
@@ -536,6 +516,22 @@ const moveImage = (index, direction) => {
   const images = [...capturedImages.value];
   [images[index], images[target]] = [images[target], images[index]];
   capturedImages.value = images;
+};
+
+// Gira la foto 90° a la derecha. Se gira el archivo (no solo la vista), para
+// que la extracción y la evidencia queden con la hoja derecha.
+const rotatingId = ref(null);
+const rotateImage = async (id) => {
+  if (rotatingId.value !== null) return;
+  rotatingId.value = id;
+  try {
+    capturedImages.value = await rotateCapturedImage(capturedImages.value, id);
+  } catch (error) {
+    console.error('No se pudo girar la imagen', error);
+    uploadError.value = 'No se pudo girar la foto. Vuelve a tomarla con la hoja derecha.';
+  } finally {
+    rotatingId.value = null;
+  }
 };
 
 const removeImage = (idToRemove) => {

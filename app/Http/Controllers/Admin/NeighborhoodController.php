@@ -41,12 +41,7 @@ class NeighborhoodController extends Controller
             ->unique('neighborhood_id')
             ->keyBy('neighborhood_id');
 
-        // Conteo de planchas por elección, también en un solo query.
-        $slatesCountByElection = Slate::query()
-            ->whereIn('election_id', $activeElectionByNeighborhood->pluck('id'))
-            ->selectRaw('election_id, count(*) as aggregate')
-            ->groupBy('election_id')
-            ->pluck('aggregate', 'election_id');
+        
 
         // Elecciones que ya tienen un acta aprobada: no admiten planchas nuevas.
         $electionsWithApprovedActa = ScrutinyRecord::query()
@@ -56,7 +51,10 @@ class NeighborhoodController extends Controller
             ->pluck('election_id')
             ->flip();
 
-        $data = $neighborhoods->map(function ($neighborhood) use ($activeElectionByNeighborhood, $slatesCountByElection, $electionsWithApprovedActa) {
+        // Números de plancha ya registrados (no las planchas vacías con que nace la elección).
+        $occupiedSlates = Slate::occupiedNumbers($activeElectionByNeighborhood->pluck('id')->all());
+
+        $data = $neighborhoods->map(function ($neighborhood) use ($activeElectionByNeighborhood, $electionsWithApprovedActa, $occupiedSlates) {
             $activeElection = $activeElectionByNeighborhood->get($neighborhood->id);
 
             return [
@@ -68,7 +66,8 @@ class NeighborhoodController extends Controller
                 'active_election' => $activeElection ? [
                     'id' => $activeElection->id,
                     'name' => $activeElection->name,
-                    'slates_count' => (int) ($slatesCountByElection[$activeElection->id] ?? 0),
+                    'slates_count' => count($occupiedSlates[$activeElection->id] ?? []),
+                    'occupied_slate_numbers' => $occupiedSlates[$activeElection->id] ?? [],
                     'has_approved_acta' => $electionsWithApprovedActa->has($activeElection->id),
                 ] : null,
             ];

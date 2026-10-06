@@ -178,6 +178,41 @@ class PlanchaDraftController extends Controller
         $captureBatchUuid = (string) ($validated['capture_batch_uuid'] ?? Str::uuid());
         $slateCode = $this->normalizeSlateCode((string) ($validated['slate_code'] ?? ''));
 
+        // Cada lote es UNA plancha con su número. Antes la pantalla enviaba siempre
+        // "Plancha 1" y todas las planchas de un barrio quedaban fusionadas en P1.
+        if ($batchElectionId) {
+            // Corrección de una plancha existente: conserva su número.
+            $batchSlateCode = Slate::query()
+                ->whereIn('id', CandidateDraft::query()
+                    ->where('capture_batch_uuid', $captureBatchUuid)
+                    ->whereNotNull('slate_id')
+                    ->select('slate_id'))
+                ->value('code');
+            $slateCode = $batchSlateCode ?: $slateCode;
+        } else {
+            $occupied = Slate::occupiedNumbers([(int) $electionId])[(int) $electionId] ?? [];
+            $requested = $slateCode !== null && preg_match('/(\d+)/', $slateCode, $match) === 1 ? (int) $match[1] : 0;
+
+            if ($requested > 0 && in_array($requested, $occupied, true)) {
+                $message = "La Plancha {$requested} ya está registrada en este barrio. Elige otro número de plancha.";
+
+                return response()->json([
+                    'success' => false,
+                    'message' => $message,
+                    'errors' => ['slate_code' => [$message]],
+                ], 422);
+            }
+
+            $number = $requested > 0 ? $requested : Slate::nextFreeNumber((int) $electionId);
+            $slateCode = 'P'.$number;
+
+            // La elección nace con P1..P3; una cuarta plancha se crea aquí.
+            Slate::firstOrCreateRestoring(
+                ['election_id' => $electionId, 'code' => $slateCode],
+                ['name' => 'Plancha '.$number, 'is_active' => true],
+            );
+        }
+
         if ($replacePending) {
             CandidateDraft::query()
                 ->where('election_id', $electionId)
@@ -328,10 +363,33 @@ class PlanchaDraftController extends Controller
                 'skipped' => $skipped,
                 // Cargos ya oficiales: no se modifican desde la plancha.
                 'locked_official' => $lockedOfficial,
+                'slate_code' => $slateCode,
                 'capture_batch_uuid' => $captureBatchUuid,
                 'drafts' => $rows,
             ],
         ], 201);
+    }
+
+    /**
+     * Número de plancha de cada lote: el de la plancha asignada (P2 -> 2). Un
+     * lote viejo sin plancha asignada usa su posición por orden de captura.
+     *
+     * @return array<string, int>  [capture_batch_uuid => número]
+     */
+    private function batchSlateNumbers($drafts, $slateCodes): array
+    {
+        $numbers = [];
+        $position = 0;
+
+        foreach ($drafts->sortBy('id')->groupBy('capture_batch_uuid') as $uuid => $batchDrafts) {
+            $position++;
+            $slateId = $batchDrafts->firstWhere('slate_id', '!=', null)?->slate_id;
+            $code = $slateId ? (string) ($slateCodes[$slateId] ?? '') : '';
+
+            $numbers[$uuid] = preg_match('/([0-9]+)/', $code, $match) === 1 ? (int) $match[1] : $position;
+        }
+
+        return $numbers;
     }
 
     private function approvedActaLockResponse(): JsonResponse
@@ -356,7 +414,7 @@ class PlanchaDraftController extends Controller
      * @param  \Illuminate\Support\Collection<int, Election>  $elections  con candidateDrafts cargados
      * @return array<int, array<int, string>>
      */
-    private function duplicateWarnings($elections): array
+    private function duplicateWarnings($elections, $slateCodes): array
     {
         $warnings = [];
         $hasRealDocument = fn (CandidateDraft $d) => $d->document_number && ! UnknownCandidate::isPlaceholderDocument($d->document_number);
@@ -375,7 +433,7 @@ class PlanchaDraftController extends Controller
             ->groupBy(fn (Candidate $c) => $c->election_id.'|'.$c->person?->document_number);
 
         foreach ($elections as $election) {
-            $batchNumber = $election->candidateDrafts->sortBy('id')->pluck('capture_batch_uuid')->unique()->values()->flip();
+            $batchNumber = $this->batchSlateNumbers($election->candidateDrafts, $slateCodes);
 
             // Borradores vigentes (ni rechazados) con documento real, por documento.
             $byDocument = $election->candidateDrafts
@@ -404,7 +462,7 @@ class PlanchaDraftController extends Controller
                     if ($other->capture_batch_uuid === $draft->capture_batch_uuid) {
                         $warnings[$draft->id][] = 'El mismo documento aparece dos veces en esta plancha.';
                     } elseif (! $draft->is_processed && ! $other->is_processed) {
-                        $warnings[$draft->id][] = 'También está en la Plancha '.(($batchNumber[$other->capture_batch_uuid] ?? 0) + 1).' en revisión.';
+                        $warnings[$draft->id][] = 'También está en la Plancha '.($batchNumber[$other->capture_batch_uuid] ?? '?').' en revisión.';
                     }
                 }
 
@@ -758,6 +816,8 @@ class PlanchaDraftController extends Controller
                         'representatives' => $representatives,
                     ];
                 })
+                // Plancha 1, 2, 3… (antes salían en el orden en que se oficializaron).
+                ->sortBy(fn (array $slate) => (int) preg_replace('/[^0-9]/', '', (string) $slate['code']))
                 ->values();
 
             return [
@@ -838,7 +898,8 @@ class PlanchaDraftController extends Controller
         }
 
         $elections = $query->paginate(10);
-        $warnings = $this->duplicateWarnings($elections->getCollection());
+        $slateCodes = Slate::query()->whereIn('election_id', $elections->getCollection()->pluck('id'))->pluck('code', 'id');
+        $warnings = $this->duplicateWarnings($elections->getCollection(), $slateCodes);
         $closedElections = ScrutinyRecord::query()
             ->whereIn('election_id', $elections->getCollection()->pluck('id'))
             ->whereIn('status', ScrutinyRecord::APPROVED_STATUSES)
@@ -846,13 +907,12 @@ class PlanchaDraftController extends Controller
             ->pluck('election_id')
             ->flip();
 
-        $data = $elections->through(function (Election $election) use ($warnings, $closedElections): array {
+        $data = $elections->through(function (Election $election) use ($warnings, $closedElections, $slateCodes): array {
             $drafts = $election->candidateDrafts;
 
             // Número estable de cada plancha dentro del barrio: no cambia cuando
             // otra plancha sale de la bandeja al oficializarse.
-            // Va por orden de captura: la primera plancha registrada es la Plancha 1.
-            $batchNumbers = $drafts->sortBy('id')->pluck('capture_batch_uuid')->unique()->values()->flip();
+            $batchNumbers = $this->batchSlateNumbers($drafts, $slateCodes);
 
             $batches = $drafts->groupBy('capture_batch_uuid')->filter(function ($batchDrafts): bool {
                 $hasOfficial = $batchDrafts->contains(fn (CandidateDraft $d) => (bool) $d->is_processed);
@@ -899,7 +959,7 @@ class PlanchaDraftController extends Controller
 
                 return [
                     'capture_batch_uuid' => $uuid,
-                    'number' => ((int) ($batchNumbers[$uuid] ?? 0)) + 1,
+                    'number' => (int) ($batchNumbers[$uuid] ?? 0),
                     'total' => $batchDrafts->count(),
                     'pending' => $batchDrafts->where('review_status', 'pending')->where('is_processed', false)->count(),
                     'approved' => $batchDrafts->where('review_status', 'approved')->count(),
@@ -1299,7 +1359,7 @@ class PlanchaDraftController extends Controller
                     continue;
                 }
 
-                $person = Person::query()->firstOrCreate(
+                $person = Person::firstOrCreateRestoring(
                     [
                         'document_type_id' => $documentTypeId,
                         'document_number' => (string) $draft->document_number,
@@ -1691,7 +1751,7 @@ class PlanchaDraftController extends Controller
             'CYC_EMP_COORD' => 'Comision empresarial',
         ];
 
-        $block = Block::query()->firstOrCreate(
+        $block = Block::firstOrCreateRestoring(
             ['code' => $blockCode],
             [
                 'name' => $blockNames[$blockCode] ?? $blockCode,
@@ -1704,10 +1764,17 @@ class PlanchaDraftController extends Controller
             $block->update(['is_active' => true]);
         }
 
-        $position = Position::query()
+        // Incluye la papelera: un cargo eliminado que se vuelve a usar se restaura
+        // (crear otro con el mismo código chocaría con el que ya existe).
+        $position = Position::withTrashed()
             ->where('code', $positionCode)
             ->where('block_id', $block->id)
             ->first();
+
+        if ($position?->trashed()) {
+            $position->restore();
+            $position->update(['is_active' => true]);
+        }
 
         // Jerarquía dentro del bloque: define qué cargo se provee primero al
         // asignar curules (antes quedaba en null y se perdía el orden).
@@ -1982,7 +2049,7 @@ class PlanchaDraftController extends Controller
     private function createNextSlateForElection(int $electionId): int
     {
         $nextNumber = $this->nextSlateNumberForElection($electionId);
-        while (Slate::query()->where('election_id', $electionId)->where('code', 'P'.$nextNumber)->exists()) {
+        while (Slate::withTrashed()->where('election_id', $electionId)->where('code', 'P'.$nextNumber)->exists()) {
             $nextNumber++;
         }
 
@@ -2001,7 +2068,7 @@ class PlanchaDraftController extends Controller
     {
         $maxNumber = 0;
 
-        $slates = Slate::query()
+        $slates = Slate::withTrashed()
             ->where('election_id', $electionId)
             ->get(['code', 'name']);
 

@@ -1,148 +1,206 @@
 <template>
-  <div class="space-y-6 flex-1 flex flex-col">
-    <div class="flex items-center justify-between">
-      <div class="flex items-center gap-4">
-        <button @click="goBack" class="p-2 bg-white text-gray-500 hover:text-gray-900 rounded-full shadow-sm border border-gray-100 transition-colors">
-          <ArrowLeft class="w-5 h-5" />
-        </button>
-        <h2 class="text-xl font-bold text-gray-900">Capturar Planchas</h2>
-      </div>
-    </div>
-
-    <div class="card p-6 space-y-4">
-      <div class="relative">
-        <label class="text-xs font-black text-gray-400 uppercase tracking-widest mb-2 block">1. Seleccionar Barrio de Girardot</label>
-        <div class="relative">
-          <Search class="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-          <input 
-            v-model="searchQuery" 
-            @input="searchNeighborhoods"
-            type="text" 
-            placeholder="Escribe el nombre del barrio..." 
-            class="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:ring-2 focus:ring-aso-primary outline-none transition-all"
-          >
-        </div>
-
-        <div v-if="searchResults.length > 0" class="absolute z-50 w-full mt-2 bg-white border border-gray-100 rounded-xl shadow-xl max-h-60 overflow-y-auto">
-          <div 
-            v-for="item in searchResults" 
-            :key="item.id" 
-            @click="selectNeighborhood(item)"
-            class="p-4 hover:bg-gray-50 cursor-pointer border-b border-gray-50 last:border-0 transition-colors"
-          >
-            <p class="font-bold text-gray-900 flex items-center gap-2">
-              {{ item.name }}
-              <span v-if="item.active_election?.has_approved_acta" class="badge-red">Acta aprobada</span>
-            </p>
-            <p class="text-xs text-gray-500">{{ item.commune?.name || 'Comuna no asignada' }}</p>
-          </div>
-        </div>
-      </div>
-
-      <transition name="fade">
-        <div v-if="selectedNeighborhood" class="bg-aso-primary/5 border border-aso-primary/10 rounded-xl p-4 flex items-center justify-between">
-          <div class="flex items-center gap-4">
-            <div class="bg-white p-3 rounded-lg shadow-sm">
-              <MapPin class="w-6 h-6 text-aso-primary" />
-            </div>
-            <div>
-              <p class="text-sm font-black text-aso-primary uppercase tracking-tight">{{ selectedNeighborhood.name }}</p>
-              <p class="text-[10px] text-gray-500 font-bold uppercase">{{ selectedNeighborhood.commune?.name }}</p>
-            </div>
-          </div>
-          
-          <div class="flex gap-4 text-center">
-            <div class="px-3 border-r border-aso-primary/20">
-              <p class="text-[10px] text-gray-400 font-bold uppercase">Planchas Hoy</p>
-              <p class="text-lg font-black text-gray-900">{{ selectedNeighborhood.active_election?.slates_count || 0 }}</p>
-            </div>
-            <button @click="selectedNeighborhood = null" class="text-gray-400 hover:text-red-500 transition-colors">
-              <X class="w-5 h-5" />
-            </button>
-          </div>
-        </div>
-      </transition>
-
-      <!-- Con un acta aprobada la votación ya ocurrió: no entran planchas nuevas. -->
-      <div v-if="captureLocked" class="mt-3 rounded-xl bg-red-50 border border-red-200 text-red-700 px-4 py-3 text-sm flex items-start gap-2" role="alert">
-        <Lock class="w-4 h-4 mt-0.5 shrink-0" />
-        <div>
-          <p class="font-bold">Registro de planchas cerrado para este barrio</p>
-          <p>Ya tiene un acta de escrutinio aprobada, así que no se pueden registrar planchas nuevas. Las planchas ya registradas se pueden seguir consultando y corrigiendo desde la bandeja de revisión.</p>
-        </div>
-      </div>
-    </div>
-
-    <div
-      class="card p-6 flex-1 flex flex-col transition-opacity duration-300"
-      :class="{ 'opacity-40 pointer-events-none': !selectedNeighborhood || captureLocked }"
-    >
-      <div v-if="!selectedNeighborhood" class="absolute inset-0 z-10 flex items-center justify-center">
-        <p class="bg-white px-4 py-2 rounded-full shadow-md text-sm font-bold text-gray-500 border border-gray-100">
-          Debes seleccionar un barrio primero
+  <div class="space-y-6">
+    <!-- Encabezado -->
+    <section class="card p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center gap-4">
+      <button type="button" class="btn-secondary self-start shrink-0" @click="goBack">
+        <ArrowLeft class="w-4 h-4" />
+        Volver
+      </button>
+      <div class="min-w-0">
+        <p class="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.12em] text-aso-primary">
+          <ScanLine class="w-3.5 h-3.5" />
+          Registro de planchas
         </p>
+        <h2 class="page-title mt-1">Escanear una plancha</h2>
+        <p class="page-subtitle">Elige el barrio, sube las fotos y revisa los datos extraídos antes de registrarla.</p>
+      </div>
+    </section>
+
+    <!-- Paso 1: barrio -->
+    <section class="card overflow-visible">
+      <div class="card-header">
+        <div class="flex items-center gap-3">
+          <span
+            class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full font-display text-sm font-bold"
+            :class="canCapture ? 'bg-aso-primary text-white' : 'bg-aso-primary/10 text-aso-primary'"
+          >
+            <Check v-if="canCapture" class="w-4 h-4" />
+            <template v-else>1</template>
+          </span>
+          <div>
+            <h3 class="card-title">Barrio</h3>
+            <p class="card-subtitle">La plancha se registra en la elección activa de ese barrio.</p>
+          </div>
+        </div>
       </div>
 
-      <input type="file" accept="image/*" multiple id="secretaryCameraInput" class="hidden" @change="handleImageUpload">
+      <div class="p-5 sm:p-6 space-y-4">
+        <!-- Buscador (mientras no haya barrio elegido) -->
+        <div v-if="!selectedNeighborhood" class="relative">
+          <label for="capture-neighborhood" class="field-label">Buscar barrio de Girardot</label>
+          <div class="relative">
+            <Search class="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              id="capture-neighborhood"
+              v-model.trim="searchQuery"
+              type="search"
+              class="field field-search"
+              placeholder="Escribe al menos 3 letras del nombre o el código"
+              autocomplete="off"
+              @input="searchNeighborhoods"
+            >
+            <Loader2 v-if="isSearching" class="w-4 h-4 text-aso-primary animate-spin absolute right-3.5 top-1/2 -translate-y-1/2" />
+          </div>
 
-      <div v-if="capturedImages.length === 0" class="flex-1 flex flex-col items-center justify-center text-center space-y-6">
-        <div class="bg-orange-50 text-orange-500 w-24 h-24 rounded-full flex items-center justify-center">
-          <ScanLine class="w-12 h-12" />
-        </div>
-        <div>
-          <h3 class="text-lg font-bold text-gray-900">Fotografía las Planchas</h3>
-          <p class="text-sm text-gray-500 mt-2 max-w-xs mx-auto">Sube todas las páginas de la plancha para el barrio <b>{{ selectedNeighborhood?.name }}</b>.</p>
-        </div>
-        <label for="secretaryCameraInput" class="w-full sm:w-auto inline-flex items-center justify-center gap-3 bg-gray-900 hover:bg-black text-white px-8 py-4 rounded-2xl font-bold text-lg shadow-md cursor-pointer transition-all hover:-translate-y-1">
-          <Camera class="w-6 h-6" /> Abrir Cámara / Galería
-        </label>
-      </div>
-
-      <div v-else class="flex-1 flex flex-col h-full space-y-4">
-        <h3 class="text-sm font-bold text-gray-500 uppercase tracking-wider">Páginas capturadas ({{ capturedImages.length }})</h3>
-
-        <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 overflow-y-auto flex-1 p-1 text-center">
-          <div v-for="(img, index) in capturedImages" :key="img.id" class="relative group aspect-[3/4] bg-gray-100 rounded-xl overflow-hidden border border-gray-200 shadow-sm">
-            <img :src="img.url" class="w-full h-full object-cover">
-            <div class="absolute top-2 left-2 bg-black/60 text-white text-xs font-bold px-2 py-1 rounded-md">Pág {{ index + 1 }}</div>
-            <button @click="removeImage(img.id)" class="absolute top-2 right-2 p-1.5 bg-red-500 text-white rounded-lg opacity-90 hover:opacity-100 shadow-md" :aria-label="`Quitar la página ${index + 1}`">
-              <X class="w-4 h-4" />
-            </button>
-            <!-- Cambiar el orden de las páginas sin tener que volver a tomarlas. -->
-            <div v-if="capturedImages.length > 1" class="absolute bottom-0 inset-x-0 flex items-center justify-between bg-black/65 px-1.5 py-1">
-              <button type="button" class="rounded-md p-1.5 text-white hover:bg-white/20 disabled:opacity-30" :disabled="index === 0" :aria-label="`Mover la página ${index + 1} antes`" @click="moveImage(index, -1)">
-                <ChevronLeft class="w-4 h-4" />
+          <ul v-if="searchResults.length" class="absolute z-30 mt-2 w-full max-h-64 overflow-y-auto rounded-2xl bg-white shadow-xl ring-1 ring-gray-200 divide-y divide-gray-100">
+            <li v-for="item in searchResults" :key="item.id">
+              <button type="button" class="w-full flex items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-gray-50" @click="selectNeighborhood(item)">
+                <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-aso-primary"><MapPin class="w-4 h-4" /></span>
+                <span class="min-w-0 flex-1">
+                  <span class="block font-semibold text-gray-900 truncate">{{ item.name }}</span>
+                  <span class="block text-xs text-gray-500 truncate">{{ item.commune?.name || 'Comuna no asignada' }}</span>
+                </span>
+                <span v-if="item.active_election?.has_approved_acta" class="badge-red shrink-0">Acta aprobada</span>
+                <span v-else-if="!item.active_election" class="badge-amber shrink-0">Sin elección</span>
               </button>
-              <span class="text-[10px] font-semibold uppercase tracking-wide text-white/80">Mover</span>
-              <button type="button" class="rounded-md p-1.5 text-white hover:bg-white/20 disabled:opacity-30" :disabled="index === capturedImages.length - 1" :aria-label="`Mover la página ${index + 1} después`" @click="moveImage(index, 1)">
-                <ChevronRight class="w-4 h-4" />
-              </button>
+            </li>
+          </ul>
+          <p v-else-if="searchedWithoutResults" class="mt-2 text-sm text-gray-500">Ningún barrio coincide con “{{ searchQuery }}”.</p>
+        </div>
+
+        <!-- Barrio elegido -->
+        <div v-else class="flex flex-col sm:flex-row sm:items-center gap-4 rounded-2xl bg-emerald-50/60 p-4 ring-1 ring-emerald-100">
+          <div class="flex items-center gap-3 min-w-0 flex-1">
+            <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white text-aso-primary shadow-sm"><MapPin class="w-5 h-5" /></span>
+            <div class="min-w-0">
+              <p class="font-display text-lg font-bold text-gray-900 truncate">{{ selectedNeighborhood.name }}</p>
+              <p class="text-xs text-gray-500 truncate">{{ selectedNeighborhood.commune?.name || 'Comuna no asignada' }}</p>
             </div>
           </div>
-          <label v-if="capturedImages.length < MAX_PLANCHA_PAGES" for="secretaryCameraInput" class="aspect-[3/4] flex flex-col items-center justify-center gap-2 border-2 border-dashed border-gray-300 rounded-xl bg-gray-50 hover:bg-gray-100 cursor-pointer">
-            <Plus class="w-8 h-8 text-gray-400" />
-            <span class="text-xs font-bold text-gray-500">Añadir página</span>
-          </label>
+          <div class="flex items-center gap-2 shrink-0">
+            <span class="badge-blue"><Files class="w-3 h-3" /> {{ selectedNeighborhood.active_election?.slates_count || 0 }} planchas registradas</span>
+            <button type="button" class="btn-secondary" :disabled="isExtracting" @click="selectedNeighborhood = null">Cambiar barrio</button>
+          </div>
         </div>
 
-        <button @click="askExtract" :disabled="isExtracting" class="btn-primary w-full py-4 mt-4 shrink-0">
-          <template v-if="isExtracting">
-            <Loader2 class="w-5 h-5 animate-spin" /> Extrayendo...
-          </template>
-          <template v-else>
-            <Send class="w-5 h-5" /> Extraer y Revisar en {{ selectedNeighborhood?.name }}
-          </template>
-        </button>
+        <!-- Número de la plancha: los votos del acta se asignan por este número. -->
+        <div v-if="canCapture" class="flex flex-col sm:flex-row sm:items-center gap-3 rounded-2xl bg-gray-50 px-4 py-3 ring-1 ring-gray-100">
+          <div class="flex-1">
+            <label for="capture-slate-number" class="text-sm font-semibold text-gray-900">Número de la plancha</label>
+            <p class="text-xs text-gray-500">
+              Debe ser el mismo número con que la plancha aparece en el tarjetón y en el acta.
+              <template v-if="occupiedNumbers.length">Ya registradas: {{ occupiedNumbers.map((n) => `Plancha ${n}`).join(', ') }}.</template>
+            </p>
+          </div>
+          <select id="capture-slate-number" v-model.number="slateNumber" class="field sm:w-44" :disabled="isExtracting">
+            <option v-for="n in freeNumbers" :key="n" :value="n">Plancha {{ n }}</option>
+          </select>
+        </div>
 
-        <p v-if="extractStep" class="text-xs text-gray-500 font-semibold">{{ extractStep }}</p>
-        <p v-if="extractError" class="text-xs text-red-600 font-semibold">{{ extractError }}</p>
+        <!-- El barrio no puede recibir planchas -->
+        <div v-if="selectedNeighborhood && !selectedNeighborhood.active_election" class="rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 px-4 py-3 text-sm flex items-start gap-2" role="alert">
+          <AlertTriangle class="w-4 h-4 mt-0.5 shrink-0 text-amber-600" />
+          <div>
+            <p class="font-bold">Este barrio no tiene una elección activa</p>
+            <p>Sin elección no se pueden registrar planchas. Pídele al administrador que la cree en Geografía Electoral.</p>
+          </div>
+        </div>
+        <div v-else-if="captureLocked" class="rounded-2xl bg-red-50 border border-red-200 text-red-700 px-4 py-3 text-sm flex items-start gap-2" role="alert">
+          <Lock class="w-4 h-4 mt-0.5 shrink-0" />
+          <div>
+            <p class="font-bold">Registro de planchas cerrado para este barrio</p>
+            <p>Ya tiene un acta de escrutinio aprobada, así que no se pueden registrar planchas nuevas. Las ya registradas se pueden seguir consultando y corrigiendo desde la bandeja de revisión.</p>
+          </div>
+        </div>
       </div>
-    </div>
+    </section>
+
+    <!-- Paso 2: fotos -->
+    <section class="card overflow-hidden">
+      <div class="card-header">
+        <div class="flex items-center gap-3">
+          <span
+            class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full font-display text-sm font-bold"
+            :class="canCapture ? 'bg-aso-primary/10 text-aso-primary' : 'bg-gray-100 text-gray-400'"
+          >2</span>
+          <div>
+            <h3 class="card-title" :class="{ 'text-gray-400': !canCapture }">Fotos de la plancha</h3>
+            <p class="card-subtitle">Hasta {{ MAX_PLANCHA_PAGES }} páginas, con la hoja derecha. Si una quedó de lado, gírala con el botón de la foto.</p>
+          </div>
+        </div>
+        <span v-if="capturedImages.length" class="badge-green shrink-0">{{ capturedImages.length }} {{ capturedImages.length === 1 ? 'página' : 'páginas' }}</span>
+      </div>
+
+      <input ref="fileInput" type="file" accept="image/*" multiple class="hidden" @change="handleImageUpload">
+
+      <!-- Aún no se puede capturar: se explica por qué, sin tapar ni atenuar la pantalla -->
+      <div v-if="!canCapture" class="p-5 sm:p-6">
+        <div class="flex flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-gray-200 bg-gray-50/70 px-6 py-12 text-center">
+          <span class="flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-gray-400 shadow-sm ring-1 ring-gray-200">
+            <Lock v-if="selectedNeighborhood" class="w-6 h-6" />
+            <MapPin v-else class="w-6 h-6" />
+          </span>
+          <p class="font-display text-lg font-semibold text-gray-900">
+            {{ selectedNeighborhood ? 'Este barrio no admite planchas nuevas' : 'Primero elige un barrio' }}
+          </p>
+          <p class="text-sm text-gray-500 max-w-sm">
+            {{ selectedNeighborhood
+              ? 'Revisa el aviso del paso 1 o elige otro barrio para continuar.'
+              : 'Búscalo en el paso 1. Cuando lo elijas, aquí podrás subir las fotos de la plancha.' }}
+          </p>
+        </div>
+      </div>
+
+      <!-- Sin fotos todavía -->
+      <div v-else-if="!capturedImages.length" class="p-5 sm:p-6">
+        <button
+          type="button"
+          class="group flex w-full flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-gray-300 bg-gray-50/70 px-6 py-12 text-center transition-colors hover:border-aso-primary hover:bg-emerald-50/40"
+          @click="openPicker"
+        >
+          <span class="flex h-16 w-16 items-center justify-center rounded-2xl bg-white text-aso-primary shadow-sm ring-1 ring-gray-200 transition-transform group-hover:-translate-y-0.5">
+            <Camera class="w-7 h-7" />
+          </span>
+          <span class="font-display text-lg font-semibold text-gray-900">Sube las fotos de la plancha</span>
+          <span class="text-sm text-gray-500 max-w-sm">Toma las fotos con la cámara o elígelas de la galería. Puedes subir varias a la vez y ordenarlas después.</span>
+          <span class="btn-primary mt-1 pointer-events-none"><Camera class="w-4 h-4" /> Abrir cámara o galería</span>
+        </button>
+      </div>
+
+      <!-- Fotos cargadas -->
+      <div v-else class="p-5 sm:p-6 space-y-5">
+        <CapturedPagesGrid
+          :images="capturedImages"
+          :max="MAX_PLANCHA_PAGES"
+          :rotating-id="rotatingId"
+          @remove="removeImage"
+          @move="moveImage"
+          @rotate="rotateImage"
+          @add="openPicker"
+        />
+
+        <p v-if="extractError" class="rounded-xl bg-red-50 border border-red-200 text-red-700 px-4 py-3 text-sm flex items-start gap-2" role="alert">
+          <AlertTriangle class="w-4 h-4 mt-0.5 shrink-0" /> {{ extractError }}
+        </p>
+
+        <div class="flex flex-col sm:flex-row sm:items-center gap-3 border-t border-gray-100 pt-5">
+          <p class="text-sm text-gray-500 flex-1">
+            <template v-if="extractStep"><Loader2 class="w-4 h-4 inline -mt-0.5 mr-1 animate-spin text-aso-primary" />{{ extractStep }}</template>
+            <template v-else>Al continuar se extraen los datos y pasas a revisarlos. Nada se registra todavía.</template>
+          </p>
+          <button type="button" class="btn-primary px-6" :disabled="isExtracting" @click="askExtract">
+            <Loader2 v-if="isExtracting" class="w-4 h-4 animate-spin" />
+            <Send v-else class="w-4 h-4" />
+            {{ isExtracting ? 'Extrayendo datos…' : 'Extraer y revisar' }}
+          </button>
+        </div>
+      </div>
+    </section>
 
     <ConfirmModal
       :open="confirmExtract"
-      title="¿Extraer los datos de la plancha?"
-      :message="`Se leerán ${capturedImages.length} página(s) de ${selectedNeighborhood?.name ?? 'este barrio'} para extraer sus datos. Después podrás revisar y corregir todo antes de registrarla.`"
+      :title="`¿Extraer los datos de la Plancha ${slateNumber}?`"
+      :message="`Se leerán ${capturedImages.length} página(s) de la Plancha ${slateNumber} de ${selectedNeighborhood?.name ?? 'este barrio'}. Después podrás revisar y corregir todo antes de registrarla.`"
       confirm-text="Extraer datos"
       @confirm="confirmExtract = false; extractPlanchas()"
       @cancel="confirmExtract = false"
@@ -156,7 +214,9 @@ import { useRouter } from 'vue-router';
 import axios, { extractorInstance } from '@/services/axios';
 import { useDocumentStore } from '@/stores/document';
 import ConfirmModal from '@/components/ConfirmModal.vue';
-import { ArrowLeft, ScanLine, Camera, ChevronLeft, ChevronRight, Send, Loader2, Lock, Plus, X, Search, MapPin } from 'lucide-vue-next';
+import CapturedPagesGrid from '@/components/ui/CapturedPagesGrid.vue';
+import { rotateCapturedImage } from '@/utils/imageRotation';
+import { AlertTriangle, ArrowLeft, Camera, Check, Files, Loader2, Lock, MapPin, ScanLine, Search, Send } from 'lucide-vue-next';
 
 const router = useRouter();
 const docStore = useDocumentStore();
@@ -168,6 +228,21 @@ const searchQuery = ref('');
 const searchResults = ref([]);
 const selectedNeighborhood = ref(null);
 const captureLocked = computed(() => Boolean(selectedNeighborhood.value?.active_election?.has_approved_acta));
+// Se puede capturar solo con barrio elegido, elección activa y sin acta aprobada.
+const canCapture = computed(() => Boolean(selectedNeighborhood.value?.active_election) && !captureLocked.value);
+// Número de plancha: por defecto el primero libre; se puede elegir otro libre.
+const slateNumber = ref(1);
+const occupiedNumbers = computed(() => selectedNeighborhood.value?.active_election?.occupied_slate_numbers ?? []);
+const freeNumbers = computed(() => {
+  const top = Math.max(3, ...occupiedNumbers.value) + 2;
+  return Array.from({ length: top }, (_, index) => index + 1).filter((n) => !occupiedNumbers.value.includes(n));
+});
+const isSearching = ref(false);
+const searchedWithoutResults = ref(false);
+
+// El selector de archivos está oculto: lo abren el recuadro de carga y "Añadir página".
+const fileInput = ref(null);
+const openPicker = () => fileInput.value?.click();
 let searchDebounce = null;
 
 // Estados de Captura
@@ -183,12 +258,14 @@ const searchNeighborhoods = async () => {
     clearTimeout(searchDebounce);
   }
 
+    searchedWithoutResults.value = false;
   if (searchQuery.value.length < 3) {
     searchResults.value = [];
     return;
   }
 
   searchDebounce = setTimeout(async () => {
+    isSearching.value = true;
     try {
       const { data } = await axios.get('/secretary/neighborhoods/search', {
         params: { q: searchQuery.value },
@@ -196,17 +273,22 @@ const searchNeighborhoods = async () => {
       });
 
       searchResults.value = data?.data || [];
+      searchedWithoutResults.value = searchResults.value.length === 0;
     } catch (error) {
       console.error("Error buscando barrios", error);
       searchResults.value = [];
+    } finally {
+      isSearching.value = false;
     }
   }, 300);
 };  
 
 const selectNeighborhood = (neighborhood) => {
-  selectedNeighborhood.value = neighborhood;
+    selectedNeighborhood.value = neighborhood;
+  slateNumber.value = freeNumbers.value[0] ?? 1;
   searchQuery.value = '';
   searchResults.value = [];
+  searchedWithoutResults.value = false;
 };
 
 // --- LÓGICA DE CAPTURA ORIGINAL ---
@@ -242,6 +324,22 @@ const moveImage = (index, direction) => {
   const images = [...capturedImages.value];
   [images[index], images[target]] = [images[target], images[index]];
   capturedImages.value = images;
+};
+
+// Gira la foto 90° a la derecha. Se gira el archivo (no solo la vista), para
+// que la extracción y la evidencia queden con la hoja derecha.
+const rotatingId = ref(null);
+const rotateImage = async (id) => {
+  if (rotatingId.value !== null) return;
+  rotatingId.value = id;
+  try {
+    capturedImages.value = await rotateCapturedImage(capturedImages.value, id);
+  } catch (error) {
+    console.error('No se pudo girar la imagen', error);
+    extractError.value = 'No se pudo girar la foto. Vuelve a tomarla con la hoja derecha.';
+  } finally {
+    rotatingId.value = null;
+  }
 };
 
 const createManualPageTemplate = () => ({ bloques: [] });
@@ -409,6 +507,7 @@ const extractPlanchas = async () => {
         edit: 'true',
         election_id: selectedNeighborhood.value.active_election.id,
         neighborhood_name: selectedNeighborhood.value.name,
+        plancha_number: slateNumber.value,
       },
     });
   } catch (error) {
