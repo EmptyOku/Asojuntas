@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -13,6 +14,9 @@ use Spatie\Permission\Traits\HasRoles;
 
 class User extends Authenticatable
 {
+    // Eliminar marca la fila (deleted_at) en vez de borrarla: se puede restaurar.
+    use SoftDeletes;
+
     use HasApiTokens, HasFactory, HasRoles, Notifiable;
 
     protected $fillable = [

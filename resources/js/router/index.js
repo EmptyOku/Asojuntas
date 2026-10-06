@@ -33,6 +33,15 @@ import RegistrationPlatesView from '@/views/admin/RegistrationPlatesView.vue';
 // falta, meta.layout: 'narrow' (columna angosta, pensada para celular).
 // Los permisos se declaran en app/Support/PermissionCatalog.php.
 
+// Tablas que se administran desde el Panel (las mismas de app/Support/CrudCatalog.php).
+const PANEL_TABLES = [
+  'states', 'cities', 'communes', 'neighborhoods',
+  'document_types', 'blocks', 'positions',
+  'persons', 'users', 'roles', 'permissions',
+  'elections', 'polling_tables', 'slates', 'candidate_drafts', 'candidates',
+  'scrutiny_records', 'scrutiny_block_results', 'scrutiny_reviews',
+];
+
 const routes = [
   {
     path: '/',
@@ -87,6 +96,17 @@ const routes = [
       {
         path: 'neighborhood/:id/results', name: 'admin.neighborhood.results', component: NeighborhoodResultsView,
         meta: { anyPermission: ['candidates.view', 'neighborhoods.view', 'map.view'] }
+      },
+      {
+        // Panel: CRUD de cada tabla. Aparece con que el rol pueda VER al menos
+        // una; dentro, cada tabla y cada botón dependen de su propio permiso.
+        path: 'panel', name: 'admin-panel', component: () => import('@/views/admin/PanelView.vue'),
+        meta: {
+          anyPermission: PANEL_TABLES.map((table) => `${table}.view`),
+          title: 'Panel de datos',
+          subtitle: 'Consulta y administración de cada tabla del sistema',
+          nav: { label: 'Panel', icon: 'Database', section: 'Configuración', order: 890, position: 'bottom' },
+        }
       },
       {
         path: 'roles', name: 'admin-roles', component: () => import('@/views/security-config/RolesPermissionsView.vue'),

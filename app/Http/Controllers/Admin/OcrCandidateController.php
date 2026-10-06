@@ -186,7 +186,7 @@ class OcrCandidateController extends Controller
 
                 $nameParts = $this->splitName($fullName);
 
-                $person = Person::query()->firstOrCreate(
+                $person = Person::firstOrCreateRestoring(
                     [
                         'document_type_id' => $documentTypeId,
                         'document_number' => $documentNumber,

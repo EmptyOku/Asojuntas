@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -10,6 +11,10 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Position extends Model
 {
+    // Eliminar marca la fila (deleted_at) en vez de borrarla: se puede restaurar.
+    use SoftDeletes;
+    use Concerns\RestoresWhenRecreated;
+
     use HasFactory;
 
     protected $fillable = [

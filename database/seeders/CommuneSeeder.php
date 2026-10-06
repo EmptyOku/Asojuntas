@@ -22,7 +22,7 @@ class CommuneSeeder extends Seeder
         $boundaries = $this->boundaries();
 
         foreach ($this->communes() as $commune) {
-            Commune::updateOrCreate(
+            Commune::withTrashed()->updateOrCreate(
                 [
                     'city_id' => $city->id,
                     'code' => $commune['code'],

@@ -80,7 +80,7 @@ class CandidateDraftController extends Controller
         // Transacción Atómica: Evita datos huérfanos si falla la BD
         DB::transaction(function () use ($candidateDraft, $validated) {
             // 1. Buscamos si la persona ya existe o la creamos con los datos corregidos
-            $person = Person::firstOrCreate(
+            $person = Person::firstOrCreateRestoring(
                 [
                     'document_number'  => $validated['document_number'],
                     'document_type_id' => $candidateDraft->document_type_id

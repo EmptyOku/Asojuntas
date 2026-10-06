@@ -19,6 +19,7 @@ use App\Http\Controllers\Api\Admin\RoleManagementController;
 use App\Http\Controllers\Api\Admin\UserManagementController;
 use App\Http\Controllers\Api\Admin\CompleteUserManagementController;
 use App\Http\Controllers\Api\Admin\NotificationController;
+use App\Http\Controllers\Api\Admin\PanelController;
 use App\Http\Controllers\Api\Admin\AuditManagementController;
 use App\Http\Controllers\Api\Admin\AuditLogController as SystemAuditLogController;
 use App\Http\Controllers\Api\Admin\PersonController as ApiPersonController;
@@ -228,6 +229,22 @@ Route::prefix('api')->name('api.')->group(function (): void {
             Route::get('/people/without-users', [UserManagementController::class, 'getAvailablePersons'])
                 ->middleware('api.permission:persons.view,users.create')
                 ->name('admin.people.without-users');
+
+            // =========================================================
+            // PANEL: CRUD genérico de cada tabla (App\Support\CrudCatalog).
+            // El permiso depende de la tabla que llega en la URL
+            // ({tabla}.view / create / update / delete), así que lo comprueba
+            // el controlador y no el middleware de la ruta.
+            // =========================================================
+            Route::get('/panel/resources', [PanelController::class, 'resources'])->name('admin.panel.resources');
+            Route::prefix('panel/{resource}')->where(['resource' => '[a-z_]+'])->group(function (): void {
+                Route::get('/options', [PanelController::class, 'options'])->name('admin.panel.options');
+                Route::get('/', [PanelController::class, 'index'])->name('admin.panel.index');
+                Route::post('/', [PanelController::class, 'store'])->name('admin.panel.store');
+                Route::put('/{id}', [PanelController::class, 'update'])->whereNumber('id')->name('admin.panel.update');
+                Route::delete('/{id}', [PanelController::class, 'destroy'])->whereNumber('id')->name('admin.panel.destroy');
+                Route::post('/{id}/restore', [PanelController::class, 'restore'])->whereNumber('id')->name('admin.panel.restore');
+            });
 
             // =========================================================
             // NOTIFICACIONES (campanita): actas recibidas y planchas registradas

@@ -2,12 +2,16 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Spatie\Permission\Models\Role as SpatieRole;
 
 class Role extends SpatieRole
 {
+    // Eliminar marca la fila (deleted_at) en vez de borrarla: se puede restaurar.
+    use SoftDeletes;
+
     use HasFactory;
 
     // Forzamos a Spatie a trabajar siempre bajo el guard 'web'

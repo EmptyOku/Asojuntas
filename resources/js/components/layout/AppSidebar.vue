@@ -92,7 +92,7 @@
 import { computed } from 'vue';
 import { useRoute } from 'vue-router';
 import {
-  Camera, ChevronsLeft, Circle, ClipboardList, FileCheck, Files, LayoutDashboard, Map as MapIcon, MapPin, MapPinned, ShieldAlert, UserCog, Users, X
+  Camera, ChevronsLeft, Circle, ClipboardList, Database, FileCheck, Files, LayoutDashboard, Map as MapIcon, MapPin, MapPinned, ShieldAlert, UserCog, Users, X
 } from 'lucide-vue-next';
 
 const props = defineProps({
@@ -109,7 +109,7 @@ const route = useRoute();
 
 // Íconos permitidos en meta.nav.icon. Se importan uno a uno para no cargar
 // toda la librería; si agregas uno en el router, agrégalo también aquí.
-const ICONS = { Camera, ClipboardList, FileCheck, Files, LayoutDashboard, Map: MapIcon, MapPin, MapPinned, ShieldAlert, UserCog, Users };
+const ICONS = { Camera, ClipboardList, Database, FileCheck, Files, LayoutDashboard, Map: MapIcon, MapPin, MapPinned, ShieldAlert, UserCog, Users };
 const iconFor = (name) => ICONS[name] ?? Circle;
 
 const mainItems = computed(() => props.items.filter((item) => item.position !== 'bottom'));
