@@ -347,6 +347,10 @@ Route::prefix('api')->name('api.')->group(function (): void {
                 ->middleware('api.permission:audit_logs.view')
                 ->name('admin.audit-logs.index');
 
+            Route::get('/audit-logs/export', [SystemAuditLogController::class, 'export'])
+                ->middleware('api.permission:audit_logs.view')
+                ->name('admin.audit-logs.export');
+
             Route::get('/audit-records/files/{scrutinyRecordFile}', [AuditManagementController::class, 'showFile'])
                 ->middleware('api.permission:scrutiny_records.view')
                 ->name('admin.audit-records.files.show');

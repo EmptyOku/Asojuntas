@@ -1,19 +1,39 @@
 <template>
   <div class="space-y-6">
     <!-- Encabezado -->
-    <section class="card p-5 sm:p-6">
-      <p class="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.12em] text-aso-primary">
-        <ClipboardList class="w-3.5 h-3.5" />
-        Bitácora del sistema
-      </p>
-      <h2 class="page-title mt-1">Quién hizo qué, y cuándo</h2>
-      <p class="page-subtitle">El historial de lo que cada usuario hace en el sistema: ingresos, registros, cambios y decisiones.</p>
+    <section class="card p-5 sm:p-6 flex flex-col lg:flex-row lg:items-center gap-4">
+      <div class="min-w-0 flex-1">
+        <p class="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.12em] text-aso-primary">
+          <ClipboardList class="w-3.5 h-3.5" />
+          Bitácora del sistema
+        </p>
+        <h2 class="page-title mt-1">Quién hizo qué, y cuándo</h2>
+        <p class="page-subtitle">El historial de lo que cada usuario hace en el sistema: registros, cambios, decisiones y seguridad.</p>
+      </div>
+
+      <button
+        type="button"
+        class="btn-secondary shrink-0 self-start lg:self-center"
+        :disabled="exporting || !pagination.total"
+        data-tooltip="Descarga lo que estás viendo, con los filtros elegidos"
+        @click="exportCsv"
+      >
+        <Loader2 v-if="exporting" class="w-4 h-4 animate-spin" />
+        <Download v-else class="w-4 h-4 text-aso-primary" />
+        {{ exporting ? 'Generando archivo…' : 'Exportar a CSV' }}
+      </button>
     </section>
 
     <section class="card overflow-hidden">
       <!-- Filtros -->
       <div class="p-5 border-b border-gray-100 bg-gray-50/40 space-y-3">
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
+          <label class="block">
+            <span class="field-label">Mostrar</span>
+            <select v-model="filters.detail" class="field">
+              <option v-for="option in DETAIL_OPTIONS" :key="option.value" :value="option.value">{{ option.label }}</option>
+            </select>
+          </label>
           <label class="block">
             <span class="field-label">Qué pasó</span>
             <select v-model="filters.group" class="field">
@@ -43,13 +63,10 @@
         </div>
 
         <div class="flex flex-wrap items-center justify-between gap-3">
-          <label class="flex items-center gap-2 text-sm text-gray-600 select-none">
-            <input v-model="filters.include_internal" type="checkbox" class="rounded border-gray-300 text-aso-primary focus:ring-aso-primary">
-            Mostrar también los pasos internos del sistema
-            <span class="text-gray-400" data-tooltip="Registros que el sistema crea solo, como los cargos y bloques al abrir una elección.">
-              <Info class="w-4 h-4" />
-            </span>
-          </label>
+          <p class="flex items-center gap-2 text-sm text-gray-500">
+            <Info class="w-4 h-4 shrink-0 text-gray-400" />
+            {{ DETAIL_OPTIONS.find((option) => option.value === filters.detail)?.hint }}
+          </p>
           <button v-if="hasFilters" type="button" class="btn-secondary" @click="clearFilters">
             <X class="w-4 h-4" /> Limpiar filtros
           </button>
@@ -154,7 +171,7 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import {
-  ArrowRight, BadgeCheck, Bell, ChevronDown, ClipboardList, Info, LogIn, Pencil, Plus, ShieldCheck, Trash2, X
+  ArrowRight, BadgeCheck, Bell, ChevronDown, ClipboardList, Download, Info, Loader2, LogIn, Pencil, Plus, ShieldCheck, Trash2, X
 } from 'lucide-vue-next';
 import axios from '@/services/axios';
 import PaginationBar from '@/components/ui/PaginationBar.vue';
@@ -170,7 +187,15 @@ const STYLE = {
   notice: { label: 'Aviso', badge: 'badge-blue', box: 'bg-sky-50 text-sky-600', icon: Bell },
 };
 
+// Qué tanto detalle se muestra (lo decide el servidor con el parámetro "detail").
+const DETAIL_OPTIONS = [
+  { value: 'important', label: 'Solo lo importante', hint: 'Decisiones, registros, cambios, eliminaciones y seguridad. Sin ingresos ni el paso a paso de cada plancha.' },
+  { value: 'all', label: 'Toda la actividad', hint: 'También los ingresos y salidas, y cada candidato de una plancha por separado.' },
+  { value: 'internal', label: 'Todo, con pasos internos', hint: 'Incluye lo que el sistema crea solo, como los cargos y bloques al abrir una elección.' },
+];
+
 const isLoading = ref(false);
+const exporting = ref(false);
 const loadError = ref('');
 const records = ref([]);
 const filterOptions = ref({ groups: [], entities: [] });
@@ -182,14 +207,23 @@ const filters = reactive({
   user: '',
   from_date: '',
   to_date: '',
-  include_internal: false,
+  detail: 'important',
   page: 1,
   per_page: 20,
 });
 
 const hasFilters = computed(() => Boolean(
-  filters.group || filters.auditable_type || filters.user || filters.from_date || filters.to_date || filters.include_internal,
+  filters.group || filters.auditable_type || filters.user || filters.from_date || filters.to_date || filters.detail !== 'important',
 ));
+
+// Los filtros como parámetros de la petición (los comparten la lista y la exportación).
+const filterParams = () => {
+  const params = { detail: filters.detail };
+  ['group', 'auditable_type', 'user', 'from_date', 'to_date'].forEach((key) => {
+    if (filters[key]) params[key] = filters[key];
+  });
+  return params;
+};
 
 // El nombre va primero, así que la frase sigue en minúscula: "Ana Pérez aprobó el acta…".
 const lowerFirst = (text) => (text ? text.charAt(0).toLowerCase() + text.slice(1) : '');
@@ -210,11 +244,7 @@ const fetchLogs = async () => {
   isLoading.value = true;
   loadError.value = '';
   try {
-    const params = { page: filters.page, per_page: filters.per_page };
-    ['group', 'auditable_type', 'user', 'from_date', 'to_date'].forEach((key) => {
-      if (filters[key]) params[key] = filters[key];
-    });
-    if (filters.include_internal) params.include_internal = 1;
+    const params = { ...filterParams(), page: filters.page, per_page: filters.per_page };
 
     const { data } = await axios.get('/admin/audit-logs', { params, skipGlobalLoading: true });
     const payload = data?.data ?? {};
@@ -237,19 +267,49 @@ const fetchLogs = async () => {
   }
 };
 
+// Descarga la bitácora filtrada como CSV.
+const exportCsv = async () => {
+  exporting.value = true;
+  loadError.value = '';
+  try {
+    const response = await axios.get('/admin/audit-logs/export', {
+      params: filterParams(),
+      responseType: 'blob',
+      timeout: 300000,
+      skipGlobalLoading: true,
+    });
+
+    const disposition = response.headers?.['content-disposition'] ?? '';
+    const filename = disposition.match(/filename="?([^";]+)"?/)?.[1] ?? 'bitacora-asojuntas.csv';
+
+    const url = URL.createObjectURL(response.data);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch {
+    loadError.value = 'No se pudo generar el archivo de la bitácora.';
+  } finally {
+    exporting.value = false;
+  }
+};
+
 const changePage = (page) => {
   filters.page = page;
   fetchLogs();
 };
 
 const clearFilters = () => {
-  Object.assign(filters, { group: '', auditable_type: '', user: '', from_date: '', to_date: '', include_internal: false });
+  Object.assign(filters, { group: '', auditable_type: '', user: '', from_date: '', to_date: '', detail: 'important' });
 };
 
 // Cualquier filtro vuelve a la página 1 (con una pequeña espera mientras se escribe).
 let timer = null;
 watch(
-  () => [filters.group, filters.auditable_type, filters.user, filters.from_date, filters.to_date, filters.include_internal],
+  () => [filters.group, filters.auditable_type, filters.user, filters.from_date, filters.to_date, filters.detail],
   () => {
     clearTimeout(timer);
     timer = setTimeout(() => {

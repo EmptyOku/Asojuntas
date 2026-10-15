@@ -28,6 +28,7 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use RuntimeException;
 use App\Services\AdminNotifications;
+use App\Services\AuditTrailLogger;
 use App\Services\ElectoralAccessGuard;
 use Symfony\Component\Process\Process;
 use Throwable;
@@ -1103,8 +1104,9 @@ class PlanchaDraftController extends Controller
         }
 
         $updated = 0;
+        $decided = [];
 
-        DB::transaction(function () use ($drafts, $target, $validated, &$updated): void {
+        DB::transaction(function () use ($drafts, $target, $validated, &$updated, &$decided): void {
             foreach ($drafts as $draft) {
                 if (! CandidateDraftWorkflow::canApplyDecision((string) $draft->review_status, $target, (bool) $draft->is_processed)) {
                     continue;
@@ -1127,8 +1129,11 @@ class PlanchaDraftController extends Controller
                 }
 
                 $updated++;
+                $decided[] = $draft;
             }
         });
+
+        $this->recordPlanchaEvents('plancha_decision', $decided, ['decision' => $target]);
 
         return response()->json([
             'success' => true,
@@ -1203,6 +1208,7 @@ class PlanchaDraftController extends Controller
         $processed = 0;
         $skipped = 0;
         $issues = [];
+        $promoted = [];
 
         DB::transaction(function () use (
             $drafts,
@@ -1211,7 +1217,8 @@ class PlanchaDraftController extends Controller
             &$candidatesExisting,
             &$processed,
             &$skipped,
-            &$issues
+            &$issues,
+            &$promoted
         ): void {
             foreach ($drafts as $draft) {
                 // Borradores viejos sin documento (antes se omitían con "Sin documento
@@ -1439,8 +1446,11 @@ class PlanchaDraftController extends Controller
                 ]);
 
                 $processed++;
+                $promoted[] = $draft;
             }
         });
+
+        $this->recordPlanchaEvents('plancha_officialized', $promoted);
 
         return response()->json([
             'success' => true,
@@ -1454,6 +1464,35 @@ class PlanchaDraftController extends Controller
                 'issues' => $issues,
             ],
         ]);
+    }
+
+    /**
+     * Un solo renglón de bitácora por plancha ("Aprobó la plancha 2 de X"), en vez
+     * de leer la decisión candidato por candidato.
+     *
+     * @param  array<int, CandidateDraft>  $drafts  Borradores a los que se aplicó la acción.
+     */
+    private function recordPlanchaEvents(string $action, array $drafts, array $extra = []): void
+    {
+        try {
+            foreach (collect($drafts)->groupBy('capture_batch_uuid') as $batchUuid => $batchDrafts) {
+                $first = $batchDrafts->first();
+                $neighborhood = Election::with('neighborhood:id,name')->find($first->election_id)?->neighborhood;
+                $slateCode = (string) Slate::withTrashed()->whereKey($batchDrafts->pluck('slate_id')->filter()->first())->value('code');
+
+                app(AuditTrailLogger::class)->recordSystemEvent($action, $extra + [
+                    'neighborhood_id' => $neighborhood?->id,
+                    'neighborhood' => $neighborhood?->name,
+                    'election_id' => $first->election_id,
+                    'slate' => preg_match('/(\d+)/', $slateCode, $match) === 1 ? (int) $match[1] : null,
+                    'batch' => $batchUuid ?: null,
+                    'candidates' => $batchDrafts->count(),
+                ], CandidateDraft::class, $first->id);
+            }
+        } catch (Throwable $exception) {
+            // La bitácora nunca interrumpe la acción del usuario.
+            report($exception);
+        }
     }
 
     private function mapNormalizedToReviewPage(array $normalizedPayload): array

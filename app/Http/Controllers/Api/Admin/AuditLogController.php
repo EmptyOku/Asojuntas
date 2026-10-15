@@ -4,11 +4,15 @@ namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
+use App\Services\AuditTrailLogger;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Collection;
 use Laravel\Sanctum\PersonalAccessToken;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * Bitácora del sistema, contada para personas.
@@ -34,6 +38,9 @@ class AuditLogController extends Controller
         'permission_assignment' => 'Cambio de permisos',
         'role_status_change' => 'Rol activado o desactivado',
         'database_backup' => 'Copia de seguridad',
+        'audit_export' => 'Exportación de la bitácora',
+        'plancha_decision' => 'Decisión sobre una plancha',
+        'plancha_officialized' => 'Plancha oficializada',
         'notify.acta_received' => 'Acta recibida',
         'notify.plancha_captured' => 'Plancha registrada',
     ];
@@ -45,9 +52,43 @@ class AuditLogController extends Controller
         'deleted' => ['label' => 'Eliminaciones', 'actions' => ['deleted']],
         'access' => ['label' => 'Ingresos y salidas', 'actions' => ['login', 'logout']],
         'actas' => ['label' => 'Actas (recibidas y decisiones)', 'actions' => ['notify.acta_received', 'review_decision']],
-        'planchas' => ['label' => 'Planchas registradas', 'actions' => ['notify.plancha_captured']],
-        'security' => ['label' => 'Roles, contraseñas y copias de seguridad', 'actions' => ['role_assignment', 'permission_assignment', 'role_status_change', 'password_reset', 'database_backup']],
+        'planchas' => ['label' => 'Planchas (registradas, aprobadas y oficializadas)', 'actions' => ['notify.plancha_captured', 'plancha_decision', 'plancha_officialized']],
+        'security' => ['label' => 'Roles, contraseñas, copias y exportaciones', 'actions' => ['role_assignment', 'permission_assignment', 'role_status_change', 'password_reset', 'database_backup', 'audit_export']],
     ];
+
+    /**
+     * Qué tanto se muestra:
+     *  - important: solo lo que importa para rendir cuentas (decisiones, registros,
+     *    cambios, eliminaciones y seguridad). Sin ingresos ni el paso a paso.
+     *  - all: toda la actividad de los usuarios, sin los pasos internos del sistema.
+     *  - internal: todo, también lo que el sistema crea solo.
+     */
+    private const DETAIL_LEVELS = ['important', 'all', 'internal'];
+
+    /**
+     * Rutas que tocan una plancha entera candidato por candidato: dejan una fila
+     * por candidato, y además un solo evento "plancha aprobada / oficializada".
+     * En "solo lo importante" se muestra el evento y no las filas sueltas.
+     */
+    private const BULK_ROUTES = ['planchas.drafts.decision.batch', 'planchas.drafts.promote'];
+
+    /** Al guardar una plancha el sistema crea solo los bloques y cargos que falten. */
+    private const AUTO_CREATE_ROUTES = ['planchas.drafts.store'];
+
+    /** Registros nuevos que ya quedan contados por otro evento más claro. */
+    private const REDUNDANT_CREATIONS = [
+        'App\\Models\\CandidateDraft',   // "Registró una plancha en …"
+        'App\\Models\\ScrutinyRecord',   // "Subió un acta de …"
+        'App\\Models\\ScrutinyReview',   // "Aprobó / rechazó el acta …"
+    ];
+
+    private const CATEGORY_LABELS = [
+        'create' => 'Registro', 'update' => 'Cambio', 'delete' => 'Eliminación', 'access' => 'Acceso',
+        'decision' => 'Decisión', 'security' => 'Seguridad', 'notice' => 'Aviso',
+    ];
+
+    /** Tope de filas de una exportación. */
+    private const EXPORT_LIMIT = 20000;
 
     /** Nombre de cada tipo de registro, con su artículo, para armar frases. */
     private const ENTITIES = [
@@ -62,6 +103,8 @@ class AuditLogController extends Controller
         'App\\Models\\Election' => ['label' => 'Elección', 'phrase' => 'la elección'],
         'App\\Models\\Neighborhood' => ['label' => 'Barrio', 'phrase' => 'el barrio'],
         'App\\Models\\Commune' => ['label' => 'Comuna', 'phrase' => 'la comuna'],
+        'App\\Models\\City' => ['label' => 'Municipio', 'phrase' => 'el municipio'],
+        'App\\Models\\State' => ['label' => 'Departamento', 'phrase' => 'el departamento'],
         'App\\Models\\Block' => ['label' => 'Bloque', 'phrase' => 'el bloque'],
         'App\\Models\\Position' => ['label' => 'Cargo', 'phrase' => 'el cargo'],
         'App\\Models\\DocumentType' => ['label' => 'Tipo de documento', 'phrase' => 'el tipo de documento'],
@@ -128,10 +171,139 @@ class AuditLogController extends Controller
 
     public function index(Request $request): JsonResponse
     {
+        $perPage = max(5, min(100, (int) $request->integer('per_page', 25)));
+        $page = $this->filteredQuery($request)->latest('created_at')->latest('id')->paginate($perPage)->withQueryString();
+
+        $personNames = self::personNamesFor($page->getCollection());
+        $logs = $page->through(fn (AuditLog $log): array => self::present($log, $personNames));
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'records' => $logs,
+                // Opciones de los filtros, ya en lenguaje de usuario.
+                'filters' => [
+                    'groups' => collect(self::GROUPS)->map(fn (array $group, string $key) => ['value' => $key, 'label' => $group['label']])->values(),
+                    'entities' => collect(self::ENTITIES)
+                        ->reject(fn (array $entity) => $entity['internal'] ?? false)
+                        ->map(fn (array $entity, string $type) => ['value' => $type, 'label' => $entity['label']])
+                        ->sortBy('label')->values(),
+                ],
+            ],
+        ]);
+    }
+
+    /**
+     * La bitácora, con los mismos filtros de la pantalla, como archivo CSV
+     * (punto y coma y UTF-8 con BOM: así Excel lo abre bien en español).
+     */
+    public function export(Request $request, AuditTrailLogger $audit): StreamedResponse
+    {
+        @set_time_limit(300);
+
+        $query = $this->filteredQuery($request);
+        // La propia exportación queda en la bitácora, pero no dentro del archivo.
+        $lastId = (int) AuditLog::query()->max('id');
+        $total = min(self::EXPORT_LIMIT, (clone $query)->where('id', '<=', $lastId)->count());
+
+        $audit->recordSystemEvent('audit_export', [
+            'rows' => $total,
+            'filters' => array_filter($request->only(['detail', 'group', 'auditable_type', 'user', 'from_date', 'to_date'])),
+        ]);
+
+        $filename = 'bitacora-asojuntas-'.now()->format('Ymd-His').'.csv';
+
+        return response()->streamDownload(function () use ($query, $lastId): void {
+            $out = fopen('php://output', 'wb');
+            fwrite($out, "\xEF\xBB\xBF");
+            $put = fn (array $row) => fputcsv($out, array_map([self::class, 'csvCell'], $row), ';', '"', '');
+            $put(['Fecha y hora', 'Usuario', 'Nombre', 'Tipo', 'Qué pasó', 'Sobre qué', 'Detalle', 'Dirección IP']);
+
+            // Por partes, para no cargar toda la bitácora en memoria.
+            $query->where('id', '<=', $lastId)->latest('created_at')->latest('id');
+            $size = 500;
+            for ($page = 1; $page <= (int) ceil(self::EXPORT_LIMIT / $size); $page++) {
+                $logs = (clone $query)->forPage($page, $size)->get();
+                $personNames = self::personNamesFor($logs);
+
+                foreach ($logs as $log) {
+                    $row = self::present($log, $personNames);
+                    $put([
+                        $row['created_at'],
+                        $row['user']['username'] ?? '',
+                        $row['user']['name'],
+                        self::CATEGORY_LABELS[$row['category']] ?? 'Cambio',
+                        $row['summary'],
+                        $row['entity_label'],
+                        self::changesAsText($row['changes']),
+                        $row['ip_address'],
+                    ]);
+                }
+
+                if ($logs->count() < $size) {
+                    break;
+                }
+            }
+
+            fclose($out);
+        }, $filename, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+            'Cache-Control' => 'no-store, private',
+            'X-Export-Rows' => (string) $total,
+        ]);
+    }
+
+    /** Una celda de CSV: sin saltos de línea y sin que Excel la tome por fórmula. */
+    private static function csvCell(mixed $value): string
+    {
+        $text = trim(preg_replace('/\s+/u', ' ', (string) ($value ?? '')) ?? '');
+
+        return preg_match('/^[=+\-@]/', $text) === 1 ? "'".$text : $text;
+    }
+
+    /** "Celular: 300… → 311…; Correo: a@b.co". */
+    private static function changesAsText(array $changes): string
+    {
+        return implode('; ', array_map(function (array $change): string {
+            $value = array_key_exists('from', $change) && array_key_exists('to', $change)
+                ? $change['from'].' → '.$change['to']
+                : ($change['to'] ?? $change['from'] ?? '');
+
+            return $change['label'].': '.$value;
+        }, $changes));
+    }
+
+    /** La consulta con los filtros de la pantalla (la usan la lista y la exportación). */
+    private function filteredQuery(Request $request): Builder
+    {
         $query = AuditLog::query()->with(['user.person:id,first_name,last_name']);
 
-        // Por defecto se ocultan los pasos internos del sistema.
-        if (! $request->boolean('include_internal')) {
+        $detail = $request->string('detail')->toString();
+        if (! in_array($detail, self::DETAIL_LEVELS, true)) {
+            $detail = $request->boolean('include_internal') ? 'internal' : 'all';
+        }
+
+        if ($detail === 'important') {
+            // Ingresos y salidas: mucho volumen y poco que revisar.
+            $query->whereNotIn('action', ['login', 'logout']);
+
+            // Registros que ya cuenta otro evento más claro.
+            $query->whereNot(fn ($q) => $q->where('action', 'created')->whereIn('auditable_type', self::REDUNDANT_CREATIONS));
+            // Los cambios de estado de un acta ya los cuenta su decisión (aprobada o rechazada).
+            $query->whereNot(fn ($q) => $q->where('action', 'updated')->where('auditable_type', 'App\\Models\\ScrutinyRecord'));
+
+            // Filas sueltas (una por candidato) de aprobar u oficializar una plancha entera.
+            $fromRoutes = fn (array $names) => function ($routes) use ($names): void {
+                foreach ($names as $route) {
+                    $routes->orWhereRaw("COALESCE(CAST(metadata AS TEXT), '') LIKE ?", ['%'.$route.'"%']);
+                }
+            };
+            $query->whereNot(fn ($q) => $q->whereIn('action', ['created', 'updated'])->where($fromRoutes(self::BULK_ROUTES)));
+            $query->whereNot(fn ($q) => $q->where('action', 'created')->where($fromRoutes(self::AUTO_CREATE_ROUTES)));
+        }
+
+        // Los pasos internos del sistema solo se ven si se piden.
+        if ($detail !== 'internal') {
             $internal = array_keys(array_filter(self::ENTITIES, fn (array $entity) => $entity['internal'] ?? false));
             $query->where(fn ($q) => $q->whereNull('auditable_type')->orWhereNotIn('auditable_type', $internal));
 
@@ -177,67 +349,57 @@ class AuditLogController extends Controller
             $query->whereDate('created_at', '<=', $request->date('to_date'));
         }
 
-        $perPage = max(5, min(100, (int) $request->integer('per_page', 25)));
-        $page = $query->latest('id')->paginate($perPage)->withQueryString();
+        return $query;
+    }
 
-        // Los candidatos oficiales solo guardan el id de la persona: sus nombres se traen de una vez.
-        $personIds = $page->getCollection()
+    /** Los candidatos oficiales solo guardan el id de la persona: sus nombres se traen de una vez. */
+    private static function personNamesFor(Collection $logs): Collection
+    {
+        $personIds = $logs
             ->where('auditable_type', 'App\\Models\\Candidate')
             ->map(fn (AuditLog $log) => $log->new_values['person_id'] ?? $log->old_values['person_id'] ?? null)
             ->filter()->unique()->values();
-        $personNames = $personIds->isEmpty() ? collect() : DB::table('persons')
+
+        return $personIds->isEmpty() ? collect() : DB::table('persons')
             ->whereIn('id', $personIds)
             ->get(['id', 'first_name', 'middle_name', 'last_name', 'second_last_name'])
             ->mapWithKeys(fn ($person) => [$person->id => self::fullName((array) $person)]);
+    }
 
-        $logs = $page->through(function (AuditLog $log) use ($personNames): array {
-            $userName = trim(($log->user?->person?->first_name ?? '').' '.($log->user?->person?->last_name ?? ''));
-            $changes = self::describeChanges($log);
-            [$summary, $category] = self::describe($log, $changes, $personNames);
-            $createdAt = $log->created_at ? Carbon::parse($log->created_at)->locale('es') : null;
+    /** Una fila de la bitácora, lista para mostrar. */
+    private static function present(AuditLog $log, Collection $personNames): array
+    {
+        $userName = trim(($log->user?->person?->first_name ?? '').' '.($log->user?->person?->last_name ?? ''));
+        $changes = self::describeChanges($log);
+        [$summary, $category] = self::describe($log, $changes, $personNames);
+        $createdAt = $log->created_at ? Carbon::parse($log->created_at)->locale('es') : null;
 
-            return [
-                'id' => $log->id,
-                'action' => $log->action,
-                'action_label' => self::ACTION_LABELS[$log->action] ?? ucfirst($log->action),
-                'summary' => $summary,
-                // create | update | delete | access | decision | security | notice
-                'category' => $category,
-                'entity_label' => self::entityLabel($log),
-                'auditable_type' => $log->auditable_type,
-                'auditable_id' => $log->auditable_id,
-                'ip_address' => $log->ip_address,
-                'changes' => $changes,
-                'created_at' => $log->created_at?->toDateTimeString(),
-                'created_at_human' => $createdAt?->diffForHumans(),
-                'created_at_exact' => $createdAt?->isoFormat('D [de] MMMM [de] YYYY, h:mm a'),
-                'user' => [
-                    'id' => $log->user?->id,
-                    'username' => $log->user?->username,
-                    'name' => $userName !== '' ? $userName : ($log->user?->username ?? 'El sistema'),
-                ],
-            ];
-        });
-
-        return response()->json([
-            'success' => true,
-            'data' => [
-                'records' => $logs,
-                // Opciones de los filtros, ya en lenguaje de usuario.
-                'filters' => [
-                    'groups' => collect(self::GROUPS)->map(fn (array $group, string $key) => ['value' => $key, 'label' => $group['label']])->values(),
-                    'entities' => collect(self::ENTITIES)
-                        ->reject(fn (array $entity) => $entity['internal'] ?? false)
-                        ->map(fn (array $entity, string $type) => ['value' => $type, 'label' => $entity['label']])
-                        ->sortBy('label')->values(),
-                ],
+        return [
+            'id' => $log->id,
+            'action' => $log->action,
+            'action_label' => self::ACTION_LABELS[$log->action] ?? ucfirst($log->action),
+            'summary' => $summary,
+            // create | update | delete | access | decision | security | notice
+            'category' => $category,
+            'entity_label' => self::entityLabel($log),
+            'auditable_type' => $log->auditable_type,
+            'auditable_id' => $log->auditable_id,
+            'ip_address' => $log->ip_address,
+            'changes' => $changes,
+            'created_at' => $log->created_at?->toDateTimeString(),
+            'created_at_human' => $createdAt?->diffForHumans(),
+            'created_at_exact' => $createdAt?->isoFormat('D [de] MMMM [de] YYYY, h:mm a'),
+            'user' => [
+                'id' => $log->user?->id,
+                'username' => $log->user?->username,
+                'name' => $userName !== '' ? $userName : ($log->user?->username ?? 'El sistema'),
             ],
-        ]);
+        ];
     }
 
     private static function entityLabel(AuditLog $log): string
     {
-        if ($log->auditable_type === null) {
+        if ($log->auditable_type === null || str_starts_with($log->action, 'plancha_')) {
             return self::ACTION_LABELS[$log->action] ?? 'Evento del sistema';
         }
 
@@ -270,8 +432,14 @@ class AuditLogController extends Controller
                 $verb = ['approved' => 'Aprobó', 'rejected' => 'Rechazó', 'reviewed' => 'Revisó'][$meta['decision'] ?? ''] ?? 'Decidió sobre';
 
                 return [$verb.' el acta n.º '.($meta['scrutiny_record_id'] ?? '?'), 'decision'];
+            case 'plancha_decision':
+                return [(($meta['decision'] ?? '') === 'rejected' ? 'Rechazó' : 'Aprobó').' '.self::planchaName($meta), 'decision'];
+            case 'plancha_officialized':
+                return ['Oficializó '.self::planchaName($meta), 'decision'];
             case 'database_backup':
                 return ['Descargó una copia de seguridad de la base de datos', 'security'];
+            case 'audit_export':
+                return ['Exportó la bitácora a un archivo ('.(int) ($meta['rows'] ?? 0).' registros)', 'security'];
             case 'role_assignment':
                 return ['Cambió el rol de '.($meta['target_username'] ?? 'un usuario'), 'security'];
             case 'password_reset':
@@ -343,6 +511,16 @@ class AuditLogController extends Controller
         }
 
         return [self::withFields('Modificó '.$subject, $changes), 'update'];
+    }
+
+    /** "la plancha 2 de Barrio X (14 candidatos)". */
+    private static function planchaName(array $meta): string
+    {
+        $count = (int) ($meta['candidates'] ?? 0);
+
+        return 'la plancha'.(! empty($meta['slate']) ? ' '.$meta['slate'] : '')
+            .' de '.($meta['neighborhood'] ?? 'un barrio')
+            .($count > 0 ? ' ('.$count.($count === 1 ? ' candidato' : ' candidatos').')' : '');
     }
 
     /** "Modificó a la persona Ana Pérez: Celular, Correo". */
