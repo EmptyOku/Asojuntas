@@ -43,8 +43,8 @@
       <section class="card p-5 sm:p-6">
         <div class="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h1 class="page-title">Gestión de Personas</h1>
-            <p class="page-subtitle">Consulta y edita las personas registradas.</p>
+            <h1 class="page-title">Personas</h1>
+            <p class="page-subtitle">Las personas registradas (candidatos, jurados y personal), con sus datos de contacto.</p>
           </div>
           <button
             v-can="'persons.create'"
@@ -76,8 +76,8 @@
       <section class="card p-5 sm:p-6">
         <div class="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h1 class="page-title">Gestión de Usuarios</h1>
-            <p class="page-subtitle">Administra cuentas, roles y estado de acceso.</p>
+            <h1 class="page-title">Cuentas de acceso</h1>
+            <p class="page-subtitle">Quién puede entrar al sistema, con qué rol, y si su cuenta está activa.</p>
           </div>
           <div class="flex flex-wrap items-center gap-2">
             <button

@@ -3,7 +3,7 @@
     
     <div class="card p-6">
       <h2 class="text-xl font-bold text-gray-900">Hola, {{ authStore.user?.name || 'Administrador Electoral' }}</h2>
-      <p class="text-sm text-gray-500 mt-1">Gestión y digitalización de planchas de candidatos.</p>
+      <p class="text-sm text-gray-500 mt-1">Desde aquí registras las planchas de candidatos de cada barrio y las llevas a revisión.</p>
       
       <div class="mt-6 p-4 bg-orange-50 border border-orange-100 rounded-xl flex items-start gap-3">
         <ShieldCheck class="w-5 h-5 text-orange-600 shrink-0 mt-0.5" />
@@ -15,7 +15,7 @@
       </div>
     </div>
 
-    <h3 class="text-sm font-bold text-gray-500 uppercase tracking-wider px-2">Acciones Principales</h3>
+    <h3 class="text-sm font-bold text-gray-500 uppercase tracking-wider px-2">Acciones principales</h3>
 
     <router-link 
       to="/secretary/capture?doc=plancha" 

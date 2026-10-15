@@ -2,8 +2,8 @@
   <div class="space-y-6 lg:space-y-8">
 
     <div>
-      <h2 class="page-title">Auditoría de Actas</h2>
-      <p class="page-subtitle">Bandeja de actas transmitidas por los jurados, con la lectura automática (IA) de cada una.</p>
+      <h2 class="page-title">Auditoría de actas</h2>
+      <p class="page-subtitle">Las actas que suben los jurados, con la hora en que llegaron. Ábrelas para comparar la foto con los votos y aprobarlas o rechazarlas.</p>
     </div>
 
     <!-- Indicadores -->
@@ -66,7 +66,7 @@
               <th>Mesa / Ubicación</th>
               <th>Jurado</th>
               <th class="text-right">Votos válidos</th>
-              <th>Lectura IA</th>
+              <th>Lectura automática</th>
               <th class="text-right">Acción</th>
             </tr>
           </thead>
@@ -110,7 +110,13 @@
                   <div class="avatar h-8 w-8 rounded-lg text-[11px]">{{ initials(row.jury_name) }}</div>
                   <div class="min-w-0">
                     <p class="font-medium text-gray-800 truncate">{{ row.jury_name }}</p>
-                    <p class="text-xs text-gray-400">{{ row.transmitted_at_human || 'Sin fecha' }}</p>
+                    <p class="text-xs text-gray-500" :data-tooltip="row.uploaded_at?.relativo">
+                      <template v-if="row.uploaded_at">Subida el {{ row.uploaded_at.texto }}</template>
+                      <template v-else>Sin fecha</template>
+                    </p>
+                    <p v-if="row.decided_at" class="text-xs text-gray-400">
+                      {{ row.status === 'rejected' ? 'Rechazada' : 'Aprobada' }} el {{ row.decided_at.texto }}
+                    </p>
                   </div>
                 </div>
               </td>

@@ -63,39 +63,82 @@ const routes = [
     children: [
       {
         path: 'dashboard', name: 'admin-dashboard', component: () => import('@/views/admin/AdminDashboardView.vue'),
-        meta: { permission: 'dashboard.view', nav: { label: 'Dashboard', icon: 'LayoutDashboard', section: 'Administración', order: 10 } }
+        meta: {
+          permission: 'dashboard.view',
+          title: 'Resumen del escrutinio',
+          subtitle: 'Cómo va el conteo: actas recibidas, votos y lo que falta revisar',
+          nav: { label: 'Resumen', icon: 'LayoutDashboard', section: 'Administración', order: 10 },
+        }
       },
       {
         path: 'geography', name: 'admin-geography', component: () => import('@/views/admin/GeographyView.vue'),
-        meta: { permission: 'neighborhoods.view', nav: { label: 'Geografía Electoral', icon: 'Map', section: 'Administración', order: 20 } }
+        meta: {
+          permission: 'neighborhoods.view',
+          title: 'Geografía electoral',
+          subtitle: 'Barrios por comuna: abre o cierra la elección de cada uno',
+          nav: { label: 'Geografía electoral', icon: 'Map', section: 'Administración', order: 20 },
+        }
       },
       {
         path: 'map', name: 'admin-map', component: () => import('@/views/admin/ElectoralMapView.vue'),
-        meta: { permission: 'map.view', nav: { label: 'Mapa Interactivo', icon: 'MapPin', section: 'Administración', order: 30 } }
+        meta: {
+          permission: 'map.view',
+          title: 'Mapa electoral',
+          subtitle: 'En qué barrios ya llegó el acta, comuna por comuna',
+          nav: { label: 'Mapa electoral', icon: 'MapPin', section: 'Administración', order: 30 },
+        }
       },
       {
         path: 'candidates', name: 'admin.candidates', component: CandidatesDirectoryView,
-        meta: { permission: 'candidates.view', nav: { label: 'Juntas de Acción Comunal', icon: 'Users', section: 'Administración', order: 40 } }
+        meta: {
+          permission: 'candidates.view',
+          title: 'Juntas de Acción Comunal',
+          subtitle: 'Dignatarios elegidos y resultados de cada barrio',
+          nav: { label: 'Juntas de Acción Comunal', icon: 'Users', section: 'Administración', order: 40 },
+        }
       },
       {
         path: 'audit', name: 'admin-audit', component: () => import('@/views/admin/AuditView.vue'),
-        meta: { permission: 'scrutiny_records.view', nav: { label: 'Auditoría de Actas', icon: 'FileCheck', section: 'Administración', order: 50 } }
+        meta: {
+          permission: 'scrutiny_records.view',
+          title: 'Auditoría de actas',
+          subtitle: 'Revisa las actas que suben los jurados y decide si sus votos cuentan',
+          nav: { label: 'Auditoría de actas', icon: 'FileCheck', section: 'Administración', order: 50 },
+        }
       },
       {
         path: 'audit-logs', name: 'admin-audit-logs', component: () => import('@/views/admin/AuditLogsView.vue'),
-        meta: { permission: 'audit_logs.view', nav: { label: 'Bitácora del Sistema', icon: 'ClipboardList', section: 'Administración', order: 60 } }
+        meta: {
+          permission: 'audit_logs.view',
+          title: 'Bitácora del sistema',
+          subtitle: 'Quién hizo qué en el sistema, y cuándo',
+          nav: { label: 'Bitácora del sistema', icon: 'ClipboardList', section: 'Administración', order: 60 },
+        }
       },
       {
         path: 'registration', name: 'admin.registration', component: RegistrationPlatesView,
-        meta: { permission: 'candidates.view', nav: { label: 'Revisión de planchas', icon: 'ShieldAlert', section: 'Administración', order: 70 } }
+        meta: {
+          permission: 'candidates.view',
+          title: 'Planchas oficiales',
+          subtitle: 'Las planchas ya oficializadas de cada barrio, con su fecha',
+          nav: { label: 'Planchas oficiales', icon: 'ShieldAlert', section: 'Administración', order: 70 },
+        }
       },
       {
         path: 'audit/:id', name: 'admin-audit-detail', component: () => import('@/views/admin/VoteValidationView.vue'),
-        meta: { permission: 'scrutiny_records.view' }
+        meta: {
+          permission: 'scrutiny_records.view',
+          title: 'Revisión de un acta',
+          subtitle: 'Compara la foto con los votos leídos y decide si el acta cuenta',
+        }
       },
       {
         path: 'neighborhood/:id/results', name: 'admin.neighborhood.results', component: NeighborhoodResultsView,
-        meta: { anyPermission: ['candidates.view', 'neighborhoods.view', 'map.view'] }
+        meta: {
+          anyPermission: ['candidates.view', 'neighborhoods.view', 'map.view'],
+          title: 'Resultados del barrio',
+          subtitle: 'Votos, cuociente electoral, curules y dignatarios elegidos',
+        }
       },
       {
         // Panel: CRUD de cada tabla. Aparece con que el rol pueda VER al menos
@@ -131,23 +174,47 @@ const routes = [
     children: [
       {
         path: 'dashboard', name: 'secretary-dashboard', component: SecretaryDashboardView,
-        meta: { permission: 'candidate_drafts.create', nav: { label: 'Dashboard', icon: 'LayoutDashboard', section: 'Secretaría', order: 110 } }
+        meta: {
+          permission: 'candidate_drafts.create',
+          title: 'Inicio de secretaría',
+          subtitle: 'Accesos rápidos para registrar y revisar planchas',
+          nav: { label: 'Inicio', icon: 'LayoutDashboard', section: 'Secretaría', order: 110 },
+        }
       },
       {
         path: 'capture', name: 'secretary-capture', component: SecretaryCaptureView,
-        meta: { permission: 'candidate_drafts.create', nav: { label: 'Escanear Planchas', icon: 'Camera', section: 'Secretaría', order: 120, query: { doc: 'plancha' } } }
+        meta: {
+          permission: 'candidate_drafts.create',
+          title: 'Registrar una plancha',
+          subtitle: 'Sube las fotos de la plancha y revisa los datos antes de guardarla',
+          nav: { label: 'Escanear planchas', icon: 'Camera', section: 'Secretaría', order: 120, query: { doc: 'plancha' } },
+        }
       },
       {
         path: 'planchas', name: 'secretary-planchas', component: SecretaryPlanchasList,
-        meta: { permission: 'candidate_drafts.view', nav: { label: 'Auditoría de Planchas', icon: 'Files', section: 'Secretaría', order: 130 } }
+        meta: {
+          permission: 'candidate_drafts.view',
+          title: 'Bandeja de planchas',
+          subtitle: 'Aprueba y oficializa las planchas registradas',
+          nav: { label: 'Bandeja de planchas', icon: 'Files', section: 'Secretaría', order: 130 },
+        }
       },
       {
         path: 'planchas-por-barrio', name: 'secretary-neighborhood-slates', component: SecretaryNeighborhoodSlatesView,
-        meta: { permission: 'candidates.view', nav: { label: 'Planchas por Barrio', icon: 'MapPinned', section: 'Secretaría', order: 140 } }
+        meta: {
+          permission: 'candidates.view',
+          title: 'Planchas por barrio',
+          subtitle: 'Las planchas ya oficializadas de cada barrio, con su fecha',
+          nav: { label: 'Planchas por barrio', icon: 'MapPinned', section: 'Secretaría', order: 140 },
+        }
       },
       {
         path: 'planchas/:id', name: 'secretary-plancha-detail', component: SecretaryPlanchaDetailView,
-        meta: { permission: 'candidate_drafts.view' }
+        meta: {
+          permission: 'candidate_drafts.view',
+          title: 'Detalle de la plancha',
+          subtitle: 'Corrige los datos de los candidatos antes de aprobarla',
+        }
       }
     ]
   },
@@ -162,10 +229,21 @@ const routes = [
     children: [
       {
         path: 'dashboard', name: 'jury-dashboard', component: () => import('@/views/jury/JuryDashboardView.vue'),
-        meta: { permission: 'scrutiny_records.create', nav: { label: 'Actas de mesa', icon: 'Camera', section: 'Jurado', order: 210 } }
+        meta: {
+          permission: 'scrutiny_records.create',
+          title: 'El acta de mi mesa',
+          subtitle: 'Sube el acta de escrutinio de tu barrio y sigue su revisión',
+          nav: { label: 'Actas de mesa', icon: 'Camera', section: 'Jurado', order: 210 },
+        }
       },
-      { path: 'capture', name: 'jury-capture', component: () => import('@/views/jury/CaptureSlatesView.vue'), meta: { permission: 'scrutiny_records.create' } },
-      { path: 'review', name: 'jury-review', component: () => import('@/views/jury/PreviousReviewView.vue'), meta: { permission: 'scrutiny_records.create' } }
+      {
+        path: 'capture', name: 'jury-capture', component: () => import('@/views/jury/CaptureSlatesView.vue'),
+        meta: { permission: 'scrutiny_records.create', title: 'Cargar el acta', subtitle: 'Toma o sube la foto del acta de escrutinio' },
+      },
+      {
+        path: 'review', name: 'jury-review', component: () => import('@/views/jury/PreviousReviewView.vue'),
+        meta: { permission: 'scrutiny_records.create', title: 'Revisar antes de enviar', subtitle: 'Confirma los votos leídos del acta antes de enviarla' },
+      }
     ]
   },
 
@@ -251,8 +329,10 @@ router.beforeEach(async (to) => {
   return true;
 });
 
-router.afterEach(() => {
+router.afterEach((to) => {
   stopRouteLoading();
+  // La pestaña del navegador dice en qué página se está.
+  document.title = to.meta?.title ? `${to.meta.title} · Asojuntas` : 'Asojuntas';
 });
 
 export default router;

@@ -2,7 +2,7 @@
   <div class="space-y-6">
     <div class="flex flex-wrap items-start justify-between gap-3">
       <div>
-        <h1 class="page-title">Mapa Electoral</h1>
+        <h1 class="page-title">Mapa electoral</h1>
         <p class="text-sm text-gray-500">Comunas de Girardot. Haz clic en una comuna para ver sus Juntas de Acción Comunal y los resultados de cada barrio.</p>
       </div>
       <div class="flex flex-col items-end gap-1.5">

@@ -102,22 +102,22 @@
       <div class="fixed bottom-0 inset-x-0 p-4 bg-white/80 backdrop-blur-md border-t border-gray-100 grid grid-cols-2 gap-3 z-30 lg:relative lg:bg-transparent lg:border-0 lg:p-0">
         <button @click="rejectAndReturn" class="py-4 bg-white border border-gray-200 text-red-600 font-bold rounded-2xl text-sm">Rechazar</button>
         <button @click="confirmAndSend" :disabled="isSubmitting" class="py-4 bg-aso-primary text-white font-bold rounded-2xl shadow-md flex items-center justify-center gap-2 text-sm disabled:opacity-70">
-          <CheckCircle class="w-4 h-4" /> Confirmar Datos
+          <CheckCircle class="w-4 h-4" /> Confirmar y enviar
         </button>
       </div>
 
-      <!-- PRUEBA DE INTEGRACION (DESARROLLO) -->
+      <!-- Lectura automática de la foto y mesa a la que va el acta. -->
       <div class="card p-5 mt-6 mb-24 lg:mb-6">
-        <h3 class="text-sm font-bold text-gray-900">Prueba de Integracion API</h3>
-        <p class="text-xs text-gray-500 mt-1">Esta prueba usa tu sesion autenticada del jurado, sin token manual.</p>
+        <h3 class="text-sm font-bold text-gray-900">Lectura automática del acta</h3>
+        <p class="text-xs text-gray-500 mt-1">Si los votos de arriba no coinciden con la foto, puedes volver a leerla.</p>
 
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
-          <div>
-            <label class="text-[10px] font-bold text-gray-400 uppercase">Scrutiny Record ID (Auto)</label>
-            <input :value="integration.recordId || ''" type="number" readonly class="field bg-gray-100 text-gray-600" placeholder="Se asigna automaticamente">
+          <div v-if="integration.recordId">
+            <label class="text-[10px] font-bold text-gray-400 uppercase">Número interno del acta</label>
+            <input :value="integration.recordId" type="text" readonly class="field bg-gray-100 text-gray-600">
           </div>
           <div>
-            <label class="text-[10px] font-bold text-gray-400 uppercase">Mesa de Votacion</label>
+            <label class="text-[10px] font-bold text-gray-400 uppercase">Mesa de votación</label>
             <input
               v-model.number="integration.pollingTableId"
               type="number"
@@ -125,7 +125,7 @@
               :readonly="Boolean(integration.pollingTableId)"
               class="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700 disabled:opacity-80"
               :class="integration.pollingTableId ? 'bg-gray-100' : 'bg-gray-50'"
-              :placeholder="integration.pollingTableId ? 'Asignada automaticamente' : 'Solo requerida la primera vez'"
+              :placeholder="integration.pollingTableId ? 'Asignada automáticamente' : 'Solo se pide la primera vez'"
             >
           </div>
         </div>
@@ -140,8 +140,6 @@
 
         <p v-if="submitError" class="mt-3 text-xs text-red-600 font-semibold">{{ submitError }}</p>
         <p v-if="submitSuccess" class="mt-3 text-xs text-green-700 font-semibold">{{ submitSuccess }}</p>
-        <p v-if="integration.lastStoragePath" class="mt-2 text-[11px] text-gray-600">Ruta VPS: {{ integration.lastStoragePath }}</p>
-        <p v-if="integration.lastDownloadUrl" class="mt-1 text-[11px] text-gray-600 break-all">URL descarga: {{ integration.lastDownloadUrl }}</p>
       </div>
 
     </div>

@@ -8,7 +8,7 @@
           Publicación oficial
         </p>
         <h2 class="page-title mt-1">Planchas oficiales por barrio</h2>
-        <p class="page-subtitle">Solo aparecen las planchas aprobadas y oficializadas desde la bandeja de revisión.</p>
+        <p class="page-subtitle">Solo aparecen las planchas aprobadas y oficializadas desde la bandeja de planchas, con la fecha en que se oficializaron.</p>
       </div>
 
       <div class="flex w-full lg:w-auto flex-col sm:flex-row gap-2">
@@ -132,6 +132,12 @@
           </nav>
           <p v-else class="text-sm font-semibold text-gray-700">{{ card.slates[0]?.label }} · {{ card.slates[0]?.representatives.length }} cargos oficiales</p>
 
+          <p v-if="currentSlate(card)?.officialized_at" class="flex items-center gap-1.5 text-xs text-gray-500">
+            <ShieldCheck class="w-3.5 h-3.5 text-aso-primary" />
+            {{ currentSlate(card).label }} oficializada el
+            <time :datetime="currentSlate(card).officialized_at.iso" class="font-semibold text-gray-700">{{ currentSlate(card).officialized_at.texto }}</time>
+          </p>
+
           <SlateRoster :blocks="rosterFor(card)" />
         </div>
       </article>
@@ -174,6 +180,9 @@ const errorMessage = ref('');
 const pagination = ref({ current_page: 1, last_page: 1, total: 0, from: 0, to: 0 });
 const openId = ref(null);
 const activeSlates = reactive({});
+
+// La plancha que se está viendo (la pestaña elegida, o la única).
+const currentSlate = (card) => card.slates[activeIndex(card.id)] ?? card.slates[0];
 
 const countRepresentatives = (card) => card.slates.reduce((sum, slate) => sum + slate.representatives.length, 0);
 const pageSlates = computed(() => cards.value.reduce((sum, card) => sum + card.slates.length, 0));

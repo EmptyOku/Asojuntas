@@ -7,19 +7,24 @@
         </router-link>
         <div>
           <div class="flex flex-wrap items-center gap-2 sm:gap-3">
-            <h1 class="page-title">Auditoría Acta #{{ route.params.id }}</h1>
+            <h1 class="page-title">Revisión del acta #{{ route.params.id }}</h1>
             <span :class="statusBadgeClass">
               <span class="badge-dot" :class="{ 'animate-pulse': !isFinalStatus }"></span>
               {{ statusLabel }}
             </span>
           </div>
           <p class="text-xs lg:text-sm text-gray-500 mt-1">{{ subtitle }}</p>
+          <p v-if="detail.uploaded_at" class="text-xs text-gray-500 mt-0.5">
+            Subida el <time :datetime="detail.uploaded_at.iso" class="font-semibold text-gray-700">{{ detail.uploaded_at.texto }}</time>
+            <template v-if="detail.jury_name"> por {{ detail.jury_name }}</template>
+            <template v-if="detail.decided_at"> · {{ detail.status === 'rejected' ? 'Rechazada' : 'Aprobada' }} el {{ detail.decided_at.texto }}</template>
+          </p>
         </div>
       </div>
 
       <div class="flex items-center bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-100">
         <span class="text-xs lg:text-sm font-medium text-gray-500">
-          Confianza IA:
+          Confianza de la lectura automática:
           <span class="text-orange-600 font-bold">{{ confidenceText }}</span>
         </span>
       </div>
@@ -80,7 +85,7 @@
 
       <div class="w-full lg:w-1/2 card flex flex-col h-[50vh] lg:h-full overflow-hidden">
         <div class="p-4 lg:p-5 border-b border-gray-100 bg-gray-50/50 shrink-0">
-          <h2 class="text-base lg:text-lg font-bold text-gray-900">Extracción de Escrutinio</h2>
+          <h2 class="text-base lg:text-lg font-bold text-gray-900">Votos leídos del acta</h2>
           <p class="text-[10px] lg:text-xs text-gray-500 mt-1">Verifica los valores contra la imagen y confirma la auditoría.</p>
         </div>
 
@@ -92,7 +97,7 @@
 
             <div class="bg-gray-50 border border-gray-100 rounded-xl p-3 grid grid-cols-2 sm:grid-cols-4 gap-2">
               <div class="col-span-2 sm:col-span-4 border-b border-gray-200 pb-2 mb-1">
-                <label class="block text-[9px] text-gray-500 uppercase">Total Votos</label>
+                <label class="block text-[9px] text-gray-500 uppercase">Total de votos</label>
                 <input type="number" v-model.number="block.votes.total_votes" class="w-full bg-transparent text-lg font-bold text-gray-900 outline-none">
               </div>
 
@@ -124,7 +129,7 @@
               Rechazar
             </button>
             <button v-can="'scrutiny_records.approve'" @click="openDecision('approved')" :disabled="isSubmitting" class="flex-1 lg:flex-none px-4 lg:px-6 py-2 text-xs lg:text-sm font-semibold text-white bg-aso-primary hover:bg-aso-primary-dark shadow-md rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-60">
-              <Save class="w-4 h-4" /> Confirmar Datos
+              <Save class="w-4 h-4" /> Aprobar acta
             </button>
           </div>
         </div>
@@ -159,6 +164,9 @@
         </div>
       </div>
     </div>
+
+    <!-- Horas clave de la elección de esta acta. -->
+    <ElectionTimeline v-if="!isLoading && !loadError && detail.timeline" :timeline="detail.timeline" :title="`Línea de tiempo · ${detail.neighborhood_name || 'elección'}`" />
   </div>
 </template>
 
@@ -168,6 +176,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { ArrowLeft, ChevronLeft, ChevronRight, FileText, Users, Save } from 'lucide-vue-next';
 import axios from '@/services/axios';
 import ImageViewer from '@/components/ui/ImageViewer.vue';
+import ElectionTimeline from '@/components/ui/ElectionTimeline.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -185,6 +194,9 @@ const detail = ref({
   files: [],
   blocks: [],
   updated_at_human: '',
+  uploaded_at: null,
+  decided_at: null,
+  timeline: null,
 });
 
 const editableBlocks = ref([]);
@@ -236,7 +248,10 @@ const confidenceText = computed(() => {
 
 const statusLabel = computed(() => {
   const map = {
-    pending_review: 'Revisión Numérica',
+    draft: 'Borrador',
+    pending: 'Pendiente de revisión',
+    pending_review: 'Pendiente de revisión',
+    consolidated: 'Consolidada',
     reviewed: 'Revisada',
     approved: 'Aprobada',
     rejected: 'Rechazada',

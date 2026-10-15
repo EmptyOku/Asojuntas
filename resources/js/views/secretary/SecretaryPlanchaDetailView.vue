@@ -1142,7 +1142,7 @@ const promoteApprovedBatch = async () => {
     await loadPromotableCount(currentBatchUuid.value);
     await hydratePlanchaFromDrafts();
     isEditing.value = false;
-    showResult(true, 'Plancha oficializada', 'Los candidatos aprobados ya aparecen en "Planchas por Barrio" y salieron de la bandeja de revisión.');
+    showResult(true, 'Plancha oficializada', 'Los candidatos aprobados ya aparecen en "Planchas por barrio" y salieron de la bandeja de revisión.');
   } catch (error) {
     showResult(false, 'No se pudo oficializar', error?.response?.data?.message || error?.message || 'Error de conexión.');
   } finally {

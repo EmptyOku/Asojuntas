@@ -4,8 +4,8 @@
     <!-- Barra de la vista -->
     <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
       <div>
-        <h2 class="page-title">Dashboard</h2>
-        <p class="page-subtitle">Resumen en tiempo real del escrutinio electoral.</p>
+        <h2 class="page-title">Resumen del escrutinio</h2>
+        <p class="page-subtitle">Cómo va el conteo en tiempo real: actas recibidas, votos y lo que falta revisar.</p>
       </div>
       <div class="flex items-center gap-3">
         <span v-if="lastUpdated" class="hidden sm:inline-flex items-center gap-2 text-xs font-medium text-gray-500">
@@ -89,8 +89,8 @@
               <tr>
                 <th>Mesa</th>
                 <th>Jurado</th>
-                <th>Recepción</th>
-                <th>Estado IA</th>
+                <th>Subida</th>
+                <th>Lectura automática</th>
                 <th class="text-right">Acción</th>
               </tr>
             </thead>
@@ -130,7 +130,13 @@
                     <span class="font-medium text-gray-800">{{ row.jury_name }}</span>
                   </div>
                 </td>
-                <td class="text-gray-500 whitespace-nowrap">{{ row.transmitted_at_human || 'Sin fecha' }}</td>
+                <td class="whitespace-nowrap">
+                  <template v-if="row.uploaded_at">
+                    <p class="text-gray-800">{{ row.uploaded_at.texto }}</p>
+                    <p class="text-xs text-gray-400">{{ row.uploaded_at.relativo }}</p>
+                  </template>
+                  <span v-else class="text-gray-400">Sin fecha</span>
+                </td>
                 <td>
                   <span :class="row.status_tag?.kind === 'ok' ? 'badge-green' : 'badge-amber'">
                     <span class="badge-dot"></span>

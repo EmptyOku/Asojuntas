@@ -299,7 +299,7 @@ final class CrudCatalog
                 'ops' => ['update', 'delete'],
                 'order' => ['id', 'desc'],
                 'elsewhere' => [
-                    'create' => ['text' => 'Los candidatos se registran escaneando la plancha en "Escanear Planchas".', 'route' => 'secretary-capture'],
+                    'create' => ['text' => 'Los candidatos se registran escaneando la plancha en "Escanear planchas".', 'route' => 'secretary-capture'],
                 ],
                 'fields' => [
                     ['name' => 'first_name', 'label' => 'Primer nombre', 'type' => 'text', 'rules' => ['required', 'string', 'max:100'], 'list' => true, 'search' => true, 'edit' => true],
