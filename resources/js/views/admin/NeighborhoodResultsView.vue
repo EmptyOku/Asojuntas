@@ -16,6 +16,14 @@
         <h2 v-if="barrio" class="page-title mt-1 truncate">{{ barrio.name }}</h2>
         <div v-else class="mt-2 h-8 w-64 rounded-lg bg-gray-100 animate-pulse"></div>
         <p class="page-subtitle">Cuociente electoral, curules y dignatarios por bloque.</p>
+        <p v-if="barrio?.linea_de_tiempo" class="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-500">
+          <span :class="barrio.eleccion_abierta ? 'badge-green' : 'badge-gray'">
+            <span class="badge-dot"></span>
+            {{ barrio.eleccion_abierta ? 'Elección abierta' : 'Elección cerrada' }}
+          </span>
+          <span v-if="!barrio.eleccion_abierta && barrio.linea_de_tiempo.cierre">el {{ barrio.linea_de_tiempo.cierre.texto }}</span>
+          <span v-if="barrio.linea_de_tiempo.acta?.subida">· Acta subida el {{ barrio.linea_de_tiempo.acta.subida.texto }}</span>
+        </p>
       </div>
 
       <!-- Exportar: solo cuando el barrio ya tiene resultados. -->
@@ -257,6 +265,9 @@
         </section>
       </div>
     </template>
+
+    <!-- Horas clave: planchas oficializadas, acta subida y decidida, cierre. -->
+    <ElectionTimeline v-if="!loading && !error && barrio?.linea_de_tiempo" :timeline="barrio.linea_de_tiempo" />
   </div>
 </template>
 
@@ -268,6 +279,7 @@ import {
 } from 'lucide-vue-next';
 import axios from '@/services/axios';
 import { useAuthStore } from '@/stores/auth';
+import ElectionTimeline from '@/components/ui/ElectionTimeline.vue';
 import { blockTitle, exportResultsExcel, exportResultsPdf, planchaColor, winnerInfo } from '@/utils/resultsExport';
 
 const authStore = useAuthStore();

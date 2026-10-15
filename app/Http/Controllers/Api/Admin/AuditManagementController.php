@@ -7,6 +7,8 @@ use App\Models\ScrutinyRecord;
 use App\Models\ScrutinyRecordFile;
 use App\Models\ScrutinyReview;
 use App\Services\AuditTrailLogger;
+use App\Support\ElectionTimeline;
+use App\Support\LocalTime;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -44,6 +46,10 @@ class AuditManagementController extends Controller
                     ->select('users.username')
                     ->whereColumn('users.id', 'scrutiny_records.created_by_user_id')
                     ->limit(1),
+                // Hora en que el jurado subió el acta (su primera foto).
+                'uploaded_at' => DB::table('scrutiny_record_files')
+                    ->selectRaw('MIN(scrutiny_record_files.created_at)')
+                    ->whereColumn('scrutiny_record_files.scrutiny_record_id', 'scrutiny_records.id'),
                 'jury_person_name' => DB::table('persons')
                     ->selectRaw("TRIM(COALESCE(persons.first_name, '') || ' ' || COALESCE(persons.last_name, ''))")
                     ->join('users', 'users.person_id', '=', 'persons.id')
@@ -110,6 +116,10 @@ class AuditManagementController extends Controller
                         ? $userName
                         : ($record->jury_username ?? 'Sin usuario'),
                     'transmitted_at_human' => $record->updated_at?->diffForHumans(),
+                    'uploaded_at' => LocalTime::present($record->uploaded_at ?? $record->created_at),
+                    'decided_at' => in_array($record->status, ['approved', 'reviewed', 'consolidated', 'rejected'], true)
+                        ? LocalTime::present($record->reviews->max(fn ($review) => $review->reviewed_at ?? $review->created_at))
+                        : null,
                     'valid_votes' => $validVotes,
                     'status' => $record->status,
                     'ai_confidence' => $confidence,
@@ -402,6 +412,13 @@ class AuditManagementController extends Controller
                 'files' => $files,
                 'blocks' => $blocks,
                 'updated_at_human' => $scrutinyRecord->updated_at?->diffForHumans(),
+                // Horas de esta acta y de su elección (planchas oficializadas y cierre).
+                'uploaded_at' => LocalTime::present(ElectionTimeline::uploadedAt([$scrutinyRecord->id])[$scrutinyRecord->id] ?? $scrutinyRecord->created_at),
+                'decided_at' => in_array($scrutinyRecord->status, ['approved', 'reviewed', 'consolidated', 'rejected'], true)
+                    ? LocalTime::present($scrutinyRecord->reviews->max(fn ($review) => $review->reviewed_at ?? $review->created_at))
+                    : null,
+                'neighborhood_name' => $scrutinyRecord->election?->neighborhood?->name,
+                'timeline' => ElectionTimeline::forElections([(int) $scrutinyRecord->election_id])[(int) $scrutinyRecord->election_id] ?? null,
             ],
         ]);
     }

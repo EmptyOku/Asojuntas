@@ -89,6 +89,26 @@ const summary = (barrio) => {
   };
 };
 
+// Horas clave de la elección (planchas oficializadas, acta, cierre) como filas [qué, cuándo].
+const timelineRows = (barrio) => {
+  const timeline = barrio?.linea_de_tiempo;
+  if (!timeline) return [];
+
+  const rows = (timeline.planchas ?? []).map((plancha) => [`${plancha.nombre} oficializada`, plancha.oficializada?.texto ?? '—']);
+  const acta = timeline.acta;
+  if (acta?.subida) {
+    rows.push(['Acta subida', `${acta.subida.texto}${acta.subida_por ? ` · por ${acta.subida_por}` : ''}`]);
+    if (acta.decidida) {
+      rows.push([acta.estado === 'rejected' ? 'Acta rechazada' : 'Acta aprobada', acta.decidida.texto]);
+    }
+  } else {
+    rows.push(['Acta', 'Todavía no se ha subido']);
+  }
+  rows.push(['Elección', timeline.abierta ? 'Abierta' : `Cerrada${timeline.cierre ? ` el ${timeline.cierre.texto}` : ''}`]);
+
+  return rows;
+};
+
 const BRAND = {
   deep: '#1a350b',
   primary: '#45821f',
@@ -173,6 +193,22 @@ export async function exportResultsPdf(barrio) {
     doc.setFont('helvetica', 'normal');
   });
   y += 24;
+
+  // Línea de tiempo: cuándo se oficializaron las planchas, llegó el acta y se cerró la elección.
+  const timeline = timelineRows(barrio);
+  if (timeline.length) {
+    autoTable(doc, {
+      startY: y,
+      theme: 'plain',
+      margin: { left: margin, right: margin },
+      head: [['Línea de tiempo', 'Fecha y hora']],
+      body: timeline,
+      styles: { font: 'helvetica', fontSize: 8.5, cellPadding: 1.4, textColor: [55, 65, 81] },
+      headStyles: { fontStyle: 'bold', textColor: hexToRgb(BRAND.primary) },
+      columnStyles: { 0: { cellWidth: 55, fontStyle: 'bold' } },
+    });
+    y = doc.lastAutoTable.finalY + 8;
+  }
 
   const tableTheme = {
     theme: 'grid',
@@ -352,6 +388,7 @@ export async function exportResultsExcel(barrio) {
     ['Bloques', info.bloques],
     ['Cargos a proveer', info.cargos],
     ['Mayor votación', info.ganadora],
+    ...timelineRows(barrio),
   ];
   meta.forEach(([label, value]) => {
     const row = sheet.addRow([label, value]);

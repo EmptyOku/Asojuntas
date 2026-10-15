@@ -67,6 +67,9 @@ return [
 
     'timezone' => 'UTC',
 
+    // Zona en que se MUESTRAN las fechas y horas (la base sigue guardando UTC).
+    'display_timezone' => env('APP_DISPLAY_TIMEZONE', 'America/Bogota'),
+
     /*
     |--------------------------------------------------------------------------
     | Application Locale Configuration

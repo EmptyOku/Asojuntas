@@ -24,6 +24,7 @@ class Election extends Model
         'election_date',
         'period_year',
         'is_active',
+        'closed_at',
         'description',
     ];
 
@@ -31,7 +32,21 @@ class Election extends Model
         'election_date' => 'date',
         'period_year' => 'integer',
         'is_active' => 'boolean',
+        'closed_at' => 'datetime',
     ];
+
+    /**
+     * La hora de cierre se anota sola: al cerrar (desde Geografía, el Panel o
+     * donde sea) queda la hora; al reabrir se borra.
+     */
+    protected static function booted(): void
+    {
+        static::saving(function (Election $election): void {
+            if ($election->isDirty('is_active') || ! $election->exists) {
+                $election->closed_at = $election->is_active ? null : ($election->closed_at ?? now());
+            }
+        });
+    }
 
     public function scopeActive(Builder $query): Builder
     {

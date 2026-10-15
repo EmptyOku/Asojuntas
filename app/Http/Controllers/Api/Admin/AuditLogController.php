@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
 use App\Services\AuditTrailLogger;
+use App\Support\LocalTime;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -373,7 +374,8 @@ class AuditLogController extends Controller
         $userName = trim(($log->user?->person?->first_name ?? '').' '.($log->user?->person?->last_name ?? ''));
         $changes = self::describeChanges($log);
         [$summary, $category] = self::describe($log, $changes, $personNames);
-        $createdAt = $log->created_at ? Carbon::parse($log->created_at)->locale('es') : null;
+        // En hora de Colombia (la base guarda UTC: antes se veía 5 horas adelantada).
+        $createdAt = LocalTime::make($log->created_at);
 
         return [
             'id' => $log->id,
@@ -387,7 +389,7 @@ class AuditLogController extends Controller
             'auditable_id' => $log->auditable_id,
             'ip_address' => $log->ip_address,
             'changes' => $changes,
-            'created_at' => $log->created_at?->toDateTimeString(),
+            'created_at' => $createdAt?->format('Y-m-d H:i:s'),
             'created_at_human' => $createdAt?->diffForHumans(),
             'created_at_exact' => $createdAt?->isoFormat('D [de] MMMM [de] YYYY, h:mm a'),
             'user' => [
@@ -646,9 +648,11 @@ class AuditLogController extends Controller
         // Fechas guardadas en formato técnico (2026-10-02T15:20:00+00:00).
         if (is_string($value) && preg_match('/^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2})?/', $value) === 1) {
             try {
-                $date = Carbon::parse($value)->locale('es');
-
-                return str_contains($value, ':') ? $date->isoFormat('D [de] MMMM [de] YYYY, h:mm a') : $date->isoFormat('D [de] MMMM [de] YYYY');
+                // Con hora: se pasa a hora de Colombia. Solo fecha (cumpleaños, fecha
+                // de la elección): se deja tal cual, o se correría al día anterior.
+                return str_contains($value, ':')
+                    ? LocalTime::make($value)->isoFormat('D [de] MMMM [de] YYYY, h:mm a')
+                    : Carbon::parse(substr($value, 0, 10))->locale('es')->isoFormat('D [de] MMMM [de] YYYY');
             } catch (\Throwable) {
                 return $value;
             }

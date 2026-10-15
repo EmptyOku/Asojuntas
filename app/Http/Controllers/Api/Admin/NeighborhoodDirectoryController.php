@@ -14,6 +14,8 @@ use App\Models\Slate;
 use App\Models\ScrutinyBlockResult;
 use App\Models\ScrutinyRecord;
 use App\Models\Candidate;
+use App\Support\ElectionTimeline;
+use App\Support\LocalTime;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -46,8 +48,21 @@ class NeighborhoodDirectoryController extends Controller
         $neighborhoodsPaginator = $query->orderBy('name', 'asc')->paginate($perPage);
 
         // Transformamos solo los 15 registros de la página actual
+        $lastClosedAt = Election::query()
+            ->whereIn('neighborhood_id', collect($neighborhoodsPaginator->items())->pluck('id'))
+            ->where('is_active', false)
+            ->whereNotNull('closed_at')
+            ->groupBy('neighborhood_id')
+            ->selectRaw('neighborhood_id, MAX(closed_at) as closed_at')
+            ->pluck('closed_at', 'neighborhood_id');
+
         $neighborhoodsItems = collect($neighborhoodsPaginator->items())
-            ->map(fn($neighborhood) => $this->toNeighborhoodRow($neighborhood))
+            ->map(fn($neighborhood) => $this->toNeighborhoodRow($neighborhood) + [
+                // Sin elección abierta: cuándo se cerró la última (null si nunca tuvo).
+                'last_closed_at' => $neighborhood->elections->isEmpty()
+                    ? LocalTime::present($lastClosedAt[$neighborhood->id] ?? null)
+                    : null,
+            ])
             ->values()
             ->toArray();
 
@@ -261,6 +276,7 @@ class NeighborhoodDirectoryController extends Controller
             ->whereIn('id', $activeElectionIds)
             ->update([
                 'is_active' => false,
+                'closed_at' => $now,
                 'updated_at' => $now,
             ]);
 
@@ -516,15 +532,18 @@ class NeighborhoodDirectoryController extends Controller
         ini_set('max_execution_time', 120);
 
         $neighborhood = Neighborhood::with('commune:id,name')->findOrFail($id);
+        // La elección abierta; si no hay, la última que se cerró (antes, al cerrar
+        // la elección los resultados del barrio desaparecían).
         $election = $neighborhood->elections()
-            ->where('is_active', true)
+            ->orderByDesc('is_active')
             ->latest('election_date')
+            ->latest('id')
             ->first();
 
         if (!$election) {
             return response()->json([
                 'success' => false,
-                'message' => 'No hay elecciones activas para este barrio.',
+                'message' => 'Este barrio todavía no tiene elecciones.',
                 'data'    => null
             ]);
         }
@@ -820,8 +839,11 @@ class NeighborhoodDirectoryController extends Controller
                 // Encabezado de los reportes PDF/Excel.
                 'comuna'     => $neighborhood->commune?->name,
                 'eleccion'   => $election->name,
+                'eleccion_abierta' => (bool) $election->is_active,
                 'resultados' => $resultadosFormateados,
                 'plancha_ganadora' => $planchaGanadoraGlobal,
+                // Planchas oficializadas, acta subida y cierre, con su hora.
+                'linea_de_tiempo' => ElectionTimeline::forElections([$election->id])[$election->id] ?? null,
             ],
         ]);
     }

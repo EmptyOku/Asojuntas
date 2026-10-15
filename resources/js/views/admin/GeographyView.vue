@@ -142,8 +142,11 @@
               <td>
                 <span :class="neighborhood.has_active_election ? 'badge-green' : 'badge-gray'">
                   <span class="badge-dot"></span>
-                  {{ neighborhood.has_active_election ? 'Activa' : 'Sin elección' }}
+                  {{ neighborhood.has_active_election ? 'Activa' : (neighborhood.last_closed_at ? 'Cerrada' : 'Sin elección') }}
                 </span>
+                <p v-if="!neighborhood.has_active_election && neighborhood.last_closed_at" class="mt-1 text-xs text-gray-500 whitespace-nowrap">
+                  el {{ neighborhood.last_closed_at.texto }}
+                </p>
               </td>
               <td>
                 <span v-if="neighborhood.president_name" class="text-gray-800">{{ neighborhood.president_name }}</span>

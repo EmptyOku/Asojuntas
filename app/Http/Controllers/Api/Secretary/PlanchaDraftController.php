@@ -18,6 +18,8 @@ use App\Models\ScrutinyRecord;
 use App\Models\Slate;
 use App\Models\SlateBlock;
 use App\Support\CandidateDraftWorkflow;
+use App\Support\ElectionTimeline;
+use App\Support\LocalTime;
 use App\Support\UnknownCandidate;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -781,15 +783,18 @@ class PlanchaDraftController extends Controller
         $candidatesByNeighborhood = $candidates->groupBy(function (Candidate $candidate): string {
             return (string) ($candidate->election?->neighborhood_id ?? '0');
         });
+        $officializedAt = ElectionTimeline::officializedBySlate(
+            $candidates->pluck('slateBlock.slate_id')->filter()->unique()->values()->all()
+        );
 
-        $items = collect($neighborhoods->items())->map(function (Neighborhood $neighborhood) use ($candidatesByNeighborhood): array {
+        $items = collect($neighborhoods->items())->map(function (Neighborhood $neighborhood) use ($candidatesByNeighborhood, $officializedAt): array {
             $neighborhoodCandidates = $candidatesByNeighborhood->get((string) $neighborhood->id, collect());
 
             $slates = $neighborhoodCandidates
                 ->groupBy(function (Candidate $candidate): string {
                     return (string) ($candidate->slateBlock?->slate_id ?? 0);
                 })
-                ->map(function ($slateCandidates): array {
+                ->map(function ($slateCandidates) use ($officializedAt): array {
                     $firstCandidate = $slateCandidates->first();
                     $slate = $firstCandidate?->slateBlock?->slate;
 
@@ -828,6 +833,7 @@ class PlanchaDraftController extends Controller
                         'name' => $slate?->name,
                         // "P1" -> "Plancha 1" (antes se mostraba "Plancha P1").
                         'label' => $slate?->code ? 'Plancha '.preg_replace('/^P(?=\d)/i', '', $slate->code) : 'Plancha sin código',
+                        'officialized_at' => LocalTime::present($officializedAt[$slate?->id] ?? null),
                         'representatives' => $representatives,
                     ];
                 })

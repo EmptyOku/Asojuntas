@@ -199,9 +199,13 @@
                 {{ barrio.commune?.name || 'Sin comuna' }} · {{ barrio.code }}
               </p>
             </div>
-            <span :class="barrio.has_active_election ? 'badge-green' : 'badge-gray'" class="shrink-0">
+            <span
+              :class="barrio.has_active_election ? 'badge-green' : 'badge-gray'"
+              class="shrink-0"
+              :data-tooltip="!barrio.has_active_election && barrio.last_closed_at ? `Cerrada el ${barrio.last_closed_at.texto}` : null"
+            >
               <span class="badge-dot"></span>
-              {{ barrio.has_active_election ? 'Activa' : 'Sin elección' }}
+              {{ barrio.has_active_election ? 'Activa' : (barrio.last_closed_at ? 'Cerrada' : 'Sin elección') }}
             </span>
           </div>
 
@@ -222,6 +226,9 @@
             <p class="text-xs text-gray-400 truncate">
               <template v-if="barrio.active_election?.election_date">
                 <CalendarDays class="w-3.5 h-3.5 inline -mt-0.5 mr-1" />{{ formatDate(barrio.active_election.election_date) }}
+              </template>
+              <template v-else-if="barrio.last_closed_at">
+                <CalendarDays class="w-3.5 h-3.5 inline -mt-0.5 mr-1" />Cerrada el {{ barrio.last_closed_at.texto }}
               </template>
             </p>
             <router-link
