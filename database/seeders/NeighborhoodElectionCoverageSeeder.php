@@ -41,7 +41,7 @@ class NeighborhoodElectionCoverageSeeder extends Seeder
                     if ($activeElections->isEmpty()) {
                         $election = Election::create([
                             'neighborhood_id' => $neighborhood->id,
-                            'name' => 'Eleccion JAC '.$neighborhood->name.' '.$year,
+                            'name' => 'Elección Junta de Acción Comunal '.$neighborhood->name.' '.$year,
                             'code' => 'JAC-'.$neighborhood->code.'-'.$year.'-ACTIVA',
                             'election_date' => $now->toDateString(),
                             'period_year' => $year,

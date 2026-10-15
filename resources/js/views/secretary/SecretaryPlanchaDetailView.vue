@@ -686,7 +686,7 @@ const hydratePlanchaFromDrafts = async () => {
         const first = apiDrafts[0];
 
         if (!route.query.neighborhood_name) {
-          planchaData.nombreBarrio = first?.neighborhood_name || first?.election?.neighborhood?.name || 'JAC Sin Identificar';
+          planchaData.nombreBarrio = first?.neighborhood_name || first?.election?.neighborhood?.name || 'Junta de Acción Comunal sin identificar';
         }
 
         if (!currentBatchUuid.value && first?.capture_batch_uuid) {

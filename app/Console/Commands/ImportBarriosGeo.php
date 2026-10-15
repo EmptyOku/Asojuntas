@@ -24,7 +24,7 @@ class ImportBarriosGeo extends Command
 {
     protected $signature = 'barrios:import-geo {file : Ruta al archivo .geojson o .csv} {--dry-run : Solo muestra lo que haria}';
 
-    protected $description = 'Importa las coordenadas de los barrios / JAC desde un GeoJSON o CSV';
+    protected $description = 'Importa las coordenadas de los barrios / Juntas de Acción Comunal desde un GeoJSON o CSV';
 
     public function handle(): int
     {

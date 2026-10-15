@@ -316,7 +316,7 @@ class NeighborhoodDirectoryController extends Controller
 
         $election = Election::create([
             'neighborhood_id' => $neighborhood->id,
-            'name' => 'Eleccion JAC '.$neighborhood->name.' '.$year,
+            'name' => 'Elección Junta de Acción Comunal '.$neighborhood->name.' '.$year,
             'code' => 'JAC-'.$neighborhood->code.'-'.$timestamp,
             'election_date' => now()->toDateString(),
             'period_year' => $year,

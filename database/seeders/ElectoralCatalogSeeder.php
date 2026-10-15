@@ -15,7 +15,7 @@ class ElectoralCatalogSeeder extends Seeder
             [
                 'code' => 'DIR',
                 'name' => 'Directiva',
-                'description' => 'Bloque directivo principal de la JAC',
+                'description' => 'Bloque directivo principal de la Junta de Acción Comunal',
                 'is_active' => true,
                 'created_at' => $now,
                 'updated_at' => $now,
@@ -46,7 +46,7 @@ class ElectoralCatalogSeeder extends Seeder
                 'code' => 'DIR_PRES',
                 'name' => 'Presidente',
                 'order_number' => 1,
-                'description' => 'Representante principal de la JAC',
+                'description' => 'Representante principal de la Junta de Acción Comunal',
                 'is_active' => true,
                 'created_at' => $now,
                 'updated_at' => $now,

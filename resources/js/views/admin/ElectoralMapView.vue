@@ -3,7 +3,7 @@
     <div class="flex flex-wrap items-start justify-between gap-3">
       <div>
         <h1 class="page-title">Mapa Electoral</h1>
-        <p class="text-sm text-gray-500">Comunas de Girardot. Haz clic en una comuna para ver sus JAC y los resultados del barrio.</p>
+        <p class="text-sm text-gray-500">Comunas de Girardot. Haz clic en una comuna para ver sus Juntas de Acción Comunal y los resultados de cada barrio.</p>
       </div>
       <div class="flex flex-col items-end gap-1.5">
         <div class="flex items-center gap-3">
@@ -21,7 +21,7 @@
           </button>
           <label v-if="selected" class="flex items-center gap-2 text-sm text-gray-600 select-none">
             <input type="checkbox" v-model="showBarrios" class="rounded border-gray-300 text-aso-primary focus:ring-aso-primary" />
-            Mostrar JAC ({{ selectedBarrios.length }})
+            Mostrar Juntas de Acción Comunal ({{ selectedBarrios.length }})
           </label>
         </div>
         <p v-if="totalAtrasadas > 0" class="flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
@@ -103,7 +103,7 @@
             :aria-expanded="legendOpen"
             @click="legendOpen = !legendOpen"
           >
-            {{ selected && showBarrios ? 'Puntos JAC' : 'Actas recibidas por comuna' }}
+            {{ selected && showBarrios ? 'Juntas de Acción Comunal' : 'Actas recibidas por comuna' }}
             <ChevronDown class="w-3.5 h-3.5 transition-transform" :class="legendOpen ? '' : '-rotate-90'" />
           </button>
 
@@ -139,7 +139,7 @@
                 <span class="h-3 w-5 shrink-0 rounded-full" :style="{ backgroundColor: SEMAFORO_COLORS.rojo }"></span>
                 Menos de 30%
               </li>
-              <li class="pt-1 text-[11px] leading-snug text-gray-500">Haz clic en una comuna para ver sus JAC.</li>
+              <li class="pt-1 text-[11px] leading-snug text-gray-500">Haz clic en una comuna para ver sus Juntas de Acción Comunal.</li>
             </template>
           </ul>
         </div>
@@ -212,7 +212,7 @@
           </div>
 
           <div v-if="selectedBarrios.length" class="mt-4 border-t border-gray-100 pt-3">
-            <p class="mb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-400">Barrios (JAC)</p>
+            <p class="mb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-400">Barrios (Juntas de Acción Comunal)</p>
             <ul class="max-h-64 space-y-0.5 overflow-y-auto pr-1">
               <li v-for="b in selectedBarrios" :key="b.id">
                 <button

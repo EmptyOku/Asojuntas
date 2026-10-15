@@ -75,7 +75,7 @@ const routes = [
       },
       {
         path: 'candidates', name: 'admin.candidates', component: CandidatesDirectoryView,
-        meta: { permission: 'candidates.view', nav: { label: 'Directorio JAC', icon: 'Users', section: 'Administración', order: 40 } }
+        meta: { permission: 'candidates.view', nav: { label: 'Juntas de Acción Comunal', icon: 'Users', section: 'Administración', order: 40 } }
       },
       {
         path: 'audit', name: 'admin-audit', component: () => import('@/views/admin/AuditView.vue'),
