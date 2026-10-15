@@ -12,6 +12,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\HeaderUtils;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Illuminate\Support\Facades\Log;
@@ -496,6 +497,8 @@ class AuditManagementController extends Controller
             // Bloquea el acta: dos auditores decidiendo a la vez no deben pisarse.
             $record = ScrutinyRecord::query()->lockForUpdate()->findOrFail($scrutinyRecord->id);
 
+            $this->assertCanDecide($record, $decision);
+
             $this->applyReviewChangesToBlockResults($record, $changesPayload);
 
             // Todos los resultados del acta siguen la decisión (antes solo los
@@ -539,6 +542,37 @@ class AuditManagementController extends Controller
                 'status' => $record->status,
             ],
         ]);
+    }
+
+    /**
+     * Qué actas se pueden decidir: nunca un borrador que el jurado no ha enviado,
+     * ni aprobar un acta sin votos, ni una segunda acta de la misma mesa (sus
+     * votos se sumarían dos veces).
+     */
+    private function assertCanDecide(ScrutinyRecord $record, string $decision): void
+    {
+        if ($record->status === 'draft') {
+            throw ValidationException::withMessages([
+                'decision' => 'El jurado todavía no ha enviado esta acta: no se puede decidir sobre un borrador.',
+            ]);
+        }
+
+        if ($decision === 'rejected') {
+            return;
+        }
+
+        if (! $record->blockResults()->exists()) {
+            throw ValidationException::withMessages([
+                'decision' => 'El acta no tiene votos registrados: no se puede aprobar.',
+            ]);
+        }
+
+        $other = $record->otherCountedActa();
+        if ($other) {
+            throw ValidationException::withMessages([
+                'decision' => "Esta mesa ya tiene un acta aprobada ({$other->record_number}). Rechaza esa primero si esta es la correcta: no pueden contar las dos.",
+            ]);
+        }
     }
 
     private function applyReviewChangesToBlockResults(ScrutinyRecord $scrutinyRecord, array $changesPayload): void

@@ -13,6 +13,8 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->statefulApi();
+        // Una cuenta desactivada pierde la sesión en su siguiente petición.
+        $middleware->web(append: [\App\Http\Middleware\EnsureUserIsActive::class]);
         $middleware->alias([
             'api.permission' => \App\Http\Middleware\EnsureApiPermission::class,
             'permission' => \Spatie\Permission\Middleware\PermissionMiddleware::class,

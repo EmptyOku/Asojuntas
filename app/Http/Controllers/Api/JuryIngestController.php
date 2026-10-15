@@ -532,7 +532,19 @@ class JuryIngestController extends Controller
                 ]);
             }
 
-            return $record;
+            if (in_array($record->status, ScrutinyRecord::OPEN_STATUSES, true)) {
+                return $record;
+            }
+
+            // Un acta ya aprobada no se toca: sus votos están contando en los resultados.
+            if (in_array($record->status, ScrutinyRecord::APPROVED_STATUSES, true)) {
+                throw ValidationException::withMessages([
+                    'scrutiny_record_id' => 'Esta acta ya fue aprobada y no admite cambios. Si tiene un error, pide a un administrador que la rechace para poder cargarla de nuevo.',
+                ]);
+            }
+
+            // Rechazada: no se reabre. Lo que se envíe ahora es un acta nueva de la misma mesa.
+            $validated['polling_table_id'] = $validated['polling_table_id'] ?? $record->polling_table_id;
         }
 
         $pollingTableId = ! empty($validated['polling_table_id'])
@@ -552,6 +564,17 @@ class JuryIngestController extends Controller
 
             if ($existing) {
                 return $existing;
+            }
+
+            // Una mesa, un acta que cuenta: con una ya aprobada no entra otra.
+            $approved = ScrutinyRecord::query()
+                ->where('polling_table_id', $pollingTable->id)
+                ->whereIn('status', ScrutinyRecord::APPROVED_STATUSES)
+                ->exists();
+            if ($approved) {
+                throw ValidationException::withMessages([
+                    'polling_table_id' => 'Esta mesa ya tiene un acta aprobada. Si tiene un error, pide a un administrador que la rechace para poder cargar otra.',
+                ]);
             }
 
             $record = ScrutinyRecord::create([
@@ -581,6 +604,7 @@ class JuryIngestController extends Controller
 
         $lastRecord = ScrutinyRecord::query()
             ->where('created_by_user_id', $request->user()->id)
+            ->whereIn('status', ScrutinyRecord::OPEN_STATUSES)
             ->latest()
             ->first();
 

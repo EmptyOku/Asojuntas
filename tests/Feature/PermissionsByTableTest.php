@@ -64,7 +64,8 @@ class PermissionsByTableTest extends TestCase
         $this->assertSame('pending_review', $record->fresh()->status);
 
         $aprobador = $this->makeUser(['scrutiny_records.view', 'scrutiny_records.approve']);
-        $this->actingAs($aprobador)->postJson("/api/admin/audit-records/{$record->id}/decision", ['decision' => 'approved'])->assertOk();
+        // (El acta de esta prueba no tiene votos, así que la decisión posible es rechazarla.)
+        $this->actingAs($aprobador)->postJson("/api/admin/audit-records/{$record->id}/decision", ['decision' => 'rejected', 'comments' => 'Acta sin cifras.'])->assertOk();
     }
 
     #[Test]

@@ -85,8 +85,15 @@ class AppServiceProvider extends ServiceProvider
         $recordForAction = function (string $action) use ($auditTrailLogger): callable {
             return function (string $eventName, array $data) use ($action, $auditTrailLogger): void {
                 $model = $data[0] ?? null;
+                if (! $model instanceof Model) {
+                    return;
+                }
 
-                if (! $model instanceof Model || in_array($model::class, self::AUDIT_EXCLUDED_MODELS, true)) {
+                // Los votos de un acta no dejan fila al cargarse (ya queda el acta),
+                // pero cambiar una cifra después sí: es lo que decide el resultado.
+                $votesChanged = $model instanceof ScrutinyBlockResult && $action === 'updated' && $model->isDirty('votes');
+
+                if (! $votesChanged && in_array($model::class, self::AUDIT_EXCLUDED_MODELS, true)) {
                     return;
                 }
 

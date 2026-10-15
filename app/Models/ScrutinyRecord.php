@@ -18,6 +18,26 @@ class ScrutinyRecord extends Model
     /** Estados de un acta cuyos votos ya cuentan en los resultados. */
     public const APPROVED_STATUSES = ['approved', 'reviewed', 'consolidated'];
 
+    /** Estados en que el jurado todavía puede cargar o corregir el acta. */
+    public const OPEN_STATUSES = ['draft', 'pending', 'pending_review'];
+
+    /**
+     * Otra acta de la misma mesa cuyos votos ya cuentan. Solo puede haber una:
+     * si hubiera dos, los votos se sumarían dos veces en los resultados.
+     */
+    public function otherCountedActa(): ?self
+    {
+        return static::query()
+            ->whereKeyNot($this->getKey())
+            ->whereIn('status', self::APPROVED_STATUSES)
+            ->when(
+                $this->polling_table_id,
+                fn ($query) => $query->where('polling_table_id', $this->polling_table_id),
+                fn ($query) => $query->where('election_id', $this->election_id),
+            )
+            ->first();
+    }
+
     /**
      * Con un acta aprobada la votación ya ocurrió: no se admiten planchas nuevas.
      */

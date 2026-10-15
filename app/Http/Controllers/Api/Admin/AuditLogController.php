@@ -117,7 +117,8 @@ class AuditLogController extends Controller
         'App\\Models\\CandidateDraftFile' => ['label' => 'Foto de una plancha', 'phrase' => 'una foto de plancha', 'internal' => true],
         'App\\Models\\ScrutinyRecordFile' => ['label' => 'Foto de un acta', 'phrase' => 'una foto de acta', 'internal' => true],
         'App\\Models\\ScrutinyExtraction' => ['label' => 'Extracción de datos', 'phrase' => 'una extracción de datos', 'internal' => true],
-        'App\\Models\\ScrutinyBlockResult' => ['label' => 'Votos de un bloque', 'phrase' => 'los votos de un bloque', 'internal' => true],
+        // Solo se anota cuando alguien cambia una cifra ya cargada (ver AppServiceProvider).
+        'App\\Models\\ScrutinyBlockResult' => ['label' => 'Votos de un acta', 'phrase' => 'los votos de un acta'],
         'App\\Models\\ScrutinyElectedPerson' => ['label' => 'Persona electa', 'phrase' => 'una persona electa', 'internal' => true],
         'App\\Models\\UserRole' => ['label' => 'Asignación de rol', 'phrase' => 'una asignación de rol', 'internal' => true],
         'App\\Models\\RolePermission' => ['label' => 'Asignación de permiso', 'phrase' => 'una asignación de permiso', 'internal' => true],
@@ -480,6 +481,10 @@ class AuditLogController extends Controller
 
         // --- Modificaciones: se nombra lo que de verdad pasó ---
         $changed = fn (string $field) => array_key_exists($field, $new) && ($old[$field] ?? null) != $new[$field];
+
+        if ($type === 'App\\Models\\ScrutinyBlockResult' && $changed('votes')) {
+            return ['Cambió votos del acta n.º '.($new['scrutiny_record_id'] ?? '?').': de '.(int) ($old['votes'] ?? 0).' a '.(int) $new['votes'], 'decision'];
+        }
 
         if ($type === 'App\\Models\\CandidateDraft') {
             if ($changed('is_processed') && $new['is_processed']) {
