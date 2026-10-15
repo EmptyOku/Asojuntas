@@ -7,6 +7,7 @@ use App\Models\Election;
 use App\Models\Neighborhood;
 use App\Models\ScrutinyRecord;
 use App\Models\Slate;
+use App\Services\ElectoralAccessGuard;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 
@@ -23,9 +24,12 @@ class NeighborhoodController extends Controller
             return response()->json(['success' => true, 'data' => []]);
         }
 
+        // Quien solo captura planchas (no las revisa) solo encuentra su propio barrio.
+        $limit = app(ElectoralAccessGuard::class)->planchaNeighborhoodLimitFor($request->user());
+
         $neighborhoods = Neighborhood::with(['commune'])
-            ->whereLike('name', "%{$term}%")
-            ->orWhereLike('code', "%{$term}%")
+            ->where(fn ($query) => $query->whereLike('name', "%{$term}%")->orWhereLike('code', "%{$term}%"))
+            ->when($limit !== null, fn ($query) => $query->whereKey($limit))
             ->orderBy('name')
             ->get();
 

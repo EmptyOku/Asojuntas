@@ -47,12 +47,16 @@ class AuthController extends Controller
             'user_id' => $user->id,
         ]);
 
+        // La aplicación trabaja con la sesión (cookie). Antes cada ingreso creaba
+        // además un token sin vencimiento que nadie usaba: ya no se emite, y los
+        // que quedaran de esta cuenta se revocan.
+        $user->tokens()->delete();
+
         $permissions = $this->permissionsFor($user);
 
         return response()->json([
             'success' => true,
             'user' => $user,
-            'token' => $user->createToken('api-login')->plainTextToken,
             'roles' => $user->roles->pluck('name')->values(),
             'permissions' => $permissions,
             'message' => 'Login exitoso'
@@ -97,14 +101,11 @@ class AuthController extends Controller
      */
     public function logout(Request $request)
     {
-        $accessToken = $request->user()?->currentAccessToken();
-
         app(AuditTrailLogger::class)->recordSystemEvent('logout', [
             'user_id' => Auth::id(),
         ]);
 
         Auth::logout();
-        $accessToken?->delete();
         $request->session()->invalidate();
         $request->session()->regenerateToken();
 

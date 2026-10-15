@@ -143,6 +143,11 @@
             </span>
           </div>
 
+          <p v-if="activeBlock.empate_residuo?.length" class="mx-5 sm:mx-6 mt-5 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900 ring-1 ring-amber-100">
+            <strong class="font-semibold">Empate por la última curul</strong> entre {{ activeBlock.empate_residuo.join(' y ') }}:
+            tienen los mismos votos. El sistema la asignó por orden de plancha; debe definirse como digan los estatutos (por ejemplo, por sorteo).
+          </p>
+
           <ul class="p-5 sm:p-6 space-y-5">
             <li v-for="plancha in activeBlock.votos_planchas" :key="plancha.plancha">
               <div class="flex items-center justify-between gap-3">

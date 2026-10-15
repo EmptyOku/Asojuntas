@@ -129,6 +129,33 @@ class ElectoralAccessGuard
     }
 
     /**
+     * Barrio al que queda limitado el usuario al capturar (planchas y actas), o
+     * null si no tiene límite. Devuelve 0 si está limitado pero no tiene barrio
+     * asignado: así no alcanza ninguno (falla en cerrado).
+     */
+    public function neighborhoodLimitFor(User $user): ?int
+    {
+        if (! $this->permissionsRequireNeighborhood($this->permissionsFor($user))) {
+            return null;
+        }
+
+        return $this->neighborhoodIdFor($user) ?? 0;
+    }
+
+    /**
+     * Lo mismo, para el trabajo con planchas: quien las revisa (aprueba o
+     * rechaza) atiende todos los barrios; quien solo las captura, el suyo.
+     */
+    public function planchaNeighborhoodLimitFor(User $user): ?int
+    {
+        if ($this->hasPermission($user, 'candidate_drafts.approve')) {
+            return null;
+        }
+
+        return $this->neighborhoodLimitFor($user);
+    }
+
+    /**
      * Perfil de jurado: sube actas y está limitado a su barrio.
      *
      * @param  Collection<int, string>  $permissions

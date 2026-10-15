@@ -44,8 +44,10 @@ class AdminNotificationsTest extends TestCase
     #[Test]
     public function registrar_una_plancha_avisa_al_administrador_y_no_a_quien_la_registro(): void
     {
-        $election = $this->makeElection($this->makeNeighborhood('Barrio Avisos'));
-        $secretary = $this->makeUser(['candidate_drafts.view', 'candidate_drafts.create', 'candidate_drafts.update', 'slates.view', 'candidates.view']);
+        $neighborhood = $this->makeNeighborhood('Barrio Avisos');
+        $election = $this->makeElection($neighborhood);
+        // Solo captura (no revisa): trabaja con las planchas de su barrio.
+        $secretary = $this->makeUser(['candidate_drafts.view', 'candidate_drafts.create', 'candidate_drafts.update', 'slates.view', 'candidates.view'], $neighborhood);
         $admin = $this->makeUser(['scrutiny_records.view', 'scrutiny_records.approve', 'slates.view', 'candidates.view']);
 
         $batch = $this->capturePlancha($secretary, $election->id);

@@ -41,9 +41,8 @@ export const useAuthStore = defineStore('auth', {
       this.loading = true;
       try {
         const response = await axios.post('/login', credentials);
-        if (response.data.token) {
-          window.localStorage.setItem('sanctum_token', response.data.token);
-        }
+        // Versiones anteriores guardaban aquí un token; la sesión va por cookie.
+        window.localStorage.removeItem('sanctum_token');
         this.applySession(response.data);
         return true;
       } catch (error) {

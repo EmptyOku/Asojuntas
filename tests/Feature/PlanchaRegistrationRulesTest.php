@@ -222,8 +222,9 @@ class PlanchaRegistrationRulesTest extends TestCase
         $this->assertSame('1070622867', PersonData::document(' 1.070.622.867 '));
 
         // Plancha desde el OCR (mayúsculas, cédula con puntos).
-        $election = $this->makeElection($this->makeNeighborhood('Barrio Formato'));
-        $secretary = $this->makeUser(['candidate_drafts.view', 'candidate_drafts.create', 'candidate_drafts.update']);
+        $neighborhood = $this->makeNeighborhood('Barrio Formato');
+        $election = $this->makeElection($neighborhood);
+        $secretary = $this->makeUser(['candidate_drafts.view', 'candidate_drafts.create', 'candidate_drafts.update'], $neighborhood);
         $this->capture($secretary, [
             'election_id' => $election->id,
             'review_page_data' => $this->cargos([['PRESIDENTE', 'MARÍA GÓMEZ', '1.070.622.867']]),

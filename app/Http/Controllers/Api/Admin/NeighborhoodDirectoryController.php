@@ -726,6 +726,7 @@ class NeighborhoodDirectoryController extends Controller
                 'cargos' => $cargos,
                 'plancha_ganadora' => $winner,
                 'planchas_ganadoras' => $allocation['winners'],
+                'empate_residuo' => $allocation['empate_residuo'],
                 'estadisticas' => [
                     'validos' => $allocation['votos_validos'],
                     'total' => $allocation['votos_validos'],
@@ -792,6 +793,7 @@ class NeighborhoodDirectoryController extends Controller
                 'votos_planchas' => $allocation['planchas'],
                 'cargos' => [],
                 'plancha_ganadora' => $allocation['winner'],
+                'empate_residuo' => $allocation['empate_residuo'],
                 'estadisticas' => [
                     'validos' => $allocation['votos_validos'],
                     'total' => $allocation['votos_validos'],
@@ -1665,6 +1667,26 @@ class NeighborhoodDirectoryController extends Controller
         // por todas y una plancha con 0 votos podía quedarse con una curul.
         $conVotos = array_keys(array_filter($normalizedPlanchas, fn (array $plancha): bool => $plancha['votos'] > 0));
         $countConVotos = count($conVotos);
+
+        // Empate por la última curul: la plancha que la recibe y la siguiente
+        // tienen los mismos votos y el mismo residuo. El sistema no puede
+        // decidirlo solo (antes lo resolvía por orden alfabético sin avisar).
+        $empateResiduo = [];
+        $corte = $countConVotos > 0 ? $cargosRestantes % $countConVotos : 0;
+        if ($countConVotos > 1 && $corte > 0) {
+            $ultima = $normalizedPlanchas[$conVotos[$corte - 1]];
+            $siguiente = $normalizedPlanchas[$conVotos[$corte]];
+            $iguales = fn (array $a, array $b): bool => $a['votos'] === $b['votos'] && abs($a['residuo'] - $b['residuo']) < 1e-9;
+
+            if ($iguales($ultima, $siguiente)) {
+                foreach ($conVotos as $index) {
+                    if ($iguales($normalizedPlanchas[$index], $ultima)) {
+                        $empateResiduo[] = $normalizedPlanchas[$index]['plancha'];
+                    }
+                }
+                sort($empateResiduo);
+            }
+        }
         if ($countConVotos > 0 && $cargosRestantes > 0) {
             for ($seat = 0; $seat < $cargosRestantes; $seat++) {
                 $normalizedPlanchas[$conVotos[$seat % $countConVotos]]['curules']++;
@@ -1694,6 +1716,7 @@ class NeighborhoodDirectoryController extends Controller
             'planchas' => $normalizedPlanchas,
             'winner' => $winner,
             'winners' => $winners,
+            'empate_residuo' => $empateResiduo,
         ];
     }
 

@@ -52,7 +52,7 @@ Route::middleware(['auth', 'api.permission:scrutiny_records.create'])->prefix('a
 // API de sesión y administración usando middleware web (session-backed)
 Route::prefix('api')->name('api.')->group(function (): void {
     Route::post('/login', [AuthController::class, 'login'])
-        ->middleware('throttle:5,1')
+        ->middleware('throttle:login')
         ->name('login');
     Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
     Route::get('/check', [AuthController::class, 'check'])->name('check');

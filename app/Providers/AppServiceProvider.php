@@ -12,7 +12,10 @@ use App\Services\ElectoralAccessGuard;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Query\Builder as QueryBuilder;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\ServiceProvider;
@@ -104,6 +107,20 @@ class AppServiceProvider extends ServiceProvider
         Event::listen('eloquent.created: *', $recordForAction('created'));
         Event::listen('eloquent.updated: *', $recordForAction('updated'));
         Event::listen('eloquent.deleted: *', $recordForAction('deleted'));
+
+        // ---------------------------------------------------------------------
+        // 3b. LÍMITE DE INTENTOS DE INICIO DE SESIÓN
+        // ---------------------------------------------------------------------
+        // Por cuenta y equipo, no solo por IP: varios jurados detrás de la misma
+        // red no se bloquean entre sí. El tope por IP frena un ataque masivo.
+        RateLimiter::for('login', function (Request $request): array {
+            $identity = mb_strtolower(trim((string) $request->input('identity')));
+
+            return [
+                Limit::perMinute(5)->by('login|'.$identity.'|'.$request->ip()),
+                Limit::perMinute(60)->by('login-ip|'.$request->ip()),
+            ];
+        });
 
         // ---------------------------------------------------------------------
         // 4. FORZAR HTTPS (Común en ambas ramas)

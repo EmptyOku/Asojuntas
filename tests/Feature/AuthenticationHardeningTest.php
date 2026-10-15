@@ -59,6 +59,27 @@ class AuthenticationHardeningTest extends TestCase
             'identity' => $usuario->email,
             'password' => 'clave-incorrecta',
         ])->assertStatus(429);
+
+        // El bloqueo es de esa cuenta: otra persona en la misma red sí puede entrar.
+        $otro = $this->makeUser();
+        $this->postJson('/api/login', [
+            'identity' => $otro->email,
+            'password' => 'secret-password',
+        ])->assertOk();
+    }
+
+    #[Test]
+    public function el_login_no_entrega_tokens_y_revoca_los_anteriores(): void
+    {
+        $usuario = $this->makeUser();
+        $usuario->createToken('api-login');
+
+        $this->postJson('/api/login', [
+            'identity' => $usuario->email,
+            'password' => 'secret-password',
+        ])->assertOk()->assertJsonMissingPath('token');
+
+        $this->assertSame(0, $usuario->tokens()->count());
     }
 
     #[Test]

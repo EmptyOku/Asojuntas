@@ -533,6 +533,8 @@ class JuryIngestController extends Controller
             }
 
             if (in_array($record->status, ScrutinyRecord::OPEN_STATUSES, true)) {
+                $this->assertElectionOpen((int) $record->election_id);
+
                 return $record;
             }
 
@@ -554,6 +556,7 @@ class JuryIngestController extends Controller
         if ($pollingTableId > 0) {
             $pollingTable = PollingTable::findOrFail($pollingTableId);
             $this->assertPollingTableAccess($request, $pollingTable);
+            $this->assertElectionOpen((int) $pollingTable->election_id);
 
             $existing = ScrutinyRecord::query()
                 ->where('polling_table_id', $pollingTable->id)
@@ -581,7 +584,8 @@ class JuryIngestController extends Controller
                 'election_id' => $pollingTable->election_id,
                 'polling_table_id' => $pollingTable->id,
                 'created_by_user_id' => $request->user()->id,
-                'record_number' => 'AUTO-'.$pollingTable->id.'-'.now()->format('YmdHis'),
+                // El sufijo evita que dos actas creadas en el mismo segundo choquen.
+                'record_number' => 'AUTO-'.$pollingTable->id.'-'.now()->format('YmdHis').'-'.Str::lower(Str::random(4)),
                 'record_date' => now()->toDateString(),
                 'record_time' => now()->format('H:i:s'),
                 'source_type' => 'api',
@@ -609,12 +613,24 @@ class JuryIngestController extends Controller
             ->first();
 
         if ($lastRecord) {
+            $this->assertElectionOpen((int) $lastRecord->election_id);
+
             return $lastRecord;
         }
 
         throw ValidationException::withMessages([
             'polling_table_id' => 'No hay acta previa para este usuario. Debes enviar polling_table_id al menos una vez.',
         ]);
+    }
+
+    /** Con la elección cerrada ya no se reciben actas (revisar las ya enviadas sí se puede). */
+    private function assertElectionOpen(int $electionId): void
+    {
+        if (! Election::query()->whereKey($electionId)->value('is_active')) {
+            throw ValidationException::withMessages([
+                'polling_table_id' => 'La elección de este barrio está cerrada: ya no se reciben actas.',
+            ]);
+        }
     }
 
     private function assertPollingTableAccess(Request $request, PollingTable $pollingTable): void

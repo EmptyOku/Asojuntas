@@ -30,6 +30,7 @@ use RuntimeException;
 use App\Services\AdminNotifications;
 use App\Services\AuditTrailLogger;
 use App\Services\ElectoralAccessGuard;
+use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 use Symfony\Component\Process\Process;
 use Throwable;
 
@@ -46,6 +47,10 @@ class PlanchaDraftController extends Controller
             'page_number' => 'nullable|integer|min:1',
             'election_id' => 'nullable|integer',
         ]);
+
+        if (! empty($validated['election_id'])) {
+            $this->assertElectionInScope((int) $validated['election_id']);
+        }
 
         // No se gasta OCR en una plancha que no se va a poder registrar.
         if (! empty($validated['election_id']) && ScrutinyRecord::electionHasApprovedActa((int) $validated['election_id'])) {
@@ -168,6 +173,8 @@ class PlanchaDraftController extends Controller
                 'message' => 'No se pudo resolver election_id. Envia election_id o crea una eleccion activa.',
             ], 422);
         }
+
+        $this->assertElectionInScope((int) $electionId);
 
         // Con un acta aprobada ya no entran planchas nuevas. Corregir un lote
         // que ya existía sí se permite (p. ej. arreglar un nombre mal leído).
@@ -495,6 +502,10 @@ class PlanchaDraftController extends Controller
         $electionId = $validated['election_id'] ?? null;
         $storageDisk = $this->storageDisk();
 
+        // La plancha manda sobre lo que diga la petición.
+        $batchElectionId = CandidateDraft::query()->where('capture_batch_uuid', $captureBatchUuid)->value('election_id');
+        $this->assertElectionInScope((int) ($batchElectionId ?: $electionId) ?: null);
+
         $created = 0;
         $updated = 0;
         $files = [];
@@ -558,6 +569,12 @@ class PlanchaDraftController extends Controller
 
     public function listEvidenceByBatch(string $captureBatchUuid): JsonResponse
     {
+        $batchElectionId = CandidateDraft::query()->where('capture_batch_uuid', $captureBatchUuid)->value('election_id')
+            ?? CandidateDraftFile::query()->where('capture_batch_uuid', $captureBatchUuid)->value('election_id');
+        if ($batchElectionId) {
+            $this->assertElectionInScope((int) $batchElectionId);
+        }
+
         $files = CandidateDraftFile::query()
             ->where('capture_batch_uuid', $captureBatchUuid)
             ->orderBy('page_number')
@@ -587,11 +604,7 @@ class PlanchaDraftController extends Controller
     public function showEvidenceFile(Request $request, CandidateDraftFile $candidateDraftFile)
     {
         // La evidencia contiene documentos de identidad: solo el barrio dueño o un revisor.
-        app(ElectoralAccessGuard::class)->assertCanReachElection(
-            $request->user(),
-            $candidateDraftFile->election_id,
-            'No tienes acceso a esta evidencia.'
-        );
+        $this->assertElectionInScope($candidateDraftFile->election_id ? (int) $candidateDraftFile->election_id : null);
 
         $storageDisk = $this->resolveStorageDisk($candidateDraftFile->storage_path);
 
@@ -625,6 +638,7 @@ class PlanchaDraftController extends Controller
         $isDetailedRequest = $request->filled('draft_id') || $request->filled('capture_batch_uuid');
 
         $query = CandidateDraft::query();
+        $this->limitToOwnNeighborhood($query, 'candidate_drafts.election_id');
 
         if ($isDetailedRequest) {
             $query->with(['election.neighborhood', 'person', 'documentType', 'slate', 'position']);
@@ -674,7 +688,7 @@ class PlanchaDraftController extends Controller
 
         if ($request->filled('search')) {
             $term = trim((string) $request->input('search'));
-            $query->where(function ($q) use ($term): void {
+            $query->where(function ($q) use ($term, $isDetailedRequest): void {
                 $q->whereLike('candidate_drafts.first_name', "%{$term}%")
                     ->orWhereLike('candidate_drafts.last_name', "%{$term}%")
                     ->orWhereLike('candidate_drafts.document_number', "%{$term}%");
@@ -884,6 +898,7 @@ class PlanchaDraftController extends Controller
                     $q->orderBy('capture_batch_uuid')->orderBy('id');
                 },
             ]);
+        $this->limitToOwnNeighborhood($query, 'elections.id');
 
         if (! empty($validated['q'])) {
             $term = trim((string) $validated['q']);
@@ -997,6 +1012,8 @@ class PlanchaDraftController extends Controller
 
     public function update(Request $request, CandidateDraft $candidateDraft): JsonResponse
     {
+        $this->assertElectionInScope((int) $candidateDraft->election_id);
+
         $validated = $request->validate([
             'document_type_id' => 'nullable|exists:document_types,id',
             'document_number' => 'nullable|string|max:30',
@@ -1036,6 +1053,7 @@ class PlanchaDraftController extends Controller
     public function decide(Request $request, CandidateDraft $candidateDraft): JsonResponse
     {
         $this->extendExecutionTimeLimit();
+        $this->assertElectionInScope((int) $candidateDraft->election_id);
 
         $validated = $request->validate([
             'decision' => 'required|string|in:approved,rejected',
@@ -1091,6 +1109,10 @@ class PlanchaDraftController extends Controller
             ->where('review_status', CandidateDraftWorkflow::STATUS_PENDING)
             ->where('is_processed', false)
             ->get();
+
+        if ($drafts->isNotEmpty()) {
+            $this->assertElectionInScope((int) $drafts->first()->election_id);
+        }
 
         if ($drafts->isEmpty()) {
             return response()->json([
@@ -1184,6 +1206,8 @@ class PlanchaDraftController extends Controller
         if (! empty($validated['draft_ids'])) {
             $query->whereIn('id', $validated['draft_ids']);
         }
+
+        $this->limitToOwnNeighborhood($query);
 
         $drafts = $query->orderBy('id')->get();
 
@@ -1464,6 +1488,31 @@ class PlanchaDraftController extends Controller
                 'issues' => $issues,
             ],
         ]);
+    }
+
+    /**
+     * Quien solo captura planchas (no las revisa) trabaja con las de su barrio.
+     * Antes esto solo se comprobaba al abrir las fotos: registrar, editar y
+     * listar aceptaban cualquier barrio.
+     */
+    private function assertElectionInScope(?int $electionId): void
+    {
+        $guard = app(ElectoralAccessGuard::class);
+        $limit = $guard->planchaNeighborhoodLimitFor(request()->user());
+
+        if ($limit !== null && $guard->neighborhoodIdForElection($electionId) !== $limit) {
+            throw new AccessDeniedHttpException('Solo puedes trabajar con las planchas de tu barrio.');
+        }
+    }
+
+    /** Deja en la consulta solo las elecciones del barrio del usuario, si está limitado a uno. */
+    private function limitToOwnNeighborhood($query, string $electionColumn = 'election_id'): void
+    {
+        $limit = app(ElectoralAccessGuard::class)->planchaNeighborhoodLimitFor(request()->user());
+
+        if ($limit !== null) {
+            $query->whereIn($electionColumn, Election::query()->where('neighborhood_id', $limit)->select('id'));
+        }
     }
 
     /**
