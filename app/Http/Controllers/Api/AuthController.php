@@ -20,6 +20,7 @@ class AuthController extends Controller
         $request->validate([
             'identity' => 'required|string',
             'password' => 'required|string',
+            'remember' => 'sometimes|boolean',
         ]);
 
         $identity = $request->string('identity')->toString();
@@ -35,7 +36,8 @@ class AuthController extends Controller
             ], 401);
         }
 
-        Auth::login($user, false);
+        // "Recordarme": la sesión sigue abierta en ese equipo aunque se cierre el navegador.
+        Auth::login($user, $request->boolean('remember'));
 
         // Evita fijación de sesión: el identificador previo al login deja de ser válido.
         $request->session()->regenerate();

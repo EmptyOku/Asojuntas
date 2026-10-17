@@ -69,6 +69,22 @@ class AuthenticationHardeningTest extends TestCase
     }
 
     #[Test]
+    public function recordarme_mantiene_la_sesion_solo_si_se_pide(): void
+    {
+        $usuario = $this->makeUser();
+
+        $sin = $this->postJson('/api/login', ['identity' => $usuario->email, 'password' => 'secret-password'])->assertOk();
+        $this->assertNull($usuario->fresh()->remember_token);
+        $this->assertEmpty(array_filter($sin->headers->getCookies(), fn ($c) => str_starts_with($c->getName(), 'remember_web_')));
+
+        $this->postJson('/api/logout');
+
+        $con = $this->postJson('/api/login', ['identity' => $usuario->email, 'password' => 'secret-password', 'remember' => true])->assertOk();
+        $this->assertNotNull($usuario->fresh()->remember_token);
+        $this->assertNotEmpty(array_filter($con->headers->getCookies(), fn ($c) => str_starts_with($c->getName(), 'remember_web_')));
+    }
+
+    #[Test]
     public function el_login_no_entrega_tokens_y_revoca_los_anteriores(): void
     {
         $usuario = $this->makeUser();
