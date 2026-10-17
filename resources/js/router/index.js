@@ -50,7 +50,8 @@ const routes = [
   {
     path: '/login',
     name: 'login',
-    component: () => import('@/views/auth/LoginView.vue')
+    component: () => import('@/views/auth/LoginView.vue'),
+    meta: { title: 'Ingreso' }
   },
 
   // ==========================================
@@ -254,17 +255,19 @@ const routes = [
     path: '/sin-modulos',
     name: 'no-modules',
     component: () => import('@/views/errors/NoModulesView.vue'),
-    meta: { requiresAuth: true }
+    meta: { requiresAuth: true, title: 'Rol sin módulos' }
   },
   {
     path: '/unauthorized',
     name: 'unauthorized',
-    component: () => import('@/views/errors/UnauthorizedView.vue')
+    component: () => import('@/views/errors/UnauthorizedView.vue'),
+    meta: { title: 'Acceso restringido' }
   },
   {
     path: '/:pathMatch(.*)*',
     name: 'not-found',
-    component: () => import('@/views/errors/NotFoundView.vue')
+    component: () => import('@/views/errors/NotFoundView.vue'),
+    meta: { title: 'Página no encontrada' }
   }
 ];
 

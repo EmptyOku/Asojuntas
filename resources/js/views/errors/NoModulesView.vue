@@ -1,41 +1,43 @@
 <template>
-  <div class="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-    <div class="w-full max-w-md card p-8 text-center">
-      <div class="mx-auto h-12 w-12 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center mb-4">
-        <ShieldOff class="w-6 h-6" />
-      </div>
-      <h1 class="text-lg font-bold text-gray-900">Tu rol no tiene módulos asignados</h1>
-      <p class="mt-2 text-sm text-gray-600">
-        Iniciaste sesión correctamente, pero tu rol todavía no tiene permisos para ver ninguna pantalla.
-        Pide a un administrador que te asigne los permisos que necesitas.
-      </p>
-      <div class="mt-6 flex flex-col sm:flex-row gap-2 justify-center">
-        <button type="button" class="btn-secondary" @click="retry">
-          Volver a comprobar
-        </button>
-        <button type="button" class="btn-primary" @click="authStore.logout()">
-          Cerrar sesión
-        </button>
-      </div>
-    </div>
-  </div>
+  <ErrorScene
+    code="0"
+    kicker="Rol sin módulos"
+    title="Tu rol todavía no tiene pantallas asignadas"
+    message="Iniciaste sesión correctamente, pero tu rol aún no tiene permisos para ver ninguna pantalla. Pide a un administrador que te asigne los que necesitas."
+    :icon="ShieldOff"
+  >
+    <template #actions>
+      <button type="button" class="error-btn-primary" :disabled="checking" @click="retry">
+        <RefreshCw class="w-4 h-4" :class="{ 'animate-spin': checking }" /> Volver a comprobar
+      </button>
+      <button type="button" class="error-btn-ghost" @click="authStore.logout()">
+        <LogOut class="w-4 h-4" /> Cerrar sesión
+      </button>
+    </template>
+  </ErrorScene>
 </template>
 
 <script setup>
+import { ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { ShieldOff } from 'lucide-vue-next';
+import { LogOut, RefreshCw, ShieldOff } from 'lucide-vue-next';
+import ErrorScene from '@/components/fun/ErrorScene.vue';
 import { useAuthStore } from '@/stores/auth';
 import { firstAllowedRoute } from '@/router';
 
 const router = useRouter();
 const authStore = useAuthStore();
+const checking = ref(false);
 
 // Por si un admin asignó permisos mientras la pantalla estaba abierta.
 const retry = async () => {
+  checking.value = true;
   try {
     await authStore.fetchUser();
   } catch {
     return;
+  } finally {
+    checking.value = false;
   }
   const target = firstAllowedRoute(authStore);
   if (target?.name !== 'no-modules') router.replace(target);

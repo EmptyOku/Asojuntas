@@ -1,28 +1,26 @@
 <template>
-  <div class="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-    <div class="w-full max-w-md card p-8 text-center">
-      <div class="mx-auto h-12 w-12 rounded-full bg-red-50 text-red-600 flex items-center justify-center mb-4">
-        <Lock class="w-6 h-6" />
-      </div>
-      <h1 class="text-lg font-bold text-gray-900">No tienes permiso para ver esta pantalla</h1>
-      <p class="mt-2 text-sm text-gray-600">
-        Tu rol no incluye el permiso que exige esta sección. Si crees que es un error, pide a un administrador que lo revise.
-      </p>
-      <div class="mt-6 flex flex-col sm:flex-row gap-2 justify-center">
-        <button v-if="authStore.isAuthenticated" type="button" class="btn-primary" @click="goHome">
-          Ir a mi inicio
-        </button>
-        <router-link v-else to="/login" class="btn-primary">
-          Iniciar sesión
-        </router-link>
-      </div>
-    </div>
-  </div>
+  <ErrorScene
+    code="403"
+    kicker="Acceso restringido"
+    title="Esta sección no está en tu rol"
+    message="Tu rol no incluye el permiso que exige esta pantalla. Si crees que es un error, pide a un administrador que lo revise."
+    :icon="Lock"
+  >
+    <template #actions>
+      <button v-if="authStore.isAuthenticated" type="button" class="error-btn-primary" @click="goHome">
+        <Home class="w-4 h-4" /> Ir a mi inicio
+      </button>
+      <router-link v-else to="/login" class="error-btn-primary">
+        <LogIn class="w-4 h-4" /> Iniciar sesión
+      </router-link>
+    </template>
+  </ErrorScene>
 </template>
 
 <script setup>
 import { useRouter } from 'vue-router';
-import { Lock } from 'lucide-vue-next';
+import { Home, Lock, LogIn } from 'lucide-vue-next';
+import ErrorScene from '@/components/fun/ErrorScene.vue';
 import { useAuthStore } from '@/stores/auth';
 import { firstAllowedRoute } from '@/router';
 
