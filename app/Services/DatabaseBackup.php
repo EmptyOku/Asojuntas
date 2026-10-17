@@ -65,6 +65,7 @@ class DatabaseBackup
 
         @unlink($base.'.sqlite');
         @unlink($base.'.sql');
+        @unlink($base.'.sql.raw');
         $this->sqlDataDump($base.'.sql', $driver);
 
         return ['path' => $base.'.sql', 'filename' => "asojuntas-backup-datos-{$stamp}.sql", 'format' => 'sql_data'];
@@ -92,19 +93,25 @@ class DatabaseBackup
         return true;
     }
 
-    /** pg_dump, si el servidor lo tiene. Devuelve false si no se pudo usar. */
+    /**
+     * pg_dump, si el servidor lo tiene: estructura y datos, y la instrucción
+     * que crea la base (--create), así se restaura en un servidor vacío sin
+     * correr migraciones. Devuelve false si no se pudo usar.
+     */
     private function pgDump(string $target): bool
     {
         $config = DB::connection()->getConfig();
+        $database = (string) ($config['database'] ?? '');
+        $raw = $target.'.raw';
 
         $command = [
             (string) config('database.backup.pg_dump_path', 'pg_dump'),
             '--host='.($config['host'] ?? '127.0.0.1'),
             '--port='.($config['port'] ?? 5432),
             '--username='.($config['username'] ?? ''),
-            '--dbname='.($config['database'] ?? ''),
-            '--format=plain', '--no-owner', '--no-privileges',
-            '--file='.$target,
+            '--dbname='.$database,
+            '--format=plain', '--create', '--no-owner', '--no-privileges',
+            '--file='.$raw,
         ];
         foreach (self::EPHEMERAL_TABLES as $table) {
             $command[] = '--exclude-table-data='.$table;
@@ -115,9 +122,36 @@ class DatabaseBackup
         $process->setTimeout(300);
         $process->run();
 
-        if (! $process->isSuccessful() || ! is_file($target) || filesize($target) === 0) {
+        if (! $process->isSuccessful() || ! is_file($raw) || filesize($raw) === 0) {
+            @unlink($raw);
             throw new RuntimeException('pg_dump no disponible o falló: '.mb_strimwidth($process->getErrorOutput(), 0, 300));
         }
+
+        // Instrucciones al inicio del archivo, y luego lo que generó pg_dump.
+        $out = fopen($target, 'wb');
+        $in = fopen($raw, 'rb');
+        if ($out === false || $in === false) {
+            throw new RuntimeException('No se pudo armar el archivo de la copia.');
+        }
+        fwrite($out, implode("
+", [
+            '-- Copia de seguridad de Asojuntas Girardot (estructura y datos)',
+            '-- Generada: '.now()->toDateTimeString().' UTC | Base: '.$database,
+            '--',
+            '-- Para restaurar (crea la base "'.$database.'" con todas sus tablas y datos):',
+            '--   psql -U postgres -d postgres -v ON_ERROR_STOP=1 -f este-archivo.sql',
+            '--',
+            '-- Si la base ya existe, el archivo se detiene al intentar crearla.',
+            '-- Renombra o elimina primero la base anterior, por ejemplo:',
+            '--   ALTER DATABASE "'.$database.'" RENAME TO "'.$database.'_anterior";',
+            '-- Las sesiones, tokens, caché y colas van vacías; las fotos no están incluidas.',
+            '',
+            '',
+        ]));
+        stream_copy_to_stream($in, $out);
+        fclose($in);
+        fclose($out);
+        @unlink($raw);
 
         return true;
     }

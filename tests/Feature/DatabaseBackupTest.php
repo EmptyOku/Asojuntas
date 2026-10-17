@@ -91,4 +91,54 @@ class DatabaseBackupTest extends TestCase
         $this->assertSame($before, ['neighborhoods' => DB::table('neighborhoods')->count(), 'elections' => DB::table('elections')->count(), 'users' => DB::table('users')->count()]);
         $this->assertSame($admin->username, DB::table('users')->where('id', $admin->id)->value('username'));
     }
+
+    #[Test]
+    public function con_pg_dump_la_copia_crea_la_base_y_trae_instrucciones(): void
+    {
+        // pg_dump falso: anota los parámetros que recibió y escribe un volcado mínimo.
+        $dir = storage_path('framework/testing/fake-pg-dump');
+        @mkdir($dir, 0775, true);
+        $php = $dir.DIRECTORY_SEPARATOR.'fake.php';
+        file_put_contents($php, <<<'PHP'
+<?php
+$file = null;
+foreach (array_slice($argv, 1) as $arg) {
+    if (str_starts_with($arg, '--file=')) $file = substr($arg, 7);
+}
+file_put_contents($file, "-- PARAMS: ".implode(' ', array_slice($argv, 1))."\nCREATE DATABASE jac_elections;\n\connect jac_elections\nCREATE TABLE prueba (id int);\n");
+PHP);
+        if (DIRECTORY_SEPARATOR === '\\') {
+            $bin = $dir.DIRECTORY_SEPARATOR.'pg_dump.bat';
+            file_put_contents($bin, '@"'.PHP_BINARY.'" "'.$php.'" %*');
+        } else {
+            $bin = $dir.'/pg_dump';
+            file_put_contents($bin, "#!/bin/sh\nexec \"".PHP_BINARY."\" \"$php\" \"\$@\"\n");
+            chmod($bin, 0755);
+        }
+        config(['database.backup.pg_dump_path' => $bin]);
+
+        $target = $dir.DIRECTORY_SEPARATOR.'copia.sql';
+        $method = new \ReflectionMethod(DatabaseBackup::class, 'pgDump');
+        $this->assertTrue($method->invoke(app(DatabaseBackup::class), $target));
+
+        $sql = file_get_contents($target);
+        // Instrucciones primero, luego el volcado completo con la creación de la base.
+        $this->assertStringStartsWith('-- Copia de seguridad de Asojuntas Girardot (estructura y datos)', $sql);
+        $this->assertStringContainsString('psql -U postgres -d postgres -v ON_ERROR_STOP=1 -f este-archivo.sql', $sql);
+        $this->assertStringContainsString("CREATE DATABASE jac_elections;\n\connect jac_elections\nCREATE TABLE prueba", $sql);
+        $this->assertStringContainsString('--create', $sql);
+        $this->assertStringContainsString('--exclude-table-data=personal_access_tokens', $sql);
+        $this->assertFileDoesNotExist($target.'.raw');
+
+        // Si pg_dump falla, no queda nada a medias (y create() cae al .sql de datos).
+        config(['database.backup.pg_dump_path' => $dir.DIRECTORY_SEPARATOR.'no-existe']);
+        $this->expectException(\RuntimeException::class);
+        try {
+            $method->invoke(app(DatabaseBackup::class), $dir.DIRECTORY_SEPARATOR.'fallida.sql');
+        } finally {
+            $this->assertFileDoesNotExist($dir.DIRECTORY_SEPARATOR.'fallida.sql.raw');
+            array_map('unlink', glob($dir.DIRECTORY_SEPARATOR.'*'));
+            @rmdir($dir);
+        }
+    }
 }
