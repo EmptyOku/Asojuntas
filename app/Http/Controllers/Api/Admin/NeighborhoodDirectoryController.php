@@ -33,14 +33,18 @@ class NeighborhoodDirectoryController extends Controller
     {
         $query = $this->filteredNeighborhoodQuery($request)->with([
             'commune',
+            // La elección abierta; si no hay, la última cerrada (sus candidatos y
+            // su presidente electo se siguen mostrando).
             'elections' => function ($query) {
-                $query->latest('election_date')->where('is_active', true)->limit(1);
+                $query->orderByDesc('is_active')->latest('election_date')->latest('id')->limit(1);
             },
             'elections.candidates' => function ($query) {
                 $query->where('is_active', true);
             },
             'elections.candidates.person',
-            'elections.candidates.electionBlockPosition.position'
+            'elections.candidates.electionBlockPosition.position',
+            'elections.candidates.slateBlock:id,slate_id',
+            'elections.candidates.slateBlock.slate:id,code,name',
         ]);
 
         // Paginación de servidor: 15 por defecto; la vista puede pedir entre 5 y 50.
@@ -56,10 +60,14 @@ class NeighborhoodDirectoryController extends Controller
             ->selectRaw('neighborhood_id, MAX(closed_at) as closed_at')
             ->pluck('closed_at', 'neighborhood_id');
 
+        $electedPresidents = $this->electionWinners(
+            collect($neighborhoodsPaginator->items())->flatMap(fn ($neighborhood) => $neighborhood->elections->pluck('id'))->all()
+        );
+
         $neighborhoodsItems = collect($neighborhoodsPaginator->items())
-            ->map(fn($neighborhood) => $this->toNeighborhoodRow($neighborhood) + [
+            ->map(fn($neighborhood) => $this->toNeighborhoodRow($neighborhood, $electedPresidents) + [
                 // Sin elección abierta: cuándo se cerró la última (null si nunca tuvo).
-                'last_closed_at' => $neighborhood->elections->isEmpty()
+                'last_closed_at' => ! $neighborhood->elections->first()?->is_active
                     ? LocalTime::present($lastClosedAt[$neighborhood->id] ?? null)
                     : null,
             ])
@@ -451,40 +459,47 @@ class NeighborhoodDirectoryController extends Controller
         ];
     }
 
-    private function toNeighborhoodRow($neighborhood): array
+    /**
+     * @param  array<int, array{plancha: string, presidente: ?string}>  $electedPresidents  ganadores (solo actas aprobadas)
+     */
+    private function toNeighborhoodRow($neighborhood, array $electedPresidents = []): array
     {
         $latestElection = $neighborhood->elections->first();
         $presidentName = null;
-        $vicepresidentName = null;
+        $winner = null;
+        $slateCandidates = [];
 
         if ($latestElection) {
-            // Solo principales (el suplente no es "el presidente") y en orden
-            // fijo, para que no cambie entre recargas.
-            $principals = $latestElection->candidates
+            // Presidente ELECTO: solo cuando hay un acta aprobada (antes se mostraba
+            // como "presidente" al candidato de la primera plancha, sin votación).
+            $winner = $electedPresidents[$latestElection->id] ?? null;
+            $presidentName = $winner['presidente'] ?? null;
+
+            // Candidatos a presidente y vicepresidente de cada plancha (solo
+            // principales: el suplente no es el candidato), en orden fijo.
+            $slateCandidates = $latestElection->candidates
                 ->reject(fn ($candidate) => (bool) $candidate->is_substitute)
-                ->sortBy('id');
+                ->sortBy('id')
+                ->groupBy(fn ($candidate) => (string) ($candidate->slateBlock?->slate?->code ?? ''))
+                ->map(function ($candidates, string $code): array {
+                    $number = preg_match('/(\d+)/', $code, $match) === 1 ? (int) $match[1] : null;
+                    $name = function (string $positionCode, string $positionName) use ($candidates): ?string {
+                        $candidate = $candidates->first(fn ($c) => $this->candidateHoldsPosition($c, $positionCode, $positionName));
+                        $full = trim(implode(' ', array_filter([$candidate?->person?->first_name, $candidate?->person?->last_name])));
 
-            $president = $principals->first(
-                fn ($candidate) => $this->candidateHoldsPosition($candidate, 'DIR_PRES', 'presidente')
-            );
+                        return $full !== '' ? $full : null;
+                    };
 
-            $vicepresident = $principals->first(
-                fn ($candidate) => $this->candidateHoldsPosition($candidate, 'DIR_VICE', 'vicepresidente')
-            );
-
-            if ($president && $president->person) {
-                $presidentName = trim(implode(' ', array_filter([
-                    $president->person->first_name ?? null,
-                    $president->person->last_name ?? null,
-                ])));
-            }
-
-            if ($vicepresident && $vicepresident->person) {
-                $vicepresidentName = trim(implode(' ', array_filter([
-                    $vicepresident->person->first_name ?? null,
-                    $vicepresident->person->last_name ?? null,
-                ])));
-            }
+                    return [
+                        'numero' => $number,
+                        'plancha' => $number ? 'Plancha '.$number : 'Plancha',
+                        'presidente' => $name('DIR_PRES', 'presidente'),
+                        'vicepresidente' => $name('DIR_VICE', 'vicepresidente'),
+                    ];
+                })
+                ->sortBy(fn (array $slate) => $slate['numero'] ?? 99)
+                ->values()
+                ->all();
         }
 
         return [
@@ -495,10 +510,25 @@ class NeighborhoodDirectoryController extends Controller
                 'id' => $neighborhood->commune->id,
                 'name' => $neighborhood->commune->name,
             ] : null,
+            // Presidente electo (con acta aprobada) o null.
             'president_name' => $presidentName,
-            'vicepresident_name' => $vicepresidentName,
-            'has_active_election' => $latestElection !== null,
-            'active_election' => $latestElection ? [
+            // Ya hay acta aprobada: ganó una plancha (aunque no haya inscrito presidente).
+            'president_elected' => $winner !== null,
+            'winning_slate' => $winner['plancha'] ?? null,
+            // En qué va el proceso del barrio (para el directorio de Juntas, que
+            // solo muestra dignatarios cuando el proceso terminó):
+            //  con_resultados: hay acta aprobada | en_curso: elección abierta sin acta aprobada
+            //  cerrada_sin_resultados: se cerró sin acta aprobada | sin_eleccion
+            'election_status' => match (true) {
+                $latestElection === null => 'sin_eleccion',
+                $winner !== null => 'con_resultados',
+                (bool) $latestElection->is_active => 'en_curso',
+                default => 'cerrada_sin_resultados',
+            },
+            // Mientras no hay resultados: los candidatos de cada plancha.
+            'slate_candidates' => $slateCandidates,
+            'has_active_election' => (bool) $latestElection?->is_active,
+            'active_election' => $latestElection?->is_active ? [
                 'id' => $latestElection->id,
                 'name' => $latestElection->name,
                 'code' => $latestElection->code,
@@ -1355,6 +1385,18 @@ class NeighborhoodDirectoryController extends Controller
      */
     private function winningPresidents(array $electionIds): array
     {
+        return array_filter(array_map(fn (array $winner) => $winner['presidente'], $this->electionWinners($electionIds)));
+    }
+
+    /**
+     * Plancha ganadora de la Directiva en cada elección con acta aprobada, y
+     * su candidato a presidente (null si esa plancha no inscribió presidente).
+     *
+     * @param  array<int, int>  $electionIds
+     * @return array<int, array{plancha: string, presidente: ?string}>
+     */
+    private function electionWinners(array $electionIds): array
+    {
         if ($electionIds === []) {
             return [];
         }
@@ -1363,6 +1405,10 @@ class NeighborhoodDirectoryController extends Controller
         $winningSlateBlocks = DB::table('scrutiny_block_results as sbr')
             ->join('election_blocks as eb', 'eb.id', '=', 'sbr.election_block_id')
             ->join('blocks as b', 'b.id', '=', 'eb.block_id')
+            // Solo votos que cuentan: un acta pendiente o rechazada no elige a nadie.
+            ->join('scrutiny_records as sr', 'sr.id', '=', 'sbr.scrutiny_record_id')
+            ->whereIn('sr.status', \App\Models\ScrutinyRecord::APPROVED_STATUSES)
+            ->whereNull('sr.deleted_at')
             ->where('b.code', 'DIR')
             ->whereIn('sbr.election_id', $electionIds)
             ->orderByDesc('sbr.votes')
@@ -1380,20 +1426,37 @@ class NeighborhoodDirectoryController extends Controller
             ->join('positions as p', 'p.id', '=', 'ebp.position_id')
             ->join('persons as pe', 'pe.id', '=', 'c.person_id')
             ->where('p.code', 'DIR_PRES')
+            // Sin los candidatos en la papelera ni los suplentes.
+            ->whereNull('c.deleted_at')
+            ->where('c.is_active', true)
+            ->where('c.is_substitute', false)
             ->whereIn('c.election_id', $winningSlateBlocks->keys())
             ->whereIn('c.slate_block_id', $winningSlateBlocks->values())
             ->orderBy('c.id')
             ->get(['c.election_id', 'c.slate_block_id', 'pe.first_name', 'pe.last_name']);
 
+        $codes = DB::table('slate_blocks as sb')
+            ->join('slates as s', 's.id', '=', 'sb.slate_id')
+            ->whereIn('sb.id', $winningSlateBlocks->values())
+            ->pluck('s.code', 'sb.id');
+
         $winners = [];
+        foreach ($winningSlateBlocks as $electionId => $slateBlockId) {
+            $code = (string) ($codes[$slateBlockId] ?? '');
+            $winners[(int) $electionId] = [
+                'plancha' => preg_match('/(\d+)/', $code, $match) === 1 ? 'Plancha '.$match[1] : 'Plancha ganadora',
+                'presidente' => null,
+            ];
+        }
+
         foreach ($presidents as $row) {
             $electionId = (int) $row->election_id;
 
-            if (isset($winners[$electionId]) || (int) $winningSlateBlocks[$electionId] !== (int) $row->slate_block_id) {
+            if (($winners[$electionId]['presidente'] ?? null) !== null || (int) $winningSlateBlocks[$electionId] !== (int) $row->slate_block_id) {
                 continue;
             }
 
-            $winners[$electionId] = trim($row->first_name.' '.$row->last_name);
+            $winners[$electionId]['presidente'] = trim($row->first_name.' '.$row->last_name);
         }
 
         return $winners;

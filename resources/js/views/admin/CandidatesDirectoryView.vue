@@ -210,13 +210,17 @@
           </div>
 
           <dl class="mx-5 grid grid-cols-2 gap-3 rounded-2xl bg-gray-50/80 p-3.5">
-            <div v-for="role in dignitaries(barrio)" :key="role.label" class="min-w-0">
-              <dt class="text-[10.5px] font-bold uppercase tracking-wider text-gray-400">{{ role.label }}</dt>
+            <div v-for="role in dignitaries(barrio)" :key="role.label" class="min-w-0" :class="{ 'col-span-2': role.wide }">
+              <dt class="flex items-center gap-1.5 text-[10.5px] font-bold uppercase tracking-wider text-gray-400">
+                {{ role.label }}
+                <span v-if="role.tag" :class="role.elected ? 'text-aso-primary' : 'text-amber-600'">· {{ role.tag }}</span>
+              </dt>
               <dd class="mt-1 flex items-center gap-2 min-w-0">
-                <span v-if="role.name" class="avatar h-7 w-7 rounded-lg text-[10px]">{{ initials(role.name) }}</span>
+                <span v-if="role.name && role.plain" class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-600 ring-1 ring-amber-100"><Trophy class="w-3.5 h-3.5" /></span>
+                <span v-else-if="role.name" class="avatar h-7 w-7 rounded-lg text-[10px]">{{ initials(role.name) }}</span>
                 <span v-else class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white text-gray-300 ring-1 ring-gray-200"><User class="w-3.5 h-3.5" /></span>
                 <span class="text-sm truncate" :class="role.name ? 'font-semibold text-gray-900' : 'text-gray-400 italic'">
-                  {{ role.name || 'Pendiente' }}
+                  {{ role.name || role.empty || 'Pendiente' }}
                 </span>
               </dd>
             </div>
@@ -264,7 +268,7 @@ import { useRouter } from 'vue-router';
 import axios from '@/services/axios';
 import {
   AlertCircle, AlertTriangle, ArrowRight, Building2, CalendarDays, ChevronRight, FileBarChart,
-  Filter, Loader2, MapPin, Search, User, X
+  Filter, Loader2, MapPin, Search, Trophy, User, X
 } from 'lucide-vue-next';
 import PaginationBar from '@/components/ui/PaginationBar.vue';
 
@@ -365,10 +369,24 @@ const resetFilters = () => {
   if (!communeChanged) fetchBarrios(1);
 };
 
-const dignitaries = (barrio) => [
-  { label: 'Presidente', name: barrio.president_name },
-  { label: 'Vicepresidente', name: barrio.vicepresident_name },
-];
+// Dignatarios solo cuando el proceso terminó (acta aprobada). Mientras la
+// elección está en curso la tarjeta queda en blanco: los candidatos se ven en
+// Geografía electoral, no aquí.
+const dignitaries = (barrio) => {
+  switch (barrio.election_status) {
+    case 'con_resultados':
+      return [
+        { label: 'Presidente', tag: barrio.president_name ? 'Electo' : null, elected: true, name: barrio.president_name, empty: 'Sin candidato inscrito' },
+        { label: 'Plancha ganadora', name: barrio.winning_slate, empty: '—', plain: true },
+      ];
+    case 'en_curso':
+      return [{ label: 'Dignatarios', name: null, empty: 'Elección en curso · sin resultados aún', wide: true }];
+    case 'cerrada_sin_resultados':
+      return [{ label: 'Dignatarios', name: null, empty: 'Elección cerrada sin acta aprobada', wide: true }];
+    default:
+      return [{ label: 'Dignatarios', name: null, empty: 'Sin elección', wide: true }];
+  }
+};
 
 const initials = (name) => String(name || '?')
   .split(/\s+/)

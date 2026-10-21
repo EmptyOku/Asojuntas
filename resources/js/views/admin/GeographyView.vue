@@ -148,13 +148,40 @@
                   el {{ neighborhood.last_closed_at.texto }}
                 </p>
               </td>
-              <td>
-                <span v-if="neighborhood.president_name" class="text-gray-800">{{ neighborhood.president_name }}</span>
-                <span v-else class="text-gray-400 italic">Pendiente</span>
+              <!-- Presidente: el electo si ya hay acta aprobada; si no, los candidatos de cada plancha -->
+              <td class="align-top">
+                <div v-if="neighborhood.president_elected" class="flex flex-wrap items-center gap-1.5">
+                  <template v-if="neighborhood.president_name">
+                    <span class="font-medium text-gray-900">{{ neighborhood.president_name }}</span>
+                    <span class="badge-green">Electo</span>
+                  </template>
+                  <template v-else>
+                    <span class="font-medium text-gray-900">Ganó {{ neighborhood.winning_slate }}</span>
+                    <span class="text-[11px] text-amber-700">sin candidato a presidente inscrito</span>
+                  </template>
+                </div>
+                <template v-else-if="neighborhood.slate_candidates?.length">
+                  <ul class="space-y-0.5">
+                    <li v-for="slate in neighborhood.slate_candidates" :key="slate.plancha" class="flex items-baseline gap-1.5 text-sm">
+                      <span class="shrink-0 rounded-md bg-gray-100 px-1.5 text-[10px] font-bold text-gray-500">{{ slate.numero ? 'P' + slate.numero : 'P' }}</span>
+                      <span :class="slate.presidente ? 'text-gray-800' : 'text-gray-400 italic'">{{ slate.presidente || 'Sin candidato' }}</span>
+                    </li>
+                  </ul>
+                  <p class="mt-0.5 text-[11px] text-gray-400">{{ candidateHint(neighborhood) }}</p>
+                </template>
+                <span v-else class="text-gray-400 italic">Sin planchas</span>
               </td>
-              <td>
-                <span v-if="neighborhood.vicepresident_name" class="text-gray-800">{{ neighborhood.vicepresident_name }}</span>
-                <span v-else class="text-gray-400 italic">Pendiente</span>
+              <td class="align-top">
+                <span v-if="neighborhood.president_elected" class="text-sm text-gray-500">En los resultados</span>
+                <template v-else-if="neighborhood.slate_candidates?.length">
+                  <ul class="space-y-0.5">
+                    <li v-for="slate in neighborhood.slate_candidates" :key="slate.plancha" class="flex items-baseline gap-1.5 text-sm">
+                      <span class="shrink-0 rounded-md bg-gray-100 px-1.5 text-[10px] font-bold text-gray-500">{{ slate.numero ? 'P' + slate.numero : 'P' }}</span>
+                      <span :class="slate.vicepresidente ? 'text-gray-800' : 'text-gray-400 italic'">{{ slate.vicepresidente || 'Sin candidato' }}</span>
+                    </li>
+                  </ul>
+                </template>
+                <span v-else class="text-gray-400 italic">Sin planchas</span>
               </td>
               <td>
                 <div class="flex justify-end gap-2">
@@ -278,6 +305,11 @@ import ActionLegend from '@/components/ui/ActionLegend.vue';
 import { useAuthStore } from '@/stores/auth';
 
 const authStore = useAuthStore();
+
+// Bajo los nombres: que son candidatos, no electos todavía.
+const candidateHint = (neighborhood) => (neighborhood.slate_candidates.length === 1
+  ? 'Candidato · aún sin acta aprobada'
+  : `Candidatos de ${neighborhood.slate_candidates.length} planchas · aún sin acta aprobada`);
 
 // Qué hace cada botón de la columna Acciones.
 const ALL_LEGEND_ITEMS = [

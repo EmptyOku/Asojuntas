@@ -150,23 +150,83 @@ class SlateSeatAssignmentTest extends TestCase
     }
 
     #[Test]
-    public function el_directorio_muestra_al_presidente_principal_no_al_suplente(): void
+    public function antes_del_acta_se_ven_los_candidatos_y_despues_el_presidente_electo(): void
     {
         $neighborhood = $this->makeNeighborhood('Barrio Directorio');
         $election = $this->makeElection($neighborhood);
         [$directiva, $cargos] = $this->makeDirectiva($election);
-        $plancha = $this->makeSlateBlock($election, $directiva, 1);
+        $plancha1 = $this->makeSlateBlock($election, $directiva, 1);
+        $plancha2 = $this->makeSlateBlock($election, $directiva, 2);
 
-        $this->makeCandidate($election, $plancha, $cargos['DIR_PRES'], 'Suplente', substitute: true);
-        $this->makeCandidate($election, $plancha, $cargos['DIR_PRES'], 'Principal');
-        $this->makeCandidate($election, $plancha, $cargos['DIR_VICE'], 'Vice');
+        // El suplente no es el candidato a presidente.
+        $this->makeCandidate($election, $plancha1, $cargos['DIR_PRES'], 'Suplente', substitute: true);
+        $this->makeCandidate($election, $plancha1, $cargos['DIR_PRES'], 'Principal');
+        $this->makeCandidate($election, $plancha1, $cargos['DIR_VICE'], 'Vice');
+        $this->makeCandidate($election, $plancha2, $cargos['DIR_PRES'], 'Rival');
 
         $admin = $this->makeUser(['candidates.view']);
-        $row = collect($this->actingAs($admin)->getJson('/api/admin/neighborhoods')->assertOk()->json('data.neighborhoods'))
+        $row = fn () => collect($this->actingAs($admin)->getJson('/api/admin/neighborhoods')->assertOk()->json('data.neighborhoods'))
             ->firstWhere('id', $neighborhood->id);
 
-        $this->assertSame('Principal Prueba', $row['president_name']);
-        $this->assertSame('Vice Prueba', $row['vicepresident_name']);
+        // Sin acta aprobada nadie es "presidente": se muestran los candidatos de cada plancha.
+        $before = $row();
+        $this->assertSame('en_curso', $before['election_status']);
+        $this->assertNull($before['president_name']);
+        $this->assertFalse($before['president_elected']);
+        $this->assertSame([
+            ['numero' => 1, 'plancha' => 'Plancha 1', 'presidente' => 'Principal Prueba', 'vicepresidente' => 'Vice Prueba'],
+            ['numero' => 2, 'plancha' => 'Plancha 2', 'presidente' => 'Rival Prueba', 'vicepresidente' => null],
+        ], $before['slate_candidates']);
+
+        // Un acta pendiente tampoco elige a nadie.
+        $record = ScrutinyRecord::create(['election_id' => $election->id, 'record_number' => 'ACTA-D', 'status' => 'pending']);
+        $results = [];
+        foreach ([[$plancha1, 30], [$plancha2, 70]] as [$slateBlock, $votes]) {
+            $results[] = ScrutinyBlockResult::create([
+                'scrutiny_record_id' => $record->id, 'election_id' => $election->id,
+                'election_block_id' => $directiva->id, 'slate_block_id' => $slateBlock->id,
+                'votes' => $votes, 'status' => 'pending',
+            ]);
+        }
+        $this->assertFalse($row()['president_elected']);
+        $this->assertSame('en_curso', $row()['election_status']);
+
+        // Aprobada: el presidente de la plancha ganadora queda como electo.
+        $record->update(['status' => 'approved']);
+        foreach ($results as $result) {
+            $result->update(['status' => 'approved']);
+        }
+        $after = $row();
+        $this->assertTrue($after['president_elected']);
+        $this->assertSame('con_resultados', $after['election_status']);
+        $this->assertSame('Rival Prueba', $after['president_name']);
+        $this->assertSame('Plancha 2', $after['winning_slate']);
+
+        // Si gana una plancha que no inscribió presidente, se sabe cuál ganó.
+        Candidate::where('election_id', $election->id)->where('slate_block_id', $plancha2->id)->delete();
+        $empty = $row();
+        $this->assertTrue($empty['president_elected']);
+        $this->assertNull($empty['president_name']);
+        $this->assertSame('Plancha 2', $empty['winning_slate']);
+
+        // Los resultados se quedan aunque la elección se cierre.
+        $election->update(['is_active' => false]);
+        $this->assertSame('con_resultados', $row()['election_status']);
+
+        // Una elección nueva deja la junta en blanco hasta que termine su proceso.
+        $this->makeElection($neighborhood);
+        $fresh = $row();
+        $this->assertSame('en_curso', $fresh['election_status']);
+        $this->assertFalse($fresh['president_elected']);
+        $this->assertSame([], $fresh['slate_candidates']);
+
+        // Un barrio cuya elección se cerró sin acta aprobada, y uno sin elección.
+        $closed = $this->makeElection($otro = $this->makeNeighborhood('Barrio Cerrado'));
+        $closed->update(['is_active' => false]);
+        $none = $this->makeNeighborhood('Barrio Sin Eleccion');
+        $rows = collect($this->actingAs($admin)->getJson('/api/admin/neighborhoods?per_page=50')->assertOk()->json('data.neighborhoods'))->keyBy('id');
+        $this->assertSame('cerrada_sin_resultados', $rows[$otro->id]['election_status']);
+        $this->assertSame('sin_eleccion', $rows[$none->id]['election_status']);
     }
 
     #[Test]
