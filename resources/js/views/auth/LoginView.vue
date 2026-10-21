@@ -16,12 +16,12 @@
       <div class="relative flex h-full flex-col justify-center px-6 sm:px-12 xl:px-16 py-10 lg:py-16">
         <span class="login-rise inline-flex w-fit items-center gap-2 rounded-full bg-white/10 px-3 py-1.5 text-xs font-semibold text-emerald-100 ring-1 ring-white/15 backdrop-blur-sm">
           <ShieldCheck class="w-3.5 h-3.5 text-emerald-300" />
-          Oku God
+          Desarrollo y pruebas
         </span>
 
         <h1 class="login-rise mt-5 max-w-xl font-display text-4xl sm:text-5xl font-bold leading-[1.05] tracking-tight drop-shadow-sm" style="animation-delay: 80ms">
           Cada voto de tu barrio,<br />
-          <span class="text-emerald-300">contado con<br class="hidden sm:block" /> transparencia</span>
+          <span class="text-emerald-300">contado con<br class="hidden sm:block" />Veracidad</span>
         </h1>
 
         <p class="login-rise mt-5 max-w-md text-sm sm:text-base font-medium text-white/80" style="animation-delay: 160ms">
