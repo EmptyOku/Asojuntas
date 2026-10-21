@@ -2,7 +2,7 @@
   <ErrorScene
     code="404"
     kicker="Página no encontrada"
-    title="Esta página no está en el padrón"
+    title="Esta página no se encuentra dentro de nuestro sitio web"
     message="La dirección que abriste no existe o cambió de lugar. Revisa el enlace o vuelve al inicio."
     :icon="MapPinOff"
   >

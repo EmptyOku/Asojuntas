@@ -2,7 +2,7 @@
   <ErrorScene
     code="403"
     kicker="Acceso restringido"
-    title="Esta sección no está en tu rol"
+    title="Esta sección no está disponible para ti o no tienes los permisos necesarios para acceder a ella"
     message="Tu rol no incluye el permiso que exige esta pantalla. Si crees que es un error, pide a un administrador que lo revise."
     :icon="Lock"
   >
