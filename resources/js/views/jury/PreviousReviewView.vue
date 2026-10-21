@@ -1,5 +1,5 @@
 <template>
-  <div class="flex flex-col min-h-screen bg-aso-bg font-sans pb-24 lg:pb-0">
+  <div class="flex flex-col min-h-screen bg-aso-bg font-sans pb-28 lg:pb-6 lg:grid lg:grid-cols-2 lg:items-start lg:gap-6 lg:p-6">
     <div v-if="isExtracting" class="fixed inset-0 z-[80] bg-black/40 backdrop-blur-sm flex items-center justify-center px-4">
       <div class="bg-white rounded-2xl shadow-2xl border border-gray-100 p-6 w-full max-w-sm text-center">
         <div class="w-12 h-12 mx-auto rounded-full border-4 border-gray-200 border-t-aso-primary animate-spin"></div>
@@ -8,8 +8,8 @@
       </div>
     </div>
 
-    <!-- 1. CARRUSEL DE IMAGEN (Sticky) -->
-    <div class="w-full h-[40vh] bg-[#1a1c23] relative flex flex-col sticky top-0 z-20 shadow-lg lg:h-[45vh]">
+    <!-- 1. FOTO DEL ACTA: fija arriba en celular, fija a la izquierda en escritorio -->
+    <div class="w-full h-[40vh] bg-[#1a1c23] relative flex flex-col sticky -top-4 sm:-top-6 z-20 shadow-lg lg:top-6 lg:h-[calc(100vh-10rem)] lg:rounded-2xl lg:overflow-hidden">
       <div class="absolute top-0 inset-x-0 p-4 flex justify-between items-center bg-gradient-to-b from-black/80 to-transparent z-30">
         <h3 class="text-white font-bold text-sm flex items-center gap-2">
           <ImageIcon class="w-4 h-4" /> Evidencia
@@ -26,7 +26,7 @@
     </div>
 
     <!-- 2. SECCIÓN DE DATOS DINÁMICOS POR PÁGINA -->
-    <div class="w-full flex-1 overflow-y-auto p-4 sm:p-6 lg:max-w-3xl lg:mx-auto">
+    <div class="w-full flex-1 p-4 sm:p-6 lg:p-0">
 
       <div v-if="docStore.extractionWarning" class="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-900">
         <p class="text-sm font-semibold">{{ docStore.extractionWarning }}</p>
@@ -92,55 +92,18 @@
         </div>
       </div>
 
-      <!-- OBSERVACIONES -->
-      <div class="card p-5 mb-24 lg:mb-6">
-        <label class="block text-sm font-bold text-gray-900 mb-2">Observaciones de la Página {{ currentPage + 1 }}</label>
-        <textarea v-model="observacionesPorPagina[currentPage]" rows="3" class="field" placeholder="Reporta cualquier inconsistencia visual..."></textarea>
-      </div>
+      <!-- Mensajes del envío -->
+      <p v-if="submitError" class="mb-4 rounded-xl bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 ring-1 ring-red-100" role="alert">{{ submitError }}</p>
+      <p v-if="submitSuccess" class="mb-4 rounded-xl bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800 ring-1 ring-emerald-100">{{ submitSuccess }}</p>
 
       <!-- BOTONES -->
-      <div class="fixed bottom-0 inset-x-0 p-4 bg-white/80 backdrop-blur-md border-t border-gray-100 grid grid-cols-2 gap-3 z-30 lg:relative lg:bg-transparent lg:border-0 lg:p-0">
+      <div class="fixed bottom-0 inset-x-0 p-4 bg-white/90 backdrop-blur-md border-t border-gray-100 grid grid-cols-2 gap-3 z-30 lg:static lg:z-auto lg:bg-transparent lg:border-0 lg:p-0">
         <button @click="rejectAndReturn" class="py-4 bg-white border border-gray-200 text-red-600 font-bold rounded-2xl text-sm">Rechazar</button>
         <button @click="confirmAndSend" :disabled="isSubmitting" class="py-4 bg-aso-primary text-white font-bold rounded-2xl shadow-md flex items-center justify-center gap-2 text-sm disabled:opacity-70">
           <CheckCircle class="w-4 h-4" /> Confirmar y enviar
         </button>
       </div>
 
-      <!-- Lectura automática de la foto y mesa a la que va el acta. -->
-      <div class="card p-5 mt-6 mb-24 lg:mb-6">
-        <h3 class="text-sm font-bold text-gray-900">Lectura automática del acta</h3>
-        <p class="text-xs text-gray-500 mt-1">Si los votos de arriba no coinciden con la foto, puedes volver a leerla.</p>
-
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
-          <div v-if="integration.recordId">
-            <label class="text-[10px] font-bold text-gray-400 uppercase">Número interno del acta</label>
-            <input :value="integration.recordId" type="text" readonly class="field bg-gray-100 text-gray-600">
-          </div>
-          <div>
-            <label class="text-[10px] font-bold text-gray-400 uppercase">Mesa de votación</label>
-            <input
-              v-model.number="integration.pollingTableId"
-              type="number"
-              min="1"
-              :readonly="Boolean(integration.pollingTableId)"
-              class="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700 disabled:opacity-80"
-              :class="integration.pollingTableId ? 'bg-gray-100' : 'bg-gray-50'"
-              :placeholder="integration.pollingTableId ? 'Asignada automáticamente' : 'Solo se pide la primera vez'"
-            >
-          </div>
-        </div>
-
-        <p class="mt-2 text-[11px] text-gray-500">
-          Si el sistema puede identificar tu barrio, la mesa se autocompleta. Si no, puedes ingresarla una sola vez y se guardará para las siguientes cargas.
-        </p>
-
-        <button @click="extractCurrentPage" :disabled="isExtracting" class="mt-4 w-full sm:w-auto px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-bold disabled:opacity-60">
-          {{ isExtracting ? 'Procesando...' : 'Extraer texto de esta página' }}
-        </button>
-
-        <p v-if="submitError" class="mt-3 text-xs text-red-600 font-semibold">{{ submitError }}</p>
-        <p v-if="submitSuccess" class="mt-3 text-xs text-green-700 font-semibold">{{ submitSuccess }}</p>
-      </div>
 
     </div>
   </div>

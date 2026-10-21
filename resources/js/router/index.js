@@ -243,7 +243,8 @@ const routes = [
       },
       {
         path: 'review', name: 'jury-review', component: () => import('@/views/jury/PreviousReviewView.vue'),
-        meta: { permission: 'scrutiny_records.create', title: 'Revisar antes de enviar', subtitle: 'Confirma los votos leídos del acta antes de enviarla' },
+        // Ancho completo: foto y votos lado a lado en escritorio.
+        meta: { permission: 'scrutiny_records.create', title: 'Revisar antes de enviar', subtitle: 'Confirma los votos leídos del acta antes de enviarla', layout: 'full' },
       }
     ]
   },
