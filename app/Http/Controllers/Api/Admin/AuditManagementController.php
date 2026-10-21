@@ -31,7 +31,9 @@ class AuditManagementController extends Controller
             ->with([
                 'pollingTable:id,election_id,name,code,location',
                 'extractions:id,scrutiny_record_id,status,confidence_score,created_at,normalized_payload',
-                'reviews:id,scrutiny_record_id,decision,reviewed_at,changes_payload,created_at',
+                'reviews:id,scrutiny_record_id,decision,reviewed_at,changes_payload,created_at,comments,reviewed_by_user_id',
+                'reviews.reviewedByUser:id,username,person_id',
+                'reviews.reviewedByUser.person:id,first_name,last_name',
             ])
             ->withSum('blockResults as valid_votes_sum', 'votes')
             ->addSelect([
@@ -120,6 +122,8 @@ class AuditManagementController extends Controller
                     'decided_at' => in_array($record->status, ['approved', 'reviewed', 'consolidated', 'rejected'], true)
                         ? LocalTime::present($record->reviews->max(fn ($review) => $review->reviewed_at ?? $review->created_at))
                         : null,
+                    // La última decisión con su comentario (motivo del rechazo u observación).
+                    'last_review' => ($last = $record->reviews->sortByDesc('id')->first()) ? self::presentReview($last) : null,
                     'valid_votes' => $validVotes,
                     'status' => $record->status,
                     'ai_confidence' => $confidence,
@@ -176,7 +180,9 @@ class AuditManagementController extends Controller
             'election.neighborhood.commune:id,name',
             'files:id,scrutiny_record_id,original_name,mime_type,page_number,storage_path,created_at',
             'extractions:id,scrutiny_record_id,status,confidence_score,created_at,normalized_payload',
-            'reviews:id,scrutiny_record_id,decision,reviewed_at,changes_payload,created_at',
+            'reviews:id,scrutiny_record_id,decision,reviewed_at,changes_payload,created_at,comments,reviewed_by_user_id',
+            'reviews.reviewedByUser:id,username,person_id',
+            'reviews.reviewedByUser.person:id,first_name,last_name',
             'blockResults:id,scrutiny_record_id,election_block_id,slate_block_id,votes,status',
             'blockResults.electionBlock:id,block_id',
             'blockResults.electionBlock.block:id,name,code',
@@ -386,9 +392,11 @@ class AuditManagementController extends Controller
             ? trim(($scrutinyRecord->createdByUser->person->first_name ?? '').' '.($scrutinyRecord->createdByUser->person->last_name ?? ''))
             : null;
 
-        $validVotes = array_sum(array_map(function (array $block): int {
-            return (int) ($block['votes']['validos'] ?? 0);
-        }, $blocks));
+        // El total y los válidos se calculan con las cifras (no se toman de la
+        // lectura automática: un 1 leído como 7 inflaba el total).
+        $blocks = array_map(fn (array $block): array => self::withComputedTotals($block), $blocks);
+
+        $validVotes = $this->calculateValidVotesFromBlocks($blocks);
 
         return response()->json([
             'success' => true,
@@ -419,6 +427,8 @@ class AuditManagementController extends Controller
                     : null,
                 'neighborhood_name' => $scrutinyRecord->election?->neighborhood?->name,
                 'timeline' => ElectionTimeline::forElections([(int) $scrutinyRecord->election_id])[(int) $scrutinyRecord->election_id] ?? null,
+                // Todas las decisiones sobre el acta, la más reciente primero.
+                'reviews' => $scrutinyRecord->reviews->sortByDesc('id')->values()->map(fn (ScrutinyReview $review) => self::presentReview($review))->all(),
             ],
         ]);
     }
@@ -592,6 +602,33 @@ class AuditManagementController extends Controller
         }
     }
 
+    /** Válidos = planchas + blancos; total = válidos + nulos + no marcados. */
+    private static function withComputedTotals(array $block): array
+    {
+        $votes = $block['votes'] ?? [];
+        $valid = (int) ($votes['plancha_1'] ?? 0) + (int) ($votes['plancha_2'] ?? 0) + (int) ($votes['plancha_3'] ?? 0) + (int) ($votes['blancos'] ?? 0);
+        $votes['validos'] = $valid;
+        $votes['total_votes'] = $valid + (int) ($votes['nulos'] ?? 0) + (int) ($votes['no_marcados'] ?? 0);
+        $block['votes'] = $votes;
+
+        return $block;
+    }
+
+    /** Una decisión para mostrar: qué se decidió, quién, cuándo y su comentario. */
+    private static function presentReview(ScrutinyReview $review): array
+    {
+        $user = $review->reviewedByUser;
+        $name = trim(($user?->person?->first_name ?? '').' '.($user?->person?->last_name ?? ''));
+
+        return [
+            'decision' => $review->decision,
+            'decision_label' => ['approved' => 'Aprobada', 'rejected' => 'Rechazada', 'reviewed' => 'Revisada'][$review->decision] ?? $review->decision,
+            'comments' => $review->comments,
+            'by' => $name !== '' ? $name : ($user?->username ?? 'Sin usuario'),
+            'at' => LocalTime::present($review->reviewed_at ?? $review->created_at),
+        ];
+    }
+
     private function applyReviewChangesToBlockResults(ScrutinyRecord $scrutinyRecord, array $changesPayload): void
     {
         $blocks = array_filter((array) ($changesPayload['blocks'] ?? []), 'is_array');
@@ -647,27 +684,18 @@ class AuditManagementController extends Controller
             ];
         }
 
+        // Aprobada: una persona ya confirmó las cifras contra la foto.
         if (in_array($recordStatus, ['reviewed', 'approved', 'consolidated'], true)) {
-            $confidenceText = $confidence !== null
-                ? sprintf('%d%% confianza', (int) round($confidence * 100))
-                : 'Procesada';
-
             return [
                 'kind' => 'ok',
-                'text' => $confidenceText,
+                'text' => 'Aprobada · 100% confianza',
             ];
         }
 
-        if ($confidence !== null && $confidence >= 0.9) {
-            return [
-                'kind' => 'ok',
-                'text' => sprintf('%d%% confianza', (int) round($confidence * 100)),
-            ];
-        }
-
+        // Sin aprobar: vale lo que diga la lectura automática, y falta revisarla.
         return [
             'kind' => 'review',
-            'text' => 'Requiere revision',
+            'text' => 'Requiere revisión',
         ];
     }
 
@@ -701,11 +729,6 @@ class AuditManagementController extends Controller
             }
         }
 
-        $persistedVotes = (int) ($record->valid_votes_sum ?? 0);
-        if ($persistedVotes > 0) {
-            return $persistedVotes;
-        }
-
         $aggregatedBlockVotesMap = [];
         foreach ($record->extractions->sortByDesc('created_at')->values() as $extraction) {
             $normalizedPayload = is_array($extraction->normalized_payload) ? $extraction->normalized_payload : [];
@@ -735,22 +758,12 @@ class AuditManagementController extends Controller
             }
         }
 
-        $computedVotes = 0;
-        foreach ($aggregatedBlockVotesMap as $votes) {
-            $validos = (int) ($votes['validos'] ?? 0);
-
-            if ($validos <= 0) {
-                $validos =
-                    (int) ($votes['plancha_1'] ?? 0)
-                    + (int) ($votes['plancha_2'] ?? 0)
-                    + (int) ($votes['plancha_3'] ?? 0)
-                    + (int) ($votes['blancos'] ?? 0);
-            }
-
-            $computedVotes += max(0, $validos);
+        if ($aggregatedBlockVotesMap !== []) {
+            return $this->calculateValidVotesFromBlocks(array_map(fn (array $votes) => ['votes' => $votes], array_values($aggregatedBlockVotesMap)));
         }
 
-        return $computedVotes;
+        // Sin lectura: lo que quedó guardado en los resultados por bloque.
+        return (int) ($record->valid_votes_sum ?? 0);
     }
 
     private function latestReviewPayload(ScrutinyRecord $record): ?array
@@ -827,9 +840,14 @@ class AuditManagementController extends Controller
         return $blocks;
     }
 
+    /**
+     * Votos válidos de un acta: cada persona vota en todos los bloques, así que
+     * es el de un bloque (el mayor), no la suma de todos. Se calcula con las
+     * cifras (planchas + blancos), no con el "válidos" que leyó la máquina.
+     */
     private function calculateValidVotesFromBlocks(array $blocks): int
     {
-        $total = 0;
+        $valid = 0;
 
         foreach ($blocks as $block) {
             if (! is_array($block)) {
@@ -837,19 +855,13 @@ class AuditManagementController extends Controller
             }
 
             $votes = is_array($block['votes'] ?? null) ? $block['votes'] : [];
-            $validos = (int) ($votes['validos'] ?? 0);
-
-            if ($validos <= 0) {
-                $validos =
-                    (int) ($votes['plancha_1'] ?? 0)
-                    + (int) ($votes['plancha_2'] ?? 0)
-                    + (int) ($votes['plancha_3'] ?? 0)
-                    + (int) ($votes['blancos'] ?? 0);
-            }
-
-            $total += max(0, $validos);
+            $valid = max($valid,
+                (int) ($votes['plancha_1'] ?? 0)
+                + (int) ($votes['plancha_2'] ?? 0)
+                + (int) ($votes['plancha_3'] ?? 0)
+                + (int) ($votes['blancos'] ?? 0));
         }
 
-        return $total;
+        return $valid;
     }
 }

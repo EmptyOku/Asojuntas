@@ -117,6 +117,12 @@
                     <p v-if="row.decided_at" class="text-xs text-gray-400">
                       {{ row.status === 'rejected' ? 'Rechazada' : 'Aprobada' }} el {{ row.decided_at.texto }}
                     </p>
+                    <p
+                      v-if="row.last_review?.comments"
+                      class="mt-1 max-w-xs truncate text-xs italic"
+                      :class="row.last_review.decision === 'rejected' ? 'text-red-600' : 'text-gray-500'"
+                      :data-tooltip="`${row.last_review.by}: ${row.last_review.comments}`"
+                    >“{{ row.last_review.comments }}”</p>
                   </div>
                 </div>
               </td>
@@ -127,11 +133,11 @@
                     <span class="badge-dot" :class="{ 'animate-pulse': row.status_tag?.kind === 'review' }"></span>
                     {{ row.status_tag?.text || 'Sin estado' }}
                   </span>
-                  <div v-if="row.ai_confidence !== null && row.ai_confidence !== undefined" class="flex items-center gap-2" :title="`Confianza de la lectura: ${confidencePercent(row)}%`">
-                    <div class="h-1.5 w-16 rounded-full bg-gray-100 overflow-hidden">
+                  <div class="flex items-center gap-2" :data-tooltip="confidenceHint(row)">
+                    <div class="h-1.5 w-16 rounded-full overflow-hidden" :class="confidenceKind(row) === 'rejected' ? 'bg-red-100' : 'bg-gray-100'">
                       <div class="h-full rounded-full" :class="confidenceColor(row)" :style="{ width: `${confidencePercent(row)}%` }"></div>
                     </div>
-                    <span class="text-[11px] text-gray-400 tabular-nums">{{ confidencePercent(row) }}%</span>
+                    <span class="text-[11px] font-semibold tabular-nums" :class="confidenceText(row)">{{ confidencePercent(row) }}%</span>
                   </div>
                 </div>
               </td>
@@ -206,18 +212,28 @@ const initials = (name) => String(name || '?')
   .join('');
 
 // La confianza puede venir como 0-1 o 0-100 según el extractor.
+// La barra sigue el estado del acta: aprobada = 100 % (alguien confirmó las
+// cifras contra la foto), rechazada = 0 %, sin aprobar = lo que estimó la
+// lectura automática, en amarillo porque falta revisarla.
+const APPROVED = ['approved', 'reviewed', 'consolidated'];
+const confidenceKind = (row) => (APPROVED.includes(row.status) ? 'approved' : (row.status === 'rejected' ? 'rejected' : 'pending'));
+
 const confidencePercent = (row) => {
+  const kind = confidenceKind(row);
+  if (kind === 'approved') return 100;
+  if (kind === 'rejected') return 0;
   const value = Number(row.ai_confidence);
   if (!Number.isFinite(value)) return 0;
   return Math.round(value <= 1 ? value * 100 : value);
 };
 
-const confidenceColor = (row) => {
-  const pct = confidencePercent(row);
-  if (pct >= 85) return 'bg-emerald-500';
-  if (pct >= 60) return 'bg-amber-400';
-  return 'bg-red-400';
-};
+const confidenceColor = (row) => ({ approved: 'bg-emerald-500', rejected: 'bg-red-500', pending: 'bg-amber-400' }[confidenceKind(row)]);
+const confidenceText = (row) => ({ approved: 'text-emerald-700', rejected: 'text-red-600', pending: 'text-amber-600' }[confidenceKind(row)]);
+const confidenceHint = (row) => ({
+  approved: 'Aprobada: un revisor confirmó las cifras contra la foto',
+  rejected: 'Rechazada: sus votos no cuentan',
+  pending: 'Estimada por la lectura automática; falta revisarla',
+}[confidenceKind(row)]);
 
 const fetchAuditRecords = async () => {
   isLoading.value = true;

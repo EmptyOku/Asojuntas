@@ -98,7 +98,7 @@
             <div class="bg-gray-50 border border-gray-100 rounded-xl p-3 grid grid-cols-2 sm:grid-cols-4 gap-2">
               <div class="col-span-2 sm:col-span-4 border-b border-gray-200 pb-2 mb-1">
                 <label class="block text-[9px] text-gray-500 uppercase">Total de votos</label>
-                <input type="number" v-model.number="block.votes.total_votes" class="w-full bg-transparent text-lg font-bold text-gray-900 outline-none">
+                <input type="number" :value="calculateTotalVotes(block)" readonly class="w-full bg-transparent text-lg font-bold text-gray-900 outline-none" title="Se calcula: votos válidos + nulos + no marcados">
               </div>
 
               <div><label class="block text-[9px] text-gray-500">Plancha 1</label><input type="number" v-model.number="block.votes.plancha_1" class="w-full px-2 py-1.5 bg-white border border-gray-200 rounded text-sm font-bold outline-none"></div>
@@ -166,6 +166,36 @@
     </div>
 
     <!-- Horas clave de la elección de esta acta. -->
+    <!-- Decisiones sobre el acta, con sus comentarios -->
+    <section v-if="!isLoading && !loadError && detail.reviews?.length" class="card overflow-hidden">
+      <div class="card-header">
+        <div>
+          <h3 class="card-title">Decisiones y comentarios</h3>
+          <p class="card-subtitle">Quién aprobó o rechazó el acta, cuándo y por qué.</p>
+        </div>
+      </div>
+      <ul class="divide-y divide-gray-100">
+        <li v-for="(review, index) in detail.reviews" :key="index" class="flex gap-3 px-5 sm:px-6 py-4">
+          <span
+            class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl"
+            :class="review.decision === 'rejected' ? 'bg-red-50 text-red-500' : 'bg-emerald-50 text-aso-primary'"
+          >
+            <XCircle v-if="review.decision === 'rejected'" class="w-4.5 h-4.5" />
+            <CheckCircle2 v-else class="w-4.5 h-4.5" />
+          </span>
+          <div class="min-w-0 flex-1">
+            <p class="text-sm text-gray-900">
+              <strong class="font-semibold">{{ review.decision_label }}</strong>
+              por {{ review.by }}
+              <span v-if="review.at" class="text-gray-500"> · {{ review.at.texto }}</span>
+            </p>
+            <p v-if="review.comments" class="mt-1 rounded-xl bg-gray-50 px-3.5 py-2.5 text-sm text-gray-700 ring-1 ring-gray-100">“{{ review.comments }}”</p>
+            <p v-else class="mt-0.5 text-xs text-gray-400">Sin comentario.</p>
+          </div>
+        </li>
+      </ul>
+    </section>
+
     <ElectionTimeline v-if="!isLoading && !loadError && detail.timeline" :timeline="detail.timeline" :title="`Línea de tiempo · ${detail.neighborhood_name || 'elección'}`" />
   </div>
 </template>
@@ -173,7 +203,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { ArrowLeft, ChevronLeft, ChevronRight, FileText, Users, Save } from 'lucide-vue-next';
+import { ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight, FileText, Users, Save, XCircle } from 'lucide-vue-next';
 import axios from '@/services/axios';
 import ImageViewer from '@/components/ui/ImageViewer.vue';
 import ElectionTimeline from '@/components/ui/ElectionTimeline.vue';
@@ -197,6 +227,7 @@ const detail = ref({
   uploaded_at: null,
   decided_at: null,
   timeline: null,
+  reviews: [],
 });
 
 const editableBlocks = ref([]);
@@ -282,6 +313,12 @@ const calculateValidVotes = (block) => {
     + Number(block.votes.plancha_3 || 0)
     + Number(block.votes.blancos || 0);
 };
+
+// El total no se digita: sale de las demás cifras (la lectura automática a
+// veces confunde un 1 con un 7 y el total quedaba inflado).
+const calculateTotalVotes = (block) => calculateValidVotes(block)
+  + Number(block.votes.nulos || 0)
+  + Number(block.votes.no_marcados || 0);
 
 const stopAutoRefresh = () => {
   if (autoRefreshTimer) {
@@ -377,7 +414,12 @@ const decide = async (decision) => {
       // Al rechazar no se envían cifras: el acta completa queda fuera del conteo.
       changes_payload: decision === 'rejected'
         ? null
-        : { blocks: JSON.parse(JSON.stringify(editableBlocks.value || [])) },
+        : {
+          blocks: (editableBlocks.value || []).map((block) => ({
+            ...JSON.parse(JSON.stringify(block)),
+            votes: { ...block.votes, validos: calculateValidVotes(block), total_votes: calculateTotalVotes(block) },
+          })),
+        },
     });
 
     pendingDecision.value = null;

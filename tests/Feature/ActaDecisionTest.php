@@ -140,4 +140,42 @@ class ActaDecisionTest extends TestCase
         $this->assertSame(0, $stats->json('data.stats.valid_votes_total'));
         $this->assertSame('rejected', $stats->json('data.records.data.0.status_tag.kind'));
     }
+
+    #[Test]
+    public function el_total_se_calcula_y_los_comentarios_se_ven_en_la_auditoria(): void
+    {
+        $record = $this->makeActa();
+        // La lectura automática confundió un 1 con un 7: total 743 en vez de 143.
+        \App\Models\ScrutinyExtraction::create([
+            'scrutiny_record_id' => $record->id,
+            'source_type' => 'ai',
+            'status' => 'pending_review',
+            'round_number' => 1,
+            'normalized_payload' => ['block_votes' => [[
+                'block_name' => 'Directiva', 'total_votes' => 743, 'plancha_1' => 12, 'plancha_2' => 34, 'plancha_3' => 0,
+                'blancos' => 78, 'nulos' => 9, 'no_marcados' => 10, 'validos' => 724,
+            ]]],
+        ]);
+        $auditor = $this->makeUser(['scrutiny_records.view', 'scrutiny_records.approve']);
+
+        $block = collect($this->actingAs($auditor)->getJson("/api/admin/audit-records/{$record->id}")->assertOk()->json('data.blocks'))
+            ->firstWhere('name', 'Directiva') ?? $this->actingAs($auditor)->getJson("/api/admin/audit-records/{$record->id}")->json('data.blocks.0');
+        $planchas = $block['votes']['plancha_1'] + $block['votes']['plancha_2'] + $block['votes']['plancha_3'];
+        $this->assertSame($planchas + $block['votes']['blancos'], $block['votes']['validos']);
+        $this->assertSame($block['votes']['validos'] + $block['votes']['nulos'] + $block['votes']['no_marcados'], $block['votes']['total_votes']);
+        $this->assertNotSame(743, $block['votes']['total_votes']);
+
+        // Rechazo con motivo y luego aprobación con observación: ambos quedan a la vista.
+        $this->actingAs($auditor)->postJson("/api/admin/audit-records/{$record->id}/decision", ['decision' => 'rejected', 'comments' => 'La foto está borrosa.'])->assertOk();
+        $this->actingAs($auditor)->postJson("/api/admin/audit-records/{$record->id}/decision", ['decision' => 'approved', 'comments' => 'Corregido el total a mano.'])->assertOk();
+
+        $reviews = $this->actingAs($auditor)->getJson("/api/admin/audit-records/{$record->id}")->assertOk()->json('data.reviews');
+        $this->assertSame(['Aprobada', 'Rechazada'], array_column($reviews, 'decision_label'));
+        $this->assertSame(['Corregido el total a mano.', 'La foto está borrosa.'], array_column($reviews, 'comments'));
+        $this->assertSame($auditor->username === $reviews[0]['by'] ? $auditor->username : trim($auditor->person->first_name.' '.$auditor->person->last_name), $reviews[0]['by']);
+
+        $row = $this->actingAs($auditor)->getJson('/api/admin/audit-records')->assertOk()->json('data.records.data.0');
+        $this->assertSame('Corregido el total a mano.', $row['last_review']['comments']);
+        $this->assertSame('approved', $row['last_review']['decision']);
+    }
 }
